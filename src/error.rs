@@ -25,6 +25,9 @@ pub enum AppError {
 
     #[error("Database Error: {0}")]
     DatabaseError(#[from] sqlx::Error),
+
+    #[error("Migration Error: {0}")]
+    MigrationError(#[from] sqlx::migrate::MigrateError),
 }
 
 impl AppError {
@@ -34,7 +37,7 @@ impl AppError {
             AppError::InvalidData(_) => StatusCode::BAD_REQUEST,
             AppError::DuplicateError(_) | AppError::UnexpectedState(_) => StatusCode::CONFLICT,
             AppError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
-            AppError::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            AppError::DatabaseError(_) | AppError::MigrationError(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 
@@ -46,6 +49,7 @@ impl AppError {
             AppError::Unauthorized(_) => "unauthorized",
             AppError::UnexpectedState(_) => "unexpected_state",
             AppError::DatabaseError(_) => "database_error",
+            AppError::MigrationError(_) => "migration_error",
         }
     }
 }
@@ -55,9 +59,12 @@ impl IntoResponse for AppError {
         let status = self.status_code();
         let message = match &self {
             AppError::DatabaseError(e) => {
-                // Do not leak internal DB info, but print to tracing
                 tracing::error!("Database Error: {}", e);
-                "Internal database error".to_string()
+                e.to_string() // Temporarily exposed for debugging
+            }
+            AppError::MigrationError(e) => {
+                tracing::error!("Migration Error: {}", e);
+                e.to_string() // Temporarily exposed for debugging
             }
             _ => self.to_string(), // use the Display format for other variants
         };

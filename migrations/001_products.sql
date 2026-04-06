@@ -34,7 +34,7 @@ CREATE TABLE product_variants (
     product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
     sku TEXT,
-    price REAL NOT NULL, -- Medusa uses integer cents, we can use REAL or integer 
+    price INTEGER NOT NULL DEFAULT 0, 
                          -- Reverting to integer cents for safety against precision issues.
     variant_rank INTEGER NOT NULL DEFAULT 0,
     metadata JSON,
