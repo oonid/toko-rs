@@ -1,0 +1,4 @@
+[submodule "vendor/medusa"]
+	path = vendor/medusa
+	url = https://github.com/medusajs/medusa.git
+	branch = develop
