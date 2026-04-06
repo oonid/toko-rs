@@ -2,7 +2,7 @@
 name = "toko-rs"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.78"
+rust-version = "1.85"
 license = "MIT"
 description = "A modular, high-performance headless e-commerce backend inspired by MedusaJS"
 repository = "https://github.com/oonid/toko-rs"
@@ -35,7 +35,6 @@ validator = { version = "0.19", features = ["derive"] }
 # Utilities
 ulid = "1"
 slug = "0.1" 
-async-trait = "0.1"
 dotenvy = "0.15"
 thiserror = "2"
 chrono = { version = "0.4", features = ["serde"] }
@@ -43,6 +42,7 @@ chrono = { version = "0.4", features = ["serde"] }
 # Observability
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+envy = "0.4.2"
 
 [dev-dependencies]
 reqwest = { version = "0.12", features = ["json"] }
