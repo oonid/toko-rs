@@ -132,48 +132,96 @@
 - [x] 6.8 Wire order routes into main router (public + protected split)
 - [x] 6.9 Write integration tests: 9 tests — cart→order, empty/completed/nonexistent cart errors, display_id increment, get by id, list by customer, auth guard
 
-## 7. Phase 1-E — Integration Wiring
+## 7. Post-Implementation Audit Fixes
 
-- [x] 7.1 Mount all module routes in main router: /admin/products/*, /store/products/*, /store/carts/*, /store/orders/*, /store/customers/*
-- [x] 7.2 Apply middleware stack: TraceLayer + CorsLayer
-- [x] 7.3 Wire AppState with all repository handles
-- [x] 7.4 Implement health check with database connectivity test
-- [x] 7.5 Wire customer routes into main router (done in Phase 1-D)
-- [x] 7.6 Wire order routes into main router — public router merged directly, protected router behind auth_customer_id middleware
-- [x] 7.7 Verify all endpoints respond correctly — 69 tests pass, clippy clean, 93% line coverage
+Audit source: comprehensive comparison of implementation against Medusa vendor reference (`vendor/medusa/`) and all change specs (`specs/*.md`).
 
-## 8. Phase 1-F — Seed Data
+### 7a. Error handling spec inconsistencies
 
-- [ ] 8.1 Implement seed function with 3-5 sample products (all published, with options and variants)
-- [ ] 8.2 Add 1 sample customer to seed
-- [ ] 8.3 Make seed idempotent (check existence before inserting)
-- [ ] 8.4 Wire --seed CLI flag to seed function
-- [ ] 8.5 Smoke test full Browse → Cart → Checkout flow via curl
+- [x] 7a.1 Fix `AppError::Conflict` to return `type: "unexpected_state"` instead of `type: "conflict"` — the spec's error-handling/spec.md defines `"conflict"` as an invalid type value; cart completion and completed-cart guard errors should use `"unexpected_state"` per the spec table. Update `error_type()` match arm and error unit test.
+- [x] 7a.2 Sanitize `DatabaseError` message to `"Internal server error"` — spec says "message sanitized, not exposing internals" but current code leaks raw sqlx error (table/column names, SQL details). Only log the real error via `tracing::error!`, return generic message.
+- [x] 7a.3 Fix `MigrationError.error_type()` to return `"database_error"` — previous `"migration_error"` is not in the spec's allowed type enum. Unified with DatabaseError since both are infrastructure 500 errors. Message also sanitized.
+- [x] 7a.4 Update all integration tests that assert error `type` field to match corrected values — `tests/cart_test.rs:439` and `tests/order_test.rs:122` changed from `"conflict"` to `"unexpected_state"`; unit tests in `error.rs` updated for type and message assertions.
 
-## 9. Phase 1-G — Test Suite
+### 7b. SQLite migration parity with PostgreSQL (constraints & defaults)
 
-- [ ] 9.1 Create test infrastructure: setup_test_db (in-memory SQLite + migrations), create_test_app, helper functions
-- [ ] 9.2 Write product tests: admin CRUD, store filtering, contract validation
-- [ ] 9.3 Write cart tests: create, add/update/remove items, completed cart guard, quantity validation
-- [ ] 9.4 Write order tests: full flow, empty/completed cart errors, display_id, payment record, customer filtering
-- [ ] 9.5 Write customer tests: register, duplicate email, profile CRUD, auth header
-- [ ] 9.6 Write contract tests: verify all response JSON shapes match API contract using assert-json-diff
-- [ ] 9.7 Write error contract tests: verify all error responses include `code`, `type`, `message` fields matching specs/store.oas.yaml Error schema
-- [ ] 9.8 Verify `cargo test` passes all tests with 100% endpoint coverage
+- [ ] 7b.1 Add `CHECK (status IN ('draft', 'published', 'proposed', 'rejected'))` to `products.status` in `migrations/sqlite/001_products.sql` — PG has this, SQLite doesn't.
+- [ ] 7b.2 Add `CREATE UNIQUE INDEX uq_product_variants_sku ON product_variants (sku) WHERE deleted_at IS NULL AND sku IS NOT NULL` to `migrations/sqlite/001_products.sql` — PG has this, SQLite doesn't; duplicate SKUs possible in tests.
+- [ ] 7b.3 Add `DEFAULT 'usd'` to `carts.currency_code` in `migrations/sqlite/003_carts.sql` — spec says default is "usd", PG has it, SQLite doesn't.
+- [ ] 7b.4 Add `NOT NULL DEFAULT 'manual'` to `payment_records.provider` in `migrations/sqlite/005_payments.sql` — PG has `NOT NULL DEFAULT 'manual'`, SQLite allows NULL. Update `PaymentRecord` model from `Option<String>` to `String` if needed.
+- [ ] 7b.5 Add `DEFAULT 'usd'` to `payment_records.currency_code` in `migrations/sqlite/005_payments.sql` — PG has it, SQLite doesn't.
+- [ ] 7b.6 Add `CHECK (status IN ('pending', 'authorized', 'captured', 'failed', 'refunded'))` to `payment_records.status` in `migrations/sqlite/005_payments.sql` — PG has it, SQLite doesn't.
+- [ ] 7b.7 Add `CHECK (status IN ('pending', 'completed', 'canceled', 'requires_action', 'archived'))` to `orders.status` in both `migrations/sqlite/004_orders.sql` and `migrations/004_orders.sql` — neither PG nor SQLite has this CHECK; spec planning doc listed it.
 
-## 10. Phase 1-H — Polish
+### 7c. SQLite migration parity with PostgreSQL (indexes — 14 missing)
 
-- [ ] 10.1 Run `cargo clippy -- -D warnings` — zero warnings
-- [ ] 10.2 Run `cargo fmt` — consistent formatting
-- [ ] 10.3 Verify all `#[tracing::instrument]` annotations on handlers
-- [ ] 10.4 Verify all 20 endpoints return correct Medusa-compatible JSON shapes
+- [ ] 7c.1 Add `idx_products_status ON products (status) WHERE deleted_at IS NULL` to SQLite 001
+- [ ] 7c.2 Add `idx_product_options_product_id ON product_options (product_id)` to SQLite 001
+- [ ] 7c.3 Add `idx_product_option_values_option_id ON product_option_values (option_id)` to SQLite 001
+- [ ] 7c.4 Add `idx_product_variants_product_id ON product_variants (product_id) WHERE deleted_at IS NULL` to SQLite 001
+- [ ] 7c.5 Add `idx_customer_addresses_customer_id ON customer_addresses (customer_id)` to SQLite 002
+- [ ] 7c.6 Add `idx_carts_customer_id ON carts (customer_id) WHERE deleted_at IS NULL` to SQLite 003
+- [ ] 7c.7 Add `idx_cart_line_items_cart_id ON cart_line_items (cart_id) WHERE deleted_at IS NULL` to SQLite 003
+- [ ] 7c.8 Add `idx_orders_customer_id ON orders (customer_id) WHERE deleted_at IS NULL` to SQLite 004
+- [ ] 7c.9 Add `idx_orders_display_id ON orders (display_id)` to SQLite 004
+- [ ] 7c.10 Add `idx_order_line_items_order_id ON order_line_items (order_id)` to SQLite 004
+- [ ] 7c.11 Add `idx_payment_records_order_id ON payment_records (order_id)` to SQLite 005
+- [ ] 7c.12 Add `idx_payment_records_status ON payment_records (status)` to SQLite 005
+- [ ] 7c.13 Add `idx_idempotency_keys_response_id ON idempotency_keys (response_id)` to SQLite 006
+- [ ] 7c.14 Verify all 14 indexes match PG migration semantics; run `cargo test` to confirm no regressions.
 
-## 11. Architecture & TDD Quality Gates (cross-cutting)
+### 7d. Data integrity fixes
 
-- [x] 11.1 Verify module boundary rules: no cross-module imports (product does not import cart, etc.)
-- [x] 11.2 Verify all shared infrastructure has unit tests (error.rs, config.rs, db.rs, seed.rs, lib.rs)
-- [x] 11.3 Verify `cargo clippy -- -D warnings` passes with zero warnings
-- [x] 11.4 Verify `cargo llvm-cov --summary-only` shows >90% line coverage
-- [x] 11.5 Verify error responses match 3-field OAS Error schema (`code`, `type`, `message`) — implemented in Phase 2b.12
-- [ ] 11.6 Verify contract tests reference Medusa vendor files for response shape validation
-- [ ] 11.7 Verify HTTP method convention: POST for create AND update (no PUT) on all mutation endpoints
+- [ ] 7d.1 Move payment creation inside the order creation transaction in `src/order/repository.rs` — currently `payment_repo.create()` runs after `tx.commit()`, leaving an orphaned order if payment creation fails. Restructure so both are atomic, or add compensation logic.
+- [ ] 7d.2 Handle display_id UNIQUE constraint violation gracefully — under concurrent requests, `MAX(display_id) + 1` can race. Catch the UNIQUE violation and return a clear `AppError::Conflict` instead of a raw `DatabaseError`.
+
+### 7e. Spec reconciliation
+
+- [ ] 7e.1 Update `specs/error-handling/spec.md` error table: document `AppError::Conflict` variant mapping if keeping `"conflict"` type, or update spec to match implementation after 7a.1 fix.
+- [ ] 7e.2 Update `docs/audit-correction.md` with post-audit correction entries for all fixes applied in 7a–7d.
+
+## 8. Phase 1-E — Integration Wiring (DONE)
+
+- [x] 8.1 Mount all module routes in main router: /admin/products/*, /store/products/*, /store/carts/*, /store/orders/*, /store/customers/*
+- [x] 8.2 Apply middleware stack: TraceLayer + CorsLayer
+- [x] 8.3 Wire AppState with all repository handles
+- [x] 8.4 Implement health check with database connectivity test
+- [x] 8.5 Wire customer routes into main router (done in Phase 1-D)
+- [x] 8.6 Wire order routes into main router — public router merged directly, protected router behind auth_customer_id middleware
+- [x] 8.7 Verify all endpoints respond correctly — 69 tests pass, clippy clean, 93% line coverage
+
+## 9. Phase 1-F — Seed Data
+
+- [ ] 9.1 Implement seed function with 3-5 sample products (all published, with options and variants)
+- [ ] 9.2 Add 1 sample customer to seed
+- [ ] 9.3 Make seed idempotent (check existence before inserting)
+- [ ] 9.4 Wire --seed CLI flag to seed function
+- [ ] 9.5 Smoke test full Browse → Cart → Checkout flow via curl
+
+## 10. Phase 1-G — Test Suite
+
+- [ ] 10.1 Create test infrastructure: setup_test_db (in-memory SQLite + migrations), create_test_app, helper functions
+- [ ] 10.2 Write product tests: admin CRUD, store filtering, contract validation
+- [ ] 10.3 Write cart tests: create, add/update/remove items, completed cart guard, quantity validation
+- [ ] 10.4 Write order tests: full flow, empty/completed cart errors, display_id, payment record, customer filtering
+- [ ] 10.5 Write customer tests: register, duplicate email, profile CRUD, auth header
+- [ ] 10.6 Write contract tests: verify all response JSON shapes match API contract using assert-json-diff
+- [ ] 10.7 Write error contract tests: verify all error responses include `code`, `type`, `message` fields matching specs/store.oas.yaml Error schema
+- [ ] 10.8 Verify `cargo test` passes all tests with 100% endpoint coverage
+
+## 11. Phase 1-H — Polish
+
+- [ ] 11.1 Run `cargo clippy -- -D warnings` — zero warnings
+- [ ] 11.2 Run `cargo fmt` — consistent formatting
+- [ ] 11.3 Verify all `#[tracing::instrument]` annotations on handlers
+- [ ] 11.4 Verify all 20 endpoints return correct Medusa-compatible JSON shapes
+
+## 12. Architecture & TDD Quality Gates (cross-cutting)
+
+- [x] 12.1 Verify module boundary rules: no cross-module imports (product does not import cart, etc.)
+- [x] 12.2 Verify all shared infrastructure has unit tests (error.rs, config.rs, db.rs, seed.rs, lib.rs)
+- [x] 12.3 Verify `cargo clippy -- -D warnings` passes with zero warnings
+- [x] 12.4 Verify `cargo llvm-cov --summary-only` shows >90% line coverage
+- [x] 12.5 Verify error responses match 3-field OAS Error schema (`code`, `type`, `message`) — implemented in Phase 2b.12
+- [ ] 12.6 Verify contract tests reference Medusa vendor files for response shape validation
+- [ ] 12.7 Verify HTTP method convention: POST for create AND update (no PUT) on all mutation endpoints

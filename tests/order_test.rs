@@ -119,7 +119,7 @@ async fn test_complete_empty_cart_rejected() {
         .unwrap();
     assert_eq!(res.status(), StatusCode::CONFLICT);
     let body = body_json(res).await;
-    assert_eq!(body["type"], "conflict");
+    assert_eq!(body["type"], "unexpected_state");
 }
 
 #[tokio::test]

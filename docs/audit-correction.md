@@ -1,6 +1,7 @@
 # Audit Corrections: Medusa Compatibility
 
 Completed 2026-04-08. Tasks 4a–4f done.
+Post-implementation audit fixes: 2026-04-08. Tasks 7a.1–7a.4 done.
 
 ## Source
 
@@ -57,11 +58,11 @@ UnexpectedState → 500 Internal Server Error, code: "invalid_state_error"
 | `NotFound` | 404 | `not_found` | `invalid_request_error` | Medusa: 404, code pass-through |
 | `InvalidData` | 400 | `invalid_data` | `invalid_request_error` | Medusa: 400, code pass-through |
 | `DuplicateError` | **422** | `duplicate_error` | `invalid_request_error` | Medusa: 422, code override to `invalid_request_error` |
-| `Conflict` | **409** | `conflict` | `invalid_state_error` | Medusa: 409, code override to `invalid_state_error` |
+| `Conflict` | **409** | **`unexpected_state`** | `invalid_state_error` | Medusa: 409, spec table row: `unexpected_state` |
 | `Unauthorized` | 401 | `unauthorized` | `unknown_error` | Medusa: 401, code pass-through |
 | `UnexpectedState` | **500** | `unexpected_state` | `invalid_state_error` | Medusa: 500 default, code pass-through |
-| `DatabaseError` | 500 | `database_error` | `api_error` | Medusa: 500, code override to `api_error` |
-| `MigrationError` | 500 | `migration_error` | `api_error` | toko-rs specific — same category as DatabaseError |
+| `DatabaseError` | 500 | `database_error` | `api_error` | Medusa: 500, message sanitized |
+| `MigrationError` | 500 | **`database_error`** | `api_error` | Same category as DatabaseError, message sanitized |
 
 ## Code Field Design Decision
 
@@ -282,3 +283,83 @@ This reconciles the spec with the design doc and existing implementation.
 | 4f. Spec reconciliation | 0 (spec-only) | 56 | Pass |
 
 **Final: 56 tests pass, clippy clean, zero warnings.**
+
+---
+
+## 7a. Post-Implementation Audit — Error Handling Spec Fixes
+
+Source: comprehensive audit comparing implementation against `specs/error-handling/spec.md` and the Medusa vendor reference at `vendor/medusa/`.
+
+### 7a.1: `AppError::Conflict` type: `"conflict"` → `"unexpected_state"`
+
+The spec's error-handling/spec.md defines the allowed `type` values as: `not_found`,
+`invalid_data`, `duplicate_error`, `unauthorized`, `unexpected_state`, `database_error`,
+`unknown_error`. The value `"conflict"` was not in this enum.
+
+The spec's error table explicitly maps cart state conflicts (completed cart, empty cart
+completion) to `type: "unexpected_state"`, `code: "invalid_state_error"`, HTTP 409.
+
+**Before:**
+```
+Conflict → 409, type: "conflict", code: "invalid_state_error"
+```
+
+**After:**
+```
+Conflict → 409, type: "unexpected_state", code: "invalid_state_error"
+```
+
+**References:**
+- `src/error.rs:58` — error_type() match arm
+- `tests/cart_test.rs:439` — completed cart update error assertion
+- `tests/order_test.rs:122` — empty cart completion error assertion
+
+### 7a.2: `DatabaseError` message: raw leak → `"Internal server error"`
+
+The spec scenario says: `"message": "Internal server error" (message sanitized, not exposing internals)`.
+The previous implementation returned `e.to_string()` which included raw sqlx error text
+(table/column names, connection details, SQL fragments).
+
+**Before:**
+```
+DatabaseError → 500, message: "error with configuration: cfg fail"
+```
+
+**After:**
+```
+DatabaseError → 500, message: "Internal server error"
+```
+
+The real error is still logged via `tracing::error!()` for server-side debugging.
+
+**References:**
+- `src/error.rs:83` — IntoResponse message match arm
+
+### 7a.3: `MigrationError` type: `"migration_error"` → `"database_error"`
+
+The value `"migration_error"` is not in the spec's allowed `type` enum. Since migration
+errors are the same category as database errors (infrastructure failures, 500 status),
+the type is unified to `"database_error"`.
+
+**Before:**
+```
+MigrationError → 500, type: "migration_error", code: "api_error"
+```
+
+**After:**
+```
+MigrationError → 500, type: "database_error", code: "api_error"
+```
+
+Message is also sanitized to `"Internal server error"` (same as DatabaseError).
+
+**References:**
+- `src/error.rs:60` — error_type() match arm
+- `src/error.rs:88` — IntoResponse message match arm
+
+### TDD Record (7a)
+
+1. **RED**: Updated 3 unit tests in `src/error.rs` (type + message assertions), 2 integration
+   tests (`cart_test.rs`, `order_test.rs`) — 5 tests fail
+2. **GREEN**: Changed 2 match arms in `error_type()`, 2 message constructions in `IntoResponse`
+3. **Verify**: 69 tests pass, clippy clean

@@ -55,9 +55,9 @@ impl AppError {
             AppError::DuplicateError(_) => "duplicate_error",
             AppError::Unauthorized(_) => "unauthorized",
             AppError::UnexpectedState(_) => "unexpected_state",
-            AppError::Conflict(_) => "conflict",
+            AppError::Conflict(_) => "unexpected_state",
             AppError::DatabaseError(_) => "database_error",
-            AppError::MigrationError(_) => "migration_error",
+            AppError::MigrationError(_) => "database_error",
         }
     }
 
@@ -81,11 +81,11 @@ impl IntoResponse for AppError {
         let message = match &self {
             AppError::DatabaseError(e) => {
                 tracing::error!("Database Error: {}", e);
-                e.to_string()
+                "Internal server error".to_string()
             }
             AppError::MigrationError(e) => {
                 tracing::error!("Migration Error: {}", e);
-                e.to_string()
+                "Internal server error".to_string()
             }
             _ => self.to_string(),
         };
@@ -167,7 +167,8 @@ mod tests {
         let body = into_body(resp).await;
         assert_eq!(body["_status"], 409);
         assert_eq!(body["code"], "invalid_state_error");
-        assert_eq!(body["type"], "conflict");
+        assert_eq!(body["type"], "unexpected_state");
+        assert_eq!(body["message"], "Conflict: cart already completed");
     }
 
     #[tokio::test]
@@ -178,6 +179,7 @@ mod tests {
         assert_eq!(body["_status"], 500);
         assert_eq!(body["code"], "api_error");
         assert_eq!(body["type"], "database_error");
+        assert_eq!(body["message"], "Internal server error");
     }
 
     #[tokio::test]
@@ -187,7 +189,8 @@ mod tests {
         let body = into_body(resp).await;
         assert_eq!(body["_status"], 500);
         assert_eq!(body["code"], "api_error");
-        assert_eq!(body["type"], "migration_error");
+        assert_eq!(body["type"], "database_error");
+        assert_eq!(body["message"], "Internal server error");
     }
 
     #[test]
