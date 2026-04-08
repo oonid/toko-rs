@@ -96,6 +96,35 @@ The system SHALL provide reusable utility functions in `src/types.rs` that all m
 #### Scenario: Handle generation uses slug crate
 - **WHEN** a product is created without a handle
 - **THEN** the handle is generated via `types::generate_handle(&title)` producing URL-safe output (handles unicode, special characters)
+
+### Requirement: Module boundary rules
+Each domain module (product, cart, order, customer, payment) SHALL be internally organized with consistent structure: `mod.rs`, `models.rs`, `repository.rs`, `routes.rs`, `types.rs`. Modules SHALL NOT import types, models, or repositories from other domain modules. Modules MAY import from shared infrastructure: `types.rs` (top-level), `error.rs`, `db.rs`. This mirrors Medusa's module isolation principle where modules are independent service packages that communicate through shared interfaces, not direct imports.
+
+#### Scenario: Module imports are self-contained
+- **WHEN** a module's code is reviewed for imports
+- **THEN** it does not contain `use crate::product::*` from within the cart module (or any other cross-module import)
+
+### Requirement: Medusa vendor reference mapping
+Each module spec SHALL reference the specific Medusa source files that define the API contract for that module. This ensures implementers can verify response shapes, validation rules, and error handling against the authoritative source.
+
+| Module | Medusa API routes | Medusa models | Medusa validators |
+|---|---|---|---|
+| Product | `vendor/medusa/packages/medusa/src/api/admin/products/route.ts` | `vendor/medusa/packages/modules/product/src/models/` | `vendor/medusa/packages/medusa/src/api/admin/products/validators.ts` |
+| Cart | `vendor/medusa/packages/medusa/src/api/store/carts/route.ts` | `vendor/medusa/packages/modules/cart/src/models/` | `vendor/medusa/packages/medusa/src/api/store/carts/validators.ts` |
+| Order | `vendor/medusa/packages/medusa/src/api/store/orders/route.ts` | `vendor/medusa/packages/modules/order/src/models/` | `vendor/medusa/packages/medusa/src/api/store/orders/validators.ts` |
+| Customer | `vendor/medusa/packages/medusa/src/api/store/customers/route.ts` | `vendor/medusa/packages/modules/customer/src/models/` | `vendor/medusa/packages/medusa/src/api/store/customers/validators.ts` |
+
+#### Scenario: Implementation matches Medusa reference
+- **WHEN** a product endpoint response is compared to the Medusa route handler output
+- **THEN** the JSON wrapper, field names, and pagination structure match
+
+### Requirement: HTTP method conventions matching Medusa
+Both create and update operations SHALL use POST (not PUT), matching Medusa's convention. DELETE is used for soft-delete operations. GET is used for retrieval and list operations.
+
+#### Scenario: Update uses POST not PUT
+- **WHEN** a product is updated via `POST /admin/products/:id`
+- **THEN** the system processes it as a partial update, matching Medusa's `POST` pattern
+
 The project SHALL include a `docker-compose.yml` with a PostgreSQL 16 service for integration testing. The Makefile SHALL include `docker-up` (start PG), `docker-down` (stop PG), and `test-pg` (run tests against Docker PostgreSQL) targets.
 
 #### Scenario: Start PostgreSQL for testing

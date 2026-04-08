@@ -130,3 +130,13 @@
 - [ ] 9.2 Run `cargo fmt` — consistent formatting
 - [ ] 9.3 Verify all `#[tracing::instrument]` annotations on handlers
 - [ ] 9.4 Verify all 20 endpoints return correct Medusa-compatible JSON shapes
+
+## 10. Architecture & TDD Quality Gates (cross-cutting)
+
+- [x] 10.1 Verify module boundary rules: no cross-module imports (product does not import cart, etc.)
+- [x] 10.2 Verify all shared infrastructure has unit tests (error.rs, config.rs, db.rs, seed.rs, lib.rs)
+- [x] 10.3 Verify `cargo clippy -- -D warnings` passes with zero warnings
+- [x] 10.4 Verify `cargo llvm-cov --summary-only` shows >90% line coverage
+- [ ] 10.5 Verify error responses match 3-field OAS Error schema (`code`, `type`, `message`) — `code` field not yet implemented (deferred to Phase 2b.12)
+- [ ] 10.6 Verify contract tests reference Medusa vendor files for response shape validation
+- [ ] 10.7 Verify HTTP method convention: POST for create AND update (no PUT) on all mutation endpoints
