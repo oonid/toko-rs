@@ -9,3 +9,6 @@ CREATE TABLE payment_records (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX idx_payment_records_order_id ON payment_records (order_id);
+CREATE INDEX idx_payment_records_status ON payment_records (status);

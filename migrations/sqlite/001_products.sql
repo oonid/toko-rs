@@ -55,3 +55,8 @@ CREATE TABLE product_variant_option (
 );
 
 CREATE UNIQUE INDEX uq_product_variants_sku ON product_variants (sku) WHERE deleted_at IS NULL AND sku IS NOT NULL;
+
+CREATE INDEX idx_products_status ON products (status) WHERE deleted_at IS NULL;
+CREATE INDEX idx_product_options_product_id ON product_options (product_id);
+CREATE INDEX idx_product_option_values_option_id ON product_option_values (option_id);
+CREATE INDEX idx_product_variants_product_id ON product_variants (product_id) WHERE deleted_at IS NULL;

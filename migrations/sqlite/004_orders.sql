@@ -36,3 +36,7 @@ CREATE TABLE order_line_items (
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted_at DATETIME
 );
+
+CREATE INDEX idx_orders_customer_id ON orders (customer_id) WHERE deleted_at IS NULL;
+CREATE INDEX idx_orders_display_id ON orders (display_id);
+CREATE INDEX idx_order_line_items_order_id ON order_line_items (order_id);

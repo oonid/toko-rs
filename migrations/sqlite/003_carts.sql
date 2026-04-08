@@ -26,3 +26,6 @@ CREATE TABLE cart_line_items (
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted_at DATETIME
 );
+
+CREATE INDEX idx_carts_customer_id ON carts (customer_id) WHERE deleted_at IS NULL;
+CREATE INDEX idx_cart_line_items_cart_id ON cart_line_items (cart_id) WHERE deleted_at IS NULL;

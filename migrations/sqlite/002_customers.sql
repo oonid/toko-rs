@@ -30,3 +30,5 @@ CREATE TABLE customer_addresses (
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted_at DATETIME
 );
+
+CREATE INDEX idx_customer_addresses_customer_id ON customer_addresses (customer_id);

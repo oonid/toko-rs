@@ -153,22 +153,22 @@ Audit source: comprehensive comparison of implementation against Medusa vendor r
 - [x] 7b.6 Add `CHECK (status IN ('pending', 'authorized', 'captured', 'failed', 'refunded'))` to `payment_records.status` in `migrations/sqlite/005_payments.sql` — PG has it, SQLite didn't.
 - [x] 7b.7 Add `CHECK (status IN ('pending', 'completed', 'canceled', 'requires_action', 'archived'))` to `orders.status` in both `migrations/sqlite/004_orders.sql` and `migrations/004_orders.sql` — neither PG nor SQLite had this CHECK; spec planning doc listed it.
 
-### 7c. SQLite migration parity with PostgreSQL (indexes — 14 missing)
+### 7c. SQLite migration parity with PostgreSQL (indexes — 13 missing + 3 missing tables)
 
-- [ ] 7c.1 Add `idx_products_status ON products (status) WHERE deleted_at IS NULL` to SQLite 001
-- [ ] 7c.2 Add `idx_product_options_product_id ON product_options (product_id)` to SQLite 001
-- [ ] 7c.3 Add `idx_product_option_values_option_id ON product_option_values (option_id)` to SQLite 001
-- [ ] 7c.4 Add `idx_product_variants_product_id ON product_variants (product_id) WHERE deleted_at IS NULL` to SQLite 001
-- [ ] 7c.5 Add `idx_customer_addresses_customer_id ON customer_addresses (customer_id)` to SQLite 002
-- [ ] 7c.6 Add `idx_carts_customer_id ON carts (customer_id) WHERE deleted_at IS NULL` to SQLite 003
-- [ ] 7c.7 Add `idx_cart_line_items_cart_id ON cart_line_items (cart_id) WHERE deleted_at IS NULL` to SQLite 003
-- [ ] 7c.8 Add `idx_orders_customer_id ON orders (customer_id) WHERE deleted_at IS NULL` to SQLite 004
-- [ ] 7c.9 Add `idx_orders_display_id ON orders (display_id)` to SQLite 004
-- [ ] 7c.10 Add `idx_order_line_items_order_id ON order_line_items (order_id)` to SQLite 004
-- [ ] 7c.11 Add `idx_payment_records_order_id ON payment_records (order_id)` to SQLite 005
-- [ ] 7c.12 Add `idx_payment_records_status ON payment_records (status)` to SQLite 005
-- [ ] 7c.13 Add `idx_idempotency_keys_response_id ON idempotency_keys (response_id)` to SQLite 006
-- [ ] 7c.14 Verify all 14 indexes match PG migration semantics; run `cargo test` to confirm no regressions.
+- [x] 7c.1 Add `idx_products_status ON products (status) WHERE deleted_at IS NULL` to SQLite 001
+- [x] 7c.2 Add `idx_product_options_product_id ON product_options (product_id)` to SQLite 001
+- [x] 7c.3 Add `idx_product_option_values_option_id ON product_option_values (option_id)` to SQLite 001
+- [x] 7c.4 Add `idx_product_variants_product_id ON product_variants (product_id) WHERE deleted_at IS NULL` to SQLite 001
+- [x] 7c.5 Add `idx_customer_addresses_customer_id ON customer_addresses (customer_id)` to SQLite 002 — also added missing `customer_addresses` table definition
+- [x] 7c.6 Add `idx_carts_customer_id ON carts (customer_id) WHERE deleted_at IS NULL` to SQLite 003
+- [x] 7c.7 Add `idx_cart_line_items_cart_id ON cart_line_items (cart_id) WHERE deleted_at IS NULL` to SQLite 003 — also added missing `cart_line_items` table definition
+- [x] 7c.8 Add `idx_orders_customer_id ON orders (customer_id) WHERE deleted_at IS NULL` to SQLite 004
+- [x] 7c.9 Add `idx_orders_display_id ON orders (display_id)` to SQLite 004
+- [x] 7c.10 Add `idx_order_line_items_order_id ON order_line_items (order_id)` to SQLite 004 — also added missing `order_line_items` table definition
+- [x] 7c.11 Add `idx_payment_records_order_id ON payment_records (order_id)` to SQLite 005
+- [x] 7c.12 Add `idx_payment_records_status ON payment_records (status)` to SQLite 005
+- [x] 7c.13 Add `idx_idempotency_keys_response_id ON idempotency_keys (response_id)` to SQLite 006
+- [x] 7c.14 Verify all indexes match PG migration semantics; run `cargo test` to confirm no regressions — 69 tests pass, clippy clean
 
 ### 7d. Data integrity fixes
 

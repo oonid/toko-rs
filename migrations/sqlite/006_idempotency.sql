@@ -5,3 +5,5 @@ CREATE TABLE idempotency_keys (
   response_type TEXT NOT NULL DEFAULT 'order',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX idx_idempotency_keys_response_id ON idempotency_keys (response_id);
