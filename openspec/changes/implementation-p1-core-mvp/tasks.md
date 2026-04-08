@@ -59,16 +59,16 @@
 - [x] 2b.13 Verify all existing tests still pass after refactor — 41 tests, clippy clean, 92.42% coverage
 - [x] 2b.14 Add Makefile docker targets: `docker-up`, `docker-down`, `test-pg`, `cov`
 
-## 3. Phase 1-D — Customer Module
+## 3. Phase 1-D — Customer Module (DONE)
 
-- [ ] 3.1 Define customer models: Customer struct with id, first_name, last_name, email, phone, has_account, metadata, timestamps
-- [ ] 3.2 Define customer request/response types: StoreCreateCustomerRequest, StoreUpdateCustomerRequest, CustomerResponse
-- [ ] 3.3 Implement customer repository (single repo, PgPool): create, find_by_id, find_by_email, update with duplicate email check
-- [ ] 3.4 Implement customer routes: POST /store/customers, GET /store/customers/me, POST /store/customers/me
-- [ ] 3.5 Implement X-Customer-Id header extraction middleware for /me endpoints
-- [ ] 3.6 Wire customer repository into AppState
-- [ ] 3.7 Wire customer routes into main router
-- [ ] 3.8 Write integration tests: register, duplicate email, get profile, update profile, missing header
+- [x] 3.1 Define customer models: Customer struct with id, first_name, last_name, email, phone, has_account, metadata, timestamps
+- [x] 3.2 Define customer request/response types: CreateCustomerInput (email required), UpdateCustomerInput (partial), CustomerResponse
+- [x] 3.3 Implement customer repository: create (with duplicate email detection via UNIQUE violation), find_by_id, update (COALESCE partial)
+- [x] 3.4 Implement customer routes: POST /store/customers, GET /store/customers/me, POST /store/customers/me
+- [x] 3.5 Implement X-Customer-Id header extraction as Axum middleware (from_fn) using Extension to inject CustomerId
+- [x] 3.6 Wire customer repository into AppState (Repositories.customer)
+- [x] 3.7 Wire customer routes into main router
+- [x] 3.8 Write integration tests: 10 tests — register success, duplicate email, missing email, invalid email, get profile, get without header, get not found, update profile, update without header, response format
 
 ## 4. Phase 1-B — Cart Module
 
@@ -101,7 +101,7 @@
 - [x] 6.2 Apply middleware stack: TraceLayer + CorsLayer
 - [x] 6.3 Wire AppState with all repository handles
 - [x] 6.4 Implement health check with database connectivity test
-- [ ] 6.5 Wire customer routes into main router (when customer module ready)
+- [x] 6.5 Wire customer routes into main router (done in Phase 1-D)
 - [ ] 6.6 Wire order routes into main router (when order module ready)
 - [ ] 6.7 Verify all 20 endpoints respond correctly
 

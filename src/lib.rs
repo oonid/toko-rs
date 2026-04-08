@@ -25,6 +25,7 @@ pub fn app_router(state: AppState) -> Router {
     Router::new()
         .merge(product::routes::router())
         .merge(cart::routes::router())
+        .merge(customer::routes::router())
         .route("/health", axum::routing::get(health_check))
         .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive())
