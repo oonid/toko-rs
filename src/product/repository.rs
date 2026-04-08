@@ -1,9 +1,8 @@
-use sqlx::{SqlitePool, PgPool};
-use std::sync::Arc;
-use ulid::Ulid;
-use crate::error::AppError;
 use super::models::*;
 use super::types::*;
+use crate::error::AppError;
+use sqlx::{PgPool, SqlitePool};
+use ulid::Ulid;
 
 #[derive(Clone)]
 pub struct SqliteProductRepository {
@@ -15,18 +14,23 @@ impl SqliteProductRepository {
         Self { pool }
     }
 
-    pub async fn create_product(&self, input: CreateProductInput) -> Result<ProductWithRelations, AppError> {
+    pub async fn create_product(
+        &self,
+        input: CreateProductInput,
+    ) -> Result<ProductWithRelations, AppError> {
         let mut tx = self.pool.begin().await?;
 
         let product_id = format!("prod_{}", Ulid::new().to_string().to_lowercase());
-        let handle = input.handle.unwrap_or_else(|| input.title.to_lowercase().replace(" ", "-"));
-        
+        let handle = input
+            .handle
+            .unwrap_or_else(|| input.title.to_lowercase().replace(" ", "-"));
+
         let product = sqlx::query_as::<_, Product>(
             r#"
             INSERT INTO products (id, title, handle, description, status, thumbnail, metadata)
             VALUES (?, ?, ?, ?, ?, ?, ?)
             RETURNING *
-            "#
+            "#,
         )
         .bind(&product_id)
         .bind(&input.title)
@@ -58,7 +62,10 @@ impl SqliteProductRepository {
                     .fetch_one(&mut *tx).await?;
                     values_out.push(val);
                 }
-                options_out.push(ProductOptionWithValues { option, values: values_out });
+                options_out.push(ProductOptionWithValues {
+                    option,
+                    values: values_out,
+                });
             }
         }
 
@@ -78,7 +85,10 @@ impl SqliteProductRepository {
                 .bind(var_input.metadata.clone().map(sqlx::types::Json))
                 .fetch_one(&mut *tx).await?;
 
-                variants_out.push(ProductVariantWithOptions { variant, options: vec![] });
+                variants_out.push(ProductVariantWithOptions {
+                    variant,
+                    options: vec![],
+                });
             }
         }
 
@@ -102,23 +112,33 @@ impl PostgresProductRepository {
         Self { pool }
     }
 
-    pub async fn create_product(&self, input: CreateProductInput) -> Result<ProductWithRelations, AppError> {
+    pub async fn create_product(
+        &self,
+        input: CreateProductInput,
+    ) -> Result<ProductWithRelations, AppError> {
         let mut tx = self.pool.begin().await?;
 
         let product_id = format!("prod_{}", Ulid::new().to_string().to_lowercase());
-        let handle = input.handle.unwrap_or_else(|| input.title.to_lowercase().replace(" ", "-"));
-        
+        let handle = input
+            .handle
+            .unwrap_or_else(|| input.title.to_lowercase().replace(" ", "-"));
+
         let product = sqlx::query_as::<_, Product>(
             r#"
             INSERT INTO products (id, title, handle, description, status, thumbnail, metadata)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING *
-            "#
+            "#,
         )
-        .bind(&product_id).bind(&input.title).bind(&handle).bind(&input.description)
-        .bind(input.status.as_deref().unwrap_or("draft")).bind(&input.thumbnail)
+        .bind(&product_id)
+        .bind(&input.title)
+        .bind(&handle)
+        .bind(&input.description)
+        .bind(input.status.as_deref().unwrap_or("draft"))
+        .bind(&input.thumbnail)
         .bind(input.metadata.clone().map(sqlx::types::Json))
-        .fetch_one(&mut *tx).await?;
+        .fetch_one(&mut *tx)
+        .await?;
 
         let mut options_out = Vec::new();
         if let Some(opts) = input.options {
@@ -136,7 +156,10 @@ impl PostgresProductRepository {
                     ).bind(&val_id).bind(&opt_id).bind(&val_str).fetch_one(&mut *tx).await?;
                     values_out.push(val);
                 }
-                options_out.push(ProductOptionWithValues { option, values: values_out });
+                options_out.push(ProductOptionWithValues {
+                    option,
+                    values: values_out,
+                });
             }
         }
 
@@ -155,12 +178,19 @@ impl PostgresProductRepository {
                 .bind(var_input.metadata.clone().map(sqlx::types::Json))
                 .fetch_one(&mut *tx).await?;
 
-                variants_out.push(ProductVariantWithOptions { variant, options: vec![] });
+                variants_out.push(ProductVariantWithOptions {
+                    variant,
+                    options: vec![],
+                });
             }
         }
 
         tx.commit().await?;
 
-        Ok(ProductWithRelations { product, options: options_out, variants: variants_out })
+        Ok(ProductWithRelations {
+            product,
+            options: options_out,
+            variants: variants_out,
+        })
     }
 }

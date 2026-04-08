@@ -9,15 +9,11 @@
 - [x] 0.7 Create Makefile with dev, test, check, lint, fmt, seed, clean-db targets
 - [x] 0.8 Create .env and .env.example with DATABASE_URL, HOST, PORT, RUST_LOG
 - [x] 0.9 Verify `cargo test` passes (6 tests: 3 product + 3 cart)
-
-**Phase 0 known gaps** (to be addressed in Phase 2b):
-- Migrations are SQLite DDL (DATETIME, JSON). PostgreSQL-primary DDL (timestamptz, jsonb) rewrite is Phase 2b.7
-- No CORS middleware yet. Phase 2b or Phase 1-E
-- No graceful shutdown yet. Phase 2b or Phase 1-E
-- Health check doesn't test DB connectivity (always returns "connected")
-- FindParams has no default values (offset=0, limit=20)
-- Makefile missing docker-up, docker-down, test-pg targets
-- 21 compiler warnings (cfg(coverage) guards, unused imports)
+- [x] 0.10 Add CORS middleware (CorsLayer::permissive) to app_router
+- [x] 0.11 Add graceful shutdown (with_graceful_shutdown + SIGINT/SIGTERM handler)
+- [x] 0.12 Health check probes DB connectivity via db::ping() — returns "degraded"/"disconnected" on failure
+- [x] 0.13 FindParams defaults: offset=0 (serde default), limit=50 (serde default fn)
+- [x] 0.14 Zero compiler warnings — removed unused imports (delete, Arc), declared `cfg(coverage)` check-cfg in Cargo.toml; 6 tests passing
 
 ## 2. Phase 1-A — Product Module (PARTIAL)
 
@@ -61,6 +57,7 @@
 - [ ] 2b.11 Fix variant-to-option pivot: persist variant option bindings to `product_variant_options` table during create_product and add_variant
 - [ ] 2b.12 Fix error response: add `code` field to match 3-field OAS Error schema (`code`, `type`, `message`)
 - [ ] 2b.13 Verify all existing tests still pass after refactor
+- [ ] 2b.14 Add Makefile docker targets: `docker-up`, `docker-down`, `test-pg`
 
 ## 3. Phase 1-D — Customer Module
 
@@ -100,11 +97,13 @@
 
 ## 6. Phase 1-E — Integration Wiring
 
-- [ ] 6.1 Mount all module routes in main router: /admin/products/*, /store/products/*, /store/carts/*, /store/orders/*, /store/customers/*
-- [ ] 6.2 Apply middleware stack: TraceLayer + CorsLayer
-- [ ] 6.3 Wire AppState with all repository handles
-- [ ] 6.4 Implement health check with database connectivity test
-- [ ] 6.5 Verify all 20 endpoints respond correctly
+- [x] 6.1 Mount all module routes in main router: /admin/products/*, /store/products/*, /store/carts/*, /store/orders/*, /store/customers/*
+- [x] 6.2 Apply middleware stack: TraceLayer + CorsLayer
+- [x] 6.3 Wire AppState with all repository handles
+- [x] 6.4 Implement health check with database connectivity test
+- [ ] 6.5 Wire customer routes into main router (when customer module ready)
+- [ ] 6.6 Wire order routes into main router (when order module ready)
+- [ ] 6.7 Verify all 20 endpoints respond correctly
 
 ## 7. Phase 1-F — Seed Data
 

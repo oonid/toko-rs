@@ -1,0 +1,40 @@
+use serde::{Deserialize, Serialize};
+use validator::Validate;
+
+#[derive(Debug, Serialize, Deserialize, Validate)]
+pub struct CreateCartInput {
+    pub customer_id: Option<String>,
+    #[validate(email)]
+    pub email: Option<String>,
+    #[validate(length(min = 3, max = 3))]
+    pub currency_code: Option<String>,
+    pub metadata: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Validate)]
+pub struct UpdateCartInput {
+    pub customer_id: Option<String>,
+    #[validate(email)]
+    pub email: Option<String>,
+    pub metadata: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Validate)]
+pub struct AddLineItemInput {
+    pub variant_id: String,
+    #[validate(range(min = 1))]
+    pub quantity: i64,
+    pub metadata: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Validate)]
+pub struct UpdateLineItemInput {
+    #[validate(range(min = 0))]
+    pub quantity: i64,
+    pub metadata: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CartResponse {
+    pub cart: super::models::CartWithItems,
+}

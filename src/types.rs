@@ -13,11 +13,17 @@ pub fn generate_handle(title: &str) -> String {
     slug::slugify(title)
 }
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize)]
 pub struct FindParams {
+    #[serde(default)]
     pub offset: i64,
+    #[serde(default = "default_limit")]
     pub limit: i64,
     pub order: Option<String>,
     pub fields: Option<String>,
     pub with_deleted: Option<bool>,
+}
+
+fn default_limit() -> i64 {
+    50
 }

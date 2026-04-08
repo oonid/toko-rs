@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
-use validator::Validate;
 use std::collections::HashMap;
+use validator::Validate;
 
 use super::models::ProductWithRelations;
 

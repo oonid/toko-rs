@@ -10,9 +10,11 @@ pub async fn setup_test_app() -> (Router, db::AppDb) {
     // Run migrations
     db::run_migrations(&app_db).await.expect("Failed to run migrations on test db");
 
+    let repo_arc = std::sync::Arc::new(repo);
     let state = AppState { 
         db: app_db.clone(),
-        product_repo: std::sync::Arc::new(repo), 
+        product_repo: repo_arc.clone(), 
+        cart_repo: repo_arc,
     };
     (app_router(state), app_db)
 }

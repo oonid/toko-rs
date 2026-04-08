@@ -1,5 +1,4 @@
 /// Configuration struct to hold environment variables
-
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize, Clone)]

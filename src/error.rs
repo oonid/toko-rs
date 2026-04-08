@@ -37,7 +37,9 @@ impl AppError {
             AppError::InvalidData(_) => StatusCode::BAD_REQUEST,
             AppError::DuplicateError(_) | AppError::UnexpectedState(_) => StatusCode::CONFLICT,
             AppError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
-            AppError::DatabaseError(_) | AppError::MigrationError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            AppError::DatabaseError(_) | AppError::MigrationError(_) => {
+                StatusCode::INTERNAL_SERVER_ERROR
+            }
         }
     }
 

@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::{FromRow, Row};
+use sqlx::FromRow;
 
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
 pub struct Product {
@@ -43,7 +43,7 @@ pub struct ProductVariant {
     pub product_id: String,
     pub title: String,
     pub sku: Option<String>,
-    pub price: i64, 
+    pub price: i64,
     pub variant_rank: i64,
     #[serde(skip_deserializing)]
     pub metadata: Option<sqlx::types::Json<serde_json::Value>>,
