@@ -36,6 +36,29 @@ impl PaymentRepository {
         .map_err(AppError::DatabaseError)
     }
 
+    pub async fn create_with_tx(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        order_id: &str,
+        amount: i64,
+        currency_code: &str,
+    ) -> Result<PaymentRecord, AppError> {
+        let id = generate_entity_id("pay");
+        sqlx::query_as::<_, PaymentRecord>(
+            r#"
+            INSERT INTO payment_records (id, order_id, amount, currency_code, status, provider)
+            VALUES (?, ?, ?, ?, 'pending', 'manual')
+            RETURNING *
+            "#,
+        )
+        .bind(&id)
+        .bind(order_id)
+        .bind(amount)
+        .bind(currency_code)
+        .fetch_one(&mut **tx)
+        .await
+        .map_err(AppError::DatabaseError)
+    }
+
     pub async fn find_by_order_id(
         &self,
         order_id: &str,

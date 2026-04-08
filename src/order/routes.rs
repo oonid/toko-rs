@@ -23,11 +23,7 @@ async fn store_complete_cart(
     State(state): State<AppState>,
     Path(cart_id): Path<String>,
 ) -> Result<(StatusCode, Json<CartCompleteResponse>), AppError> {
-    let (order_with_items, payment) = state
-        .repos
-        .order
-        .create_from_cart(&cart_id, &state.repos.payment)
-        .await?;
+    let (order_with_items, payment) = state.repos.order.create_from_cart(&cart_id).await?;
 
     Ok((
         StatusCode::OK,

@@ -18,7 +18,6 @@ impl OrderRepository {
     pub async fn create_from_cart(
         &self,
         cart_id: &str,
-        payment_repo: &PaymentRepository,
     ) -> Result<(OrderWithItems, crate::payment::models::PaymentRecord), AppError> {
         let mut tx = self.pool.begin().await?;
 
@@ -64,7 +63,8 @@ impl OrderRepository {
         .bind(&cart.email)
         .bind(&cart.currency_code)
         .fetch_one(&mut *tx)
-        .await?;
+        .await
+        .map_err(Self::map_display_id_conflict)?;
 
         let mut order_items = Vec::with_capacity(cart_items.len());
         for ci in &cart_items {
@@ -89,6 +89,12 @@ impl OrderRepository {
             order_items.push(item);
         }
 
+        let item_total: i64 = order_items.iter().map(|i| i.quantity * i.unit_price).sum();
+
+        let payment =
+            PaymentRepository::create_with_tx(&mut tx, &order_id, item_total, &cart.currency_code)
+                .await?;
+
         sqlx::query(
             "UPDATE carts SET completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
         )
@@ -98,8 +104,6 @@ impl OrderRepository {
 
         tx.commit().await?;
 
-        let item_total: i64 = order_items.iter().map(|i| i.quantity * i.unit_price).sum();
-
         let order_with_items = OrderWithItems {
             order,
             items: order_items,
@@ -107,11 +111,18 @@ impl OrderRepository {
             total: item_total,
         };
 
-        let payment = payment_repo
-            .create(&order_id, item_total, &cart.currency_code)
-            .await?;
-
         Ok((order_with_items, payment))
+    }
+
+    fn map_display_id_conflict(e: sqlx::Error) -> AppError {
+        if let sqlx::Error::Database(db_err) = &e {
+            if db_err.code().as_deref() == Some("2067") {
+                return AppError::Conflict(
+                    "Order creation failed due to concurrent request. Please retry.".into(),
+                );
+            }
+        }
+        AppError::DatabaseError(e)
     }
 
     pub async fn find_by_id(&self, id: &str) -> Result<OrderWithItems, AppError> {

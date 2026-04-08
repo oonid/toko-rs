@@ -172,13 +172,13 @@ Audit source: comprehensive comparison of implementation against Medusa vendor r
 
 ### 7d. Data integrity fixes
 
-- [ ] 7d.1 Move payment creation inside the order creation transaction in `src/order/repository.rs` — currently `payment_repo.create()` runs after `tx.commit()`, leaving an orphaned order if payment creation fails. Restructure so both are atomic, or add compensation logic.
-- [ ] 7d.2 Handle display_id UNIQUE constraint violation gracefully — under concurrent requests, `MAX(display_id) + 1` can race. Catch the UNIQUE violation and return a clear `AppError::Conflict` instead of a raw `DatabaseError`.
+- [x] 7d.1 Move payment creation inside the order creation transaction in `src/order/repository.rs` — payment INSERT runs before tx.commit() via new `PaymentRepository::create_with_tx()` static method; failure rolls back the entire order + payment + cart completion atomically
+- [x] 7d.2 Handle display_id UNIQUE constraint violation gracefully — SQLite error code 2067 mapped to `AppError::Conflict` (409, `type: "unexpected_state"`) via `map_display_id_conflict()` helper; client receives clear retry message instead of raw DatabaseError
 
 ### 7e. Spec reconciliation
 
-- [ ] 7e.1 Update `specs/error-handling/spec.md` error table: document `AppError::Conflict` variant mapping if keeping `"conflict"` type, or update spec to match implementation after 7a.1 fix.
-- [ ] 7e.2 Update `docs/audit-correction.md` with post-audit correction entries for all fixes applied in 7a–7d.
+- [x] 7e.1 Update `specs/error-handling/spec.md` error table: documented `display_id` race as additional trigger for UnexpectedState scenario; added atomic cart-to-order and display_id concurrency requirements to `specs/order-module/spec.md`
+- [x] 7e.2 Update `docs/audit-correction.md` with post-audit correction entries for all fixes applied in 7a–7d.
 
 ### 7f. Default currency change USD → IDR (config-driven)
 

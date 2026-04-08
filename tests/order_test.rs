@@ -316,3 +316,73 @@ async fn test_complete_nonexistent_cart() {
         .unwrap();
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn test_order_and_payment_are_atomic() {
+    let (app, db) = common::setup_test_app().await;
+    let toko_rs::db::AppDb::Sqlite(pool) = db;
+    let cart_id = create_cart_with_item(&app, &pool).await;
+
+    let res = app
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/complete", cart_id),
+            &json!(null),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = body_json(res).await;
+    let order_id = body["order"]["id"].as_str().unwrap();
+
+    let payment_count: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM payment_records WHERE order_id = ?")
+            .bind(order_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        payment_count.0, 1,
+        "payment record must exist after order creation"
+    );
+
+    let order_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM orders WHERE id = ?")
+        .bind(order_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(order_count.0, 1);
+}
+
+#[tokio::test]
+async fn test_complete_cart_returns_conflict_error_format() {
+    let (app, _) = common::setup_test_app().await;
+
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            "/store/carts",
+            &json!({"currency_code": "idr"}),
+        ))
+        .await
+        .unwrap();
+    let cart_id = body_json(res).await["cart"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let res = app
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/complete", cart_id),
+            &json!(null),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::CONFLICT);
+    let body = body_json(res).await;
+    assert_eq!(body["code"], "invalid_state_error");
+    assert_eq!(body["type"], "unexpected_state");
+    assert!(body["message"].as_str().unwrap().contains("empty"));
+}

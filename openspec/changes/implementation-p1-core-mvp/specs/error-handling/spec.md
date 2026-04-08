@@ -32,7 +32,7 @@ The `type` field SHALL be one of: `not_found`, `invalid_data`, `duplicate_error`
 - **THEN** the system returns HTTP 401 with `{"code": "unknown_error", "type": "unauthorized", "message": "..."}`
 
 #### Scenario: UnexpectedState error
-- **WHEN** an invalid state transition is attempted (complete already-completed cart, mutate completed cart)
+- **WHEN** an invalid state transition is attempted (complete already-completed cart, mutate completed cart, display_id race under concurrent order creation)
 - **THEN** the system returns HTTP 409 with `{"code": "invalid_state_error", "type": "unexpected_state", "message": "..."}`
 
 #### Scenario: DatabaseError error

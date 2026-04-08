@@ -23,7 +23,7 @@ The system SHALL provide `GET /store/orders/:id` that returns a single order wit
 - **THEN** the system returns 404 with `{"type": "not_found", "message": "..."}`
 
 ### Requirement: Order display_id auto-increment
-The system SHALL assign `display_id` to each new order as `MAX(display_id) + 1` across all existing orders. The first order SHALL have `display_id: 1`.
+The system SHALL assign `display_id` to each new order as `MAX(display_id) + 1` across all existing orders. The first order SHALL have `display_id: 1`. Under concurrent requests, if a UNIQUE constraint violation occurs on `display_id`, the system SHALL return HTTP 409 with `type: "unexpected_state"` and a message indicating the client should retry.
 
 #### Scenario: First order gets display_id 1
 - **WHEN** the first order is created via cart completion
@@ -32,3 +32,14 @@ The system SHALL assign `display_id` to each new order as `MAX(display_id) + 1` 
 #### Scenario: Subsequent orders increment display_id
 - **WHEN** a second order is created after the first (display_id: 1)
 - **THEN** the second order has `display_id: 2`
+
+### Requirement: Atomic cart-to-order conversion
+Cart completion SHALL create the order, copy line items, create the payment record, and mark the cart as completed within a single database transaction. If any step fails, all changes SHALL be rolled back — no orphaned orders or payments SHALL persist.
+
+#### Scenario: Order and payment are created atomically
+- **WHEN** a cart is completed successfully
+- **THEN** both the order and its payment record exist in the database
+
+#### Scenario: Empty cart completion returns conflict
+- **WHEN** a cart with no items is completed
+- **THEN** the system returns HTTP 409 with `{"code": "invalid_state_error", "type": "unexpected_state", "message": "Cannot complete an empty cart"}`
