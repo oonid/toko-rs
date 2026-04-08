@@ -9,7 +9,7 @@ pub struct PaymentRecord {
     pub amount: i64,
     pub currency_code: String,
     pub status: String,
-    pub provider: Option<String>,
+    pub provider: String,
     #[serde(skip_deserializing)]
     pub metadata: Option<sqlx::types::Json<serde_json::Value>>,
     pub created_at: DateTime<Utc>,

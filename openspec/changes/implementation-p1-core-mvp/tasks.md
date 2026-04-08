@@ -145,13 +145,13 @@ Audit source: comprehensive comparison of implementation against Medusa vendor r
 
 ### 7b. SQLite migration parity with PostgreSQL (constraints & defaults)
 
-- [ ] 7b.1 Add `CHECK (status IN ('draft', 'published', 'proposed', 'rejected'))` to `products.status` in `migrations/sqlite/001_products.sql` — PG has this, SQLite doesn't.
-- [ ] 7b.2 Add `CREATE UNIQUE INDEX uq_product_variants_sku ON product_variants (sku) WHERE deleted_at IS NULL AND sku IS NOT NULL` to `migrations/sqlite/001_products.sql` — PG has this, SQLite doesn't; duplicate SKUs possible in tests.
-- [ ] 7b.3 Add `DEFAULT 'usd'` to `carts.currency_code` in `migrations/sqlite/003_carts.sql` — spec says default is "usd", PG has it, SQLite doesn't.
-- [ ] 7b.4 Add `NOT NULL DEFAULT 'manual'` to `payment_records.provider` in `migrations/sqlite/005_payments.sql` — PG has `NOT NULL DEFAULT 'manual'`, SQLite allows NULL. Update `PaymentRecord` model from `Option<String>` to `String` if needed.
-- [ ] 7b.5 Add `DEFAULT 'usd'` to `payment_records.currency_code` in `migrations/sqlite/005_payments.sql` — PG has it, SQLite doesn't.
-- [ ] 7b.6 Add `CHECK (status IN ('pending', 'authorized', 'captured', 'failed', 'refunded'))` to `payment_records.status` in `migrations/sqlite/005_payments.sql` — PG has it, SQLite doesn't.
-- [ ] 7b.7 Add `CHECK (status IN ('pending', 'completed', 'canceled', 'requires_action', 'archived'))` to `orders.status` in both `migrations/sqlite/004_orders.sql` and `migrations/004_orders.sql` — neither PG nor SQLite has this CHECK; spec planning doc listed it.
+- [x] 7b.1 Add `CHECK (status IN ('draft', 'published', 'proposed', 'rejected'))` to `products.status` in `migrations/sqlite/001_products.sql` — PG has this, SQLite didn't.
+- [x] 7b.2 Add `CREATE UNIQUE INDEX uq_product_variants_sku ON product_variants (sku) WHERE deleted_at IS NULL AND sku IS NOT NULL` to `migrations/sqlite/001_products.sql` — PG has this, SQLite didn't; duplicate SKUs possible in tests.
+- [x] 7b.3 Add `DEFAULT 'usd'` to `carts.currency_code` in `migrations/sqlite/003_carts.sql` — spec says default is "usd", PG has it, SQLite didn't.
+- [x] 7b.4 Add `NOT NULL DEFAULT 'manual'` to `payment_records.provider` in `migrations/sqlite/005_payments.sql` — PG has `NOT NULL DEFAULT 'manual'`, SQLite allowed NULL. Updated `PaymentRecord` model from `Option<String>` to `String`.
+- [x] 7b.5 Add `DEFAULT 'usd'` to `payment_records.currency_code` in `migrations/sqlite/005_payments.sql` — PG has it, SQLite didn't.
+- [x] 7b.6 Add `CHECK (status IN ('pending', 'authorized', 'captured', 'failed', 'refunded'))` to `payment_records.status` in `migrations/sqlite/005_payments.sql` — PG has it, SQLite didn't.
+- [x] 7b.7 Add `CHECK (status IN ('pending', 'completed', 'canceled', 'requires_action', 'archived'))` to `orders.status` in both `migrations/sqlite/004_orders.sql` and `migrations/004_orders.sql` — neither PG nor SQLite had this CHECK; spec planning doc listed it.
 
 ### 7c. SQLite migration parity with PostgreSQL (indexes — 14 missing)
 

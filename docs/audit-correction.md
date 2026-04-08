@@ -363,3 +363,47 @@ Message is also sanitized to `"Internal server error"` (same as DatabaseError).
    tests (`cart_test.rs`, `order_test.rs`) — 5 tests fail
 2. **GREEN**: Changed 2 match arms in `error_type()`, 2 message constructions in `IntoResponse`
 3. **Verify**: 69 tests pass, clippy clean
+
+---
+
+## 7b. Post-Implementation Audit — SQLite Migration Parity with PostgreSQL
+
+Source: comprehensive audit comparing all SQLite migrations against their PG counterparts.
+
+### Summary of Changes
+
+| # | Migration | Column | SQLite Before | SQLite After |
+|---|---|---|---|---|
+| 7b.1 | 001_products | `status` | `TEXT NOT NULL DEFAULT 'draft'` | + `CHECK (status IN ('draft','published','proposed','rejected'))` |
+| 7b.2 | 001_products | `sku` unique | (none) | `CREATE UNIQUE INDEX uq_product_variants_sku ON product_variants (sku) WHERE deleted_at IS NULL AND sku IS NOT NULL` |
+| 7b.3 | 003_carts | `currency_code` | `TEXT NOT NULL` | `TEXT NOT NULL DEFAULT 'usd'` |
+| 7b.4 | 005_payments | `provider` | `TEXT` (nullable, no default) | `TEXT NOT NULL DEFAULT 'manual'` |
+| 7b.5 | 005_payments | `currency_code` | `TEXT NOT NULL` | `TEXT NOT NULL DEFAULT 'usd'` |
+| 7b.6 | 005_payments | `status` | `TEXT NOT NULL DEFAULT 'pending'` | + `CHECK (status IN ('pending','authorized','captured','failed','refunded'))` |
+| 7b.7 | 004_orders (PG+SQLite) | `status` | `TEXT NOT NULL DEFAULT 'pending'` | + `CHECK (status IN ('pending','completed','canceled','requires_action','archived'))` |
+
+### Model change: PaymentRecord.provider
+
+Updated `src/payment/models.rs`: `provider: Option<String>` → `provider: String`.
+The repository always inserts `'manual'` so this is a no-op in practice but the type
+now matches the `NOT NULL` constraint.
+
+### Constraint parity verification
+
+All constraints now match between PG and SQLite:
+
+| Constraint | PG | SQLite |
+|---|---|---|
+| products.status CHECK | Yes | Yes |
+| product_variants.sku UNIQUE partial | Yes | Yes |
+| carts.currency_code DEFAULT 'usd' | Yes | Yes |
+| orders.status CHECK | Yes | Yes |
+| payment_records.status CHECK | Yes | Yes |
+| payment_records.provider NOT NULL DEFAULT | Yes | Yes |
+| payment_records.currency_code DEFAULT 'usd' | Yes | Yes |
+
+### TDD Record (7b)
+
+1. **RED**: N/A — existing tests already produce valid data; constraints add safety net only
+2. **GREEN**: Applied all 7 migration fixes + 1 model type fix. No test changes needed.
+3. **Verify**: 69 tests pass, clippy clean

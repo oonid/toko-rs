@@ -2,7 +2,7 @@ CREATE TABLE carts (
     id TEXT PRIMARY KEY,
     customer_id TEXT REFERENCES customers(id) ON DELETE SET NULL,
     email TEXT,
-    currency_code TEXT NOT NULL,
+    currency_code TEXT NOT NULL DEFAULT 'usd',
     shipping_address JSON,
     billing_address JSON,
     metadata JSON,

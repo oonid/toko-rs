@@ -12,7 +12,7 @@ CREATE TABLE orders (
     customer_id TEXT REFERENCES customers(id) ON DELETE SET NULL,
     email TEXT,
     currency_code TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'pending',
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'completed', 'canceled', 'requires_action', 'archived')),
     shipping_address JSON,
     billing_address JSON,
     metadata JSON,

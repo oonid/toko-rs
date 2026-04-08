@@ -3,7 +3,7 @@ CREATE TABLE products (
     title TEXT NOT NULL,
     handle TEXT NOT NULL,
     description TEXT,
-    status TEXT NOT NULL DEFAULT 'draft',
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published', 'proposed', 'rejected')),
     thumbnail TEXT,
     metadata JSON,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -53,3 +53,5 @@ CREATE TABLE product_variant_option (
     variant_id TEXT NOT NULL REFERENCES product_variants(id) ON DELETE CASCADE,
     option_value_id TEXT NOT NULL REFERENCES product_option_values(id) ON DELETE CASCADE
 );
+
+CREATE UNIQUE INDEX uq_product_variants_sku ON product_variants (sku) WHERE deleted_at IS NULL AND sku IS NOT NULL;
