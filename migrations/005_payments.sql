@@ -2,10 +2,13 @@ CREATE TABLE payment_records (
     id TEXT PRIMARY KEY,
     order_id TEXT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
     amount INTEGER NOT NULL,
-    currency_code TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'pending', -- pending, authorized, captured, canceled
-    provider TEXT, -- e.g., 'stripe', 'manual'
-    metadata JSON,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    currency_code TEXT NOT NULL DEFAULT 'usd',
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'authorized', 'captured', 'failed', 'refunded')),
+    provider TEXT NOT NULL DEFAULT 'manual',
+    metadata JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE INDEX idx_payment_records_order_id ON payment_records (order_id);
+CREATE INDEX idx_payment_records_status ON payment_records (status);

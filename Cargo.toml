@@ -8,7 +8,7 @@ description = "A modular, high-performance headless e-commerce backend inspired 
 repository = "https://github.com/oonid/toko-rs"
 
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage)'] }
+unexpected_cfgs = { level = "warn", check-cfg = [] }
 
 [dependencies]
 # Web

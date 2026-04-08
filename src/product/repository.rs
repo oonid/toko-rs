@@ -5,11 +5,11 @@ use crate::types::{generate_entity_id, generate_handle, FindParams};
 use sqlx::SqlitePool;
 
 #[derive(Clone)]
-pub struct SqliteProductRepository {
+pub struct ProductRepository {
     pool: SqlitePool,
 }
 
-impl SqliteProductRepository {
+impl ProductRepository {
     pub fn new(pool: SqlitePool) -> Self {
         Self { pool }
     }
@@ -420,17 +420,5 @@ impl SqliteProductRepository {
             }
         }
         AppError::DatabaseError(e)
-    }
-}
-
-#[derive(Clone)]
-pub struct PostgresProductRepository {
-    #[allow(dead_code)]
-    pool: sqlx::PgPool,
-}
-
-impl PostgresProductRepository {
-    pub fn new(pool: sqlx::PgPool) -> Self {
-        Self { pool }
     }
 }

@@ -30,7 +30,7 @@ async fn store_create_cart(
     payload
         .validate()
         .map_err(|e| AppError::InvalidData(e.to_string()))?;
-    let cart_with_items = state.cart_repo.create_cart(payload).await?;
+    let cart_with_items = state.repos.cart.create_cart(payload).await?;
     Ok(Json(CartResponse {
         cart: cart_with_items,
     }))
@@ -40,7 +40,7 @@ async fn store_get_cart(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<CartResponse>, AppError> {
-    let cart = state.cart_repo.get_cart(&id).await?;
+    let cart = state.repos.cart.get_cart(&id).await?;
     Ok(Json(CartResponse { cart }))
 }
 
@@ -52,7 +52,7 @@ async fn store_update_cart(
     payload
         .validate()
         .map_err(|e| AppError::InvalidData(e.to_string()))?;
-    let cart = state.cart_repo.update_cart(&id, payload).await?;
+    let cart = state.repos.cart.update_cart(&id, payload).await?;
     Ok(Json(CartResponse { cart }))
 }
 
@@ -64,7 +64,7 @@ async fn store_add_line_item(
     payload
         .validate()
         .map_err(|e| AppError::InvalidData(e.to_string()))?;
-    let cart = state.cart_repo.add_line_item(&id, payload).await?;
+    let cart = state.repos.cart.add_line_item(&id, payload).await?;
     Ok(Json(CartResponse { cart }))
 }
 
@@ -72,7 +72,7 @@ async fn store_delete_line_item(
     State(state): State<AppState>,
     Path((id, line_id)): Path<(String, String)>,
 ) -> Result<Json<CartResponse>, AppError> {
-    let cart = state.cart_repo.delete_line_item(&id, &line_id).await?;
+    let cart = state.repos.cart.delete_line_item(&id, &line_id).await?;
     Ok(Json(CartResponse { cart }))
 }
 
@@ -85,7 +85,8 @@ async fn store_update_line_item(
         .validate()
         .map_err(|e| AppError::InvalidData(e.to_string()))?;
     let cart = state
-        .cart_repo
+        .repos
+        .cart
         .update_line_item(&id, &line_id, payload)
         .await?;
     Ok(Json(CartResponse { cart }))

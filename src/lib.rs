@@ -6,19 +6,19 @@ use tower_http::trace::TraceLayer;
 pub mod cart;
 pub mod config;
 pub mod customer;
-pub mod db;
-pub mod error;
 pub mod order;
 pub mod payment;
 pub mod product;
 pub mod seed;
 pub mod types;
 
+pub mod db;
+pub mod error;
+
 #[derive(Clone)]
 pub struct AppState {
     pub db: db::AppDb,
-    pub product_repo: Arc<db::DatabaseRepo>,
-    pub cart_repo: Arc<db::DatabaseRepo>,
+    pub repos: Arc<db::Repositories>,
 }
 
 pub fn app_router(state: AppState) -> Router {
@@ -32,13 +32,11 @@ pub fn app_router(state: AppState) -> Router {
 }
 
 pub async fn build_app_state(database_url: &str) -> Result<(AppState, db::AppDb), error::AppError> {
-    let (app_db, repo) = db::create_db(database_url).await?;
+    let (app_db, repos) = db::create_db(database_url).await?;
     db::run_migrations(&app_db).await?;
-    let repo_arc = Arc::new(repo);
     let state = AppState {
         db: app_db.clone(),
-        product_repo: repo_arc.clone(),
-        cart_repo: repo_arc,
+        repos: Arc::new(repos),
     };
     Ok((state, app_db))
 }

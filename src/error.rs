@@ -54,6 +54,18 @@ impl AppError {
             AppError::MigrationError(_) => "migration_error",
         }
     }
+
+    fn error_code(&self) -> &str {
+        match self {
+            AppError::InvalidData(_) => "invalid_request_error",
+            AppError::NotFound(_) => "invalid_request_error",
+            AppError::DuplicateError(_) => "invalid_request_error",
+            AppError::Unauthorized(_) => "unknown_error",
+            AppError::UnexpectedState(_) => "invalid_state_error",
+            AppError::DatabaseError(_) => "api_error",
+            AppError::MigrationError(_) => "api_error",
+        }
+    }
 }
 
 impl IntoResponse for AppError {
@@ -72,6 +84,7 @@ impl IntoResponse for AppError {
         };
 
         let body = Json(json!({
+            "code": self.error_code(),
             "type": self.error_type(),
             "message": message,
         }));
@@ -100,6 +113,7 @@ mod tests {
         let resp = AppError::NotFound("gone".into()).into_response();
         let body = into_body(resp).await;
         assert_eq!(body["_status"], 404);
+        assert_eq!(body["code"], "invalid_request_error");
         assert_eq!(body["type"], "not_found");
         assert_eq!(body["message"], "Not Found: gone");
     }
@@ -109,6 +123,7 @@ mod tests {
         let resp = AppError::InvalidData("bad".into()).into_response();
         let body = into_body(resp).await;
         assert_eq!(body["_status"], 400);
+        assert_eq!(body["code"], "invalid_request_error");
         assert_eq!(body["type"], "invalid_data");
     }
 
@@ -117,6 +132,7 @@ mod tests {
         let resp = AppError::DuplicateError("dup".into()).into_response();
         let body = into_body(resp).await;
         assert_eq!(body["_status"], 409);
+        assert_eq!(body["code"], "invalid_request_error");
         assert_eq!(body["type"], "duplicate_error");
     }
 
@@ -125,6 +141,7 @@ mod tests {
         let resp = AppError::Unauthorized("nope".into()).into_response();
         let body = into_body(resp).await;
         assert_eq!(body["_status"], 401);
+        assert_eq!(body["code"], "unknown_error");
         assert_eq!(body["type"], "unauthorized");
     }
 
@@ -133,6 +150,7 @@ mod tests {
         let resp = AppError::UnexpectedState("bad state".into()).into_response();
         let body = into_body(resp).await;
         assert_eq!(body["_status"], 409);
+        assert_eq!(body["code"], "invalid_state_error");
         assert_eq!(body["type"], "unexpected_state");
     }
 
@@ -142,6 +160,7 @@ mod tests {
         let resp = AppError::DatabaseError(db_err).into_response();
         let body = into_body(resp).await;
         assert_eq!(body["_status"], 500);
+        assert_eq!(body["code"], "api_error");
         assert_eq!(body["type"], "database_error");
     }
 
@@ -151,6 +170,7 @@ mod tests {
         let resp = AppError::MigrationError(mig_err).into_response();
         let body = into_body(resp).await;
         assert_eq!(body["_status"], 500);
+        assert_eq!(body["code"], "api_error");
         assert_eq!(body["type"], "migration_error");
     }
 

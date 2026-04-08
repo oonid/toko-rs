@@ -1,9 +1,10 @@
+-- Sequence table matching Medusa's DD-1 auto_increment ID 
 CREATE TABLE _sequences (
-    name TEXT PRIMARY KEY,
-    value INTEGER NOT NULL DEFAULT 0
+  name TEXT PRIMARY KEY,
+  value INTEGER NOT NULL DEFAULT 0
 );
-
 INSERT INTO _sequences (name, value) VALUES ('order_display_id', 0);
+
 
 CREATE TABLE orders (
     id TEXT PRIMARY KEY,
@@ -12,13 +13,13 @@ CREATE TABLE orders (
     email TEXT,
     currency_code TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending',
-    shipping_address JSONB,
-    billing_address JSONB,
-    metadata JSONB,
-    canceled_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    deleted_at TIMESTAMPTZ
+    shipping_address JSON,
+    billing_address JSON,
+    metadata JSON,
+    canceled_at DATETIME,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at DATETIME
 );
 
 CREATE TABLE order_line_items (
@@ -29,13 +30,9 @@ CREATE TABLE order_line_items (
     unit_price INTEGER NOT NULL,
     variant_id TEXT REFERENCES product_variants(id) ON DELETE SET NULL,
     product_id TEXT REFERENCES products(id) ON DELETE SET NULL,
-    snapshot JSONB,
-    metadata JSONB,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    deleted_at TIMESTAMPTZ
+    snapshot JSON,
+    metadata JSON,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at DATETIME
 );
-
-CREATE INDEX idx_orders_customer_id ON orders (customer_id) WHERE deleted_at IS NULL;
-CREATE INDEX idx_orders_display_id ON orders (display_id);
-CREATE INDEX idx_order_line_items_order_id ON order_line_items (order_id);

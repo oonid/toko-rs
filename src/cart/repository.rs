@@ -1,23 +1,21 @@
 use super::models::*;
 use super::types::*;
 use crate::error::AppError;
-#[cfg(not(coverage))]
-use sqlx::PgPool;
+use crate::types::generate_entity_id;
 use sqlx::SqlitePool;
-use ulid::Ulid;
 
 #[derive(Clone)]
-pub struct SqliteCartRepository {
+pub struct CartRepository {
     pool: SqlitePool,
 }
 
-impl SqliteCartRepository {
+impl CartRepository {
     pub fn new(pool: SqlitePool) -> Self {
         Self { pool }
     }
 
     pub async fn create_cart(&self, input: CreateCartInput) -> Result<CartWithItems, AppError> {
-        let cart_id = format!("cart_{}", Ulid::new().to_string().to_lowercase());
+        let cart_id = generate_entity_id("cart");
         let currency = input
             .currency_code
             .unwrap_or_else(|| "usd".to_string())
@@ -125,7 +123,7 @@ impl SqliteCartRepository {
         let product_id: String = sqlx::Row::get(&row, "product_id");
         let product_title: String = sqlx::Row::get(&row, "product_title");
 
-        let line_id = format!("cali_{}", ulid::Ulid::new().to_string().to_lowercase());
+        let line_id = generate_entity_id("cali");
         let snapshot = serde_json::json!({
             "product_title": product_title,
             "variant_title": variant_title,
@@ -213,79 +211,5 @@ impl SqliteCartRepository {
         .await?;
 
         self.get_cart(cart_id).await
-    }
-}
-
-#[derive(Clone)]
-#[cfg(not(coverage))]
-pub struct PostgresCartRepository {
-    pool: PgPool,
-}
-
-#[cfg(not(coverage))]
-impl PostgresCartRepository {
-    pub fn new(pool: PgPool) -> Self {
-        Self { pool }
-    }
-
-    pub async fn create_cart(&self, input: CreateCartInput) -> Result<CartWithItems, AppError> {
-        let cart_id = format!("cart_{}", Ulid::new().to_string().to_lowercase());
-        let currency = input
-            .currency_code
-            .unwrap_or_else(|| "usd".to_string())
-            .to_lowercase();
-
-        let cart = sqlx::query_as::<_, Cart>(
-            r#"
-            INSERT INTO carts (id, customer_id, email, currency_code, metadata)
-            VALUES ($1, $2, $3, $4, $5)
-            RETURNING *
-            "#,
-        )
-        .bind(&cart_id)
-        .bind(&input.customer_id)
-        .bind(&input.email)
-        .bind(&currency)
-        .bind(input.metadata.clone().map(sqlx::types::Json))
-        .fetch_one(&self.pool)
-        .await?;
-
-        Ok(CartWithItems {
-            cart,
-            items: vec![],
-        })
-    }
-
-    pub async fn get_cart(&self, _cart_id: &str) -> Result<CartWithItems, AppError> {
-        Err(AppError::NotFound("Cart not found".into()))
-    }
-    pub async fn update_cart(
-        &self,
-        _cart_id: &str,
-        _input: UpdateCartInput,
-    ) -> Result<CartWithItems, AppError> {
-        Err(AppError::NotFound("Cart not found".into()))
-    }
-    pub async fn add_line_item(
-        &self,
-        _cart_id: &str,
-        _input: AddLineItemInput,
-    ) -> Result<CartWithItems, AppError> {
-        Err(AppError::NotFound("Cart not found".into()))
-    }
-    pub async fn update_line_item(
-        &self,
-        _cart_id: &str,
-        _line_id: &str,
-        _input: UpdateLineItemInput,
-    ) -> Result<CartWithItems, AppError> {
-        Err(AppError::NotFound("Cart not found".into()))
-    }
-    pub async fn delete_line_item(
-        &self,
-        _cart_id: &str,
-        _line_id: &str,
-    ) -> Result<CartWithItems, AppError> {
-        Err(AppError::NotFound("Cart not found".into()))
     }
 }

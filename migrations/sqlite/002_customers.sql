@@ -2,14 +2,13 @@ CREATE TABLE customers (
     id TEXT PRIMARY KEY,
     first_name TEXT,
     last_name TEXT,
-    email TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
     phone TEXT,
     has_account BOOLEAN NOT NULL DEFAULT FALSE,
-    metadata JSONB,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    deleted_at TIMESTAMPTZ,
-    CONSTRAINT uq_customers_email UNIQUE (email, has_account) WHERE deleted_at IS NULL
+    metadata JSON,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at DATETIME
 );
 
 CREATE TABLE customer_addresses (
@@ -26,10 +25,8 @@ CREATE TABLE customer_addresses (
     postal_code TEXT,
     country_code TEXT NOT NULL,
     phone TEXT,
-    metadata JSONB,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    deleted_at TIMESTAMPTZ
+    metadata JSON,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at DATETIME
 );
-
-CREATE INDEX idx_customer_addresses_customer_id ON customer_addresses (customer_id);

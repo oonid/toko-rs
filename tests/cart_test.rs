@@ -62,10 +62,7 @@ async fn test_store_create_cart_validation_failure() {
 async fn test_cart_full_flow() {
     let (app, db) = common::setup_test_app().await;
 
-    let pool = match db {
-        toko_rs::db::AppDb::Sqlite(p) => p,
-        _ => panic!("Expected Sqlite for tests"),
-    };
+    let toko_rs::db::AppDb::Sqlite(pool) = db;
 
     // Insert dummy product & variant
     sqlx::query("INSERT INTO products (id, title, handle, status) VALUES ('prod_1', 'Test', 'test', 'published')")

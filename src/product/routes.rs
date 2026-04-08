@@ -32,7 +32,7 @@ async fn admin_create_product(
         .validate()
         .map_err(|e| AppError::InvalidData(e.to_string()))?;
 
-    let product = state.product_repo.create_product(payload).await?;
+    let product = state.repos.product.create_product(payload).await?;
 
     Ok(Json(ProductResponse { product }))
 }
@@ -41,7 +41,7 @@ async fn admin_list_products(
     State(state): State<AppState>,
     Query(params): Query<FindParams>,
 ) -> Result<Json<ProductListResponse>, AppError> {
-    let (products, count) = state.product_repo.list_products(&params).await?;
+    let (products, count) = state.repos.product.list(&params).await?;
 
     Ok(Json(ProductListResponse {
         products,
@@ -55,7 +55,7 @@ async fn admin_get_product(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<ProductResponse>, AppError> {
-    let product = state.product_repo.get_product(&id).await?;
+    let product = state.repos.product.find_by_id(&id).await?;
     Ok(Json(ProductResponse { product }))
 }
 
@@ -64,7 +64,7 @@ async fn admin_update_product(
     Path(id): Path<String>,
     Json(payload): Json<UpdateProductInput>,
 ) -> Result<Json<ProductResponse>, AppError> {
-    let product = state.product_repo.update_product(&id, &payload).await?;
+    let product = state.repos.product.update(&id, &payload).await?;
     Ok(Json(ProductResponse { product }))
 }
 
@@ -72,7 +72,7 @@ async fn admin_delete_product(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<DeleteResponse>, AppError> {
-    state.product_repo.delete_product(&id).await?;
+    state.repos.product.soft_delete(&id).await?;
 
     Ok(Json(DeleteResponse {
         id,
@@ -90,7 +90,7 @@ async fn admin_add_variant(
         .validate()
         .map_err(|e| AppError::InvalidData(e.to_string()))?;
 
-    let product = state.product_repo.add_variant(&id, &payload).await?;
+    let product = state.repos.product.add_variant(&id, &payload).await?;
     Ok(Json(ProductResponse { product }))
 }
 
@@ -98,7 +98,7 @@ async fn store_list_products(
     State(state): State<AppState>,
     Query(params): Query<FindParams>,
 ) -> Result<Json<ProductListResponse>, AppError> {
-    let (products, count) = state.product_repo.list_published_products(&params).await?;
+    let (products, count) = state.repos.product.list_published(&params).await?;
 
     Ok(Json(ProductListResponse {
         products,
@@ -112,6 +112,6 @@ async fn store_get_product(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<ProductResponse>, AppError> {
-    let product = state.product_repo.get_published_product(&id).await?;
+    let product = state.repos.product.find_published_by_id(&id).await?;
     Ok(Json(ProductResponse { product }))
 }

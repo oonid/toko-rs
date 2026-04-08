@@ -419,9 +419,12 @@ async fn test_error_response_format() {
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     let body = body_json(resp).await;
+    assert!(body["code"].is_string());
     assert!(body["type"].is_string());
     assert!(body["message"].is_string());
+    assert_eq!(body["code"], "invalid_request_error");
     assert_eq!(body["type"], "not_found");
+    assert_eq!(body.as_object().unwrap().keys().count(), 3);
 }
 
 #[tokio::test]

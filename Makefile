@@ -1,4 +1,4 @@
-.PHONY: dev test check lint fmt seed clean-db
+.PHONY: dev test check lint fmt seed clean-db docker-up docker-down test-pg cov
 
 dev:
 	cargo run
@@ -20,3 +20,15 @@ seed:
 
 clean-db:
 	rm -f toko.db
+
+docker-up:
+	docker compose up -d
+
+docker-down:
+	docker compose down
+
+test-pg:
+	DATABASE_URL=postgres://postgres:postgres@localhost:5432/toko cargo test
+
+cov:
+	cargo llvm-cov --summary-only
