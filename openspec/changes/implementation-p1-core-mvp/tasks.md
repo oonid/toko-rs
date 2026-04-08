@@ -203,11 +203,11 @@ Audit source: comprehensive comparison of implementation against Medusa vendor r
 
 ## 9. Phase 1-F — Seed Data
 
-- [ ] 9.1 Implement seed function with 3-5 sample products (all published, with options and variants)
-- [ ] 9.2 Add 1 sample customer to seed
-- [ ] 9.3 Make seed idempotent (check existence before inserting)
-- [ ] 9.4 Wire --seed CLI flag to seed function
-- [ ] 9.5 Smoke test full Browse → Cart → Checkout flow via curl
+- [x] 9.1 Implement seed function with 3-5 sample products (all published, with options and variants) — 3 products (Kaos Polos, Jeans Slim, Sneakers Classic) with 13 variants total, each with size option bindings
+- [x] 9.2 Add 1 sample customer to seed — Budi Santoso (cus_seed_budi), email budi@example.com, has_account=true
+- [x] 9.3 Make seed idempotent (check existence before inserting) — fixed IDs + SELECT COUNT(*) check for parents, INSERT OR IGNORE for children
+- [x] 9.4 Wire --seed CLI flag to seed function — already wired in main.rs:26-30
+- [x] 9.5 Smoke test full Browse → Cart → Checkout flow — 2 integration tests in tests/seed_flow_test.rs exercising browse→cart→checkout and customer order history
 
 ## 10. Phase 1-G — Test Suite
 
