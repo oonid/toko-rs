@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Environment configuration
-The system SHALL load configuration from environment variables (with `.env` file support via dotenvy): `DATABASE_URL` (SQLite or PostgreSQL connection string), `HOST` (default `0.0.0.0`), `PORT` (default 3000), `RUST_LOG` (tracing filter, default `toko_rs=debug,tower_http=debug`).
+The system SHALL load configuration from environment variables (with `.env` file support via dotenvy): `DATABASE_URL` (SQLite or PostgreSQL connection string), `HOST` (default `0.0.0.0`), `PORT` (default 3000), `RUST_LOG` (tracing filter, default `toko_rs=debug,tower_http=debug`), `DEFAULT_CURRENCY_CODE` (default `idr`).
 
 #### Scenario: Load config from .env file
 - **WHEN** the server starts with a `.env` file containing `DATABASE_URL=postgres://user:pass@localhost:5432/toko` and `PORT=3000`

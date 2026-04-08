@@ -47,7 +47,7 @@ async fn test_store_create_cart_with_defaults() {
     assert_eq!(res.status(), StatusCode::OK);
     let body = body_json(res).await;
     assert!(body["cart"]["id"].as_str().unwrap().starts_with("cart_"));
-    assert_eq!(body["cart"]["currency_code"], "usd");
+    assert_eq!(body["cart"]["currency_code"], "idr");
     assert_eq!(body["cart"]["items"].as_array().unwrap().len(), 0);
     assert_eq!(body["cart"]["item_total"], 0);
     assert_eq!(body["cart"]["total"], 0);
@@ -98,7 +98,7 @@ async fn test_cart_full_flow() {
     seed_in_pool(&pool).await;
 
     // 1. Create cart
-    let payload = json!({"currency_code": "usd"});
+    let payload = json!({"currency_code": "idr"});
     let res = app
         .clone()
         .oneshot(request(Method::POST, "/store/carts", &payload))

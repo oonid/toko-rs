@@ -22,6 +22,7 @@ toko-rs is a Rust single-binary headless e-commerce backend inspired by MedusaJS
 
 | Area | Medusa | toko-rs P1 | Rationale |
 |---|---|---|---|
+| Default currency | Derived from region configuration (store default currency) | `DEFAULT_CURRENCY_CODE` env var, defaults to `"idr"` (Indonesian Rupiah) | P1 has no region concept; config-driven default is the equivalent |
 | Variant pricing | Separate Pricing module: `AdminCreateVariantPrice[]` with currency_code, amount, min/max qty, rules | Single `price: i64` column on product_variants | P1 is single-currency; Pricing module is P2 |
 | Cart/Order addresses | Separate `Address` table with FK relationship | Inline JSON column on cart/order row | Dormant in P1; activates as JSON in P2 |
 | Line item snapshot | 12 denormalized columns (product_title, variant_sku, etc.) directly on line item | Single `snapshot` JSON column | Structural simplification; same data captured |
@@ -64,6 +65,7 @@ toko-rs is a Rust single-binary headless e-commerce backend inspired by MedusaJS
 - Admin authentication
 - WebSocket/real-time updates
 - Multi-currency pricing (P1 uses single price field)
+- **Price unit for IDR**: The `price` integer column stores sub-unit values (cents/sen). For IDR, amounts may include fractional Rupiah (e.g., Rp 1.5 from tax calculations). Formatting convention: comma for thousands separator (`2500` → `Rp2,500`), dot for fraction (`1.5` → `Rp1.5`). The stored integer is unit-agnostic — the application layer handles formatting based on the currency code.
 
 ## Decisions
 
@@ -171,7 +173,7 @@ All implementation follows TDD: tests are written first as contracts, then imple
 ## Risks / Trade-offs
 
 - **Placeholder adapter for SQLite tests**: Translating `$N` → `?` at runtime adds a thin layer of indirection for the in-memory SQLite test path. Mitigation: the adapter is a single function, and integration tests against PostgreSQL (via Docker) serve as the authoritative validation.
-- **Single price field**: Medusa uses a pricing module with multi-currency price sets. P1 collapses this to a single `price` integer (cents) on `product_variants`. Breaking change if multi-currency is needed later. Mitigation: price is an integer field that can be migrated to a foreign key.
+- **Single price field**: Medusa uses a pricing module with multi-currency price sets. P1 collapses this to a single `price` integer (cents) on `product_variants`. Breaking change if multi-currency is needed later. Mitigation: price is an integer field that can be migrated to a foreign key. The default currency is IDR (Indonesian Rupiah, configured via `DEFAULT_CURRENCY_CODE` env var). Price values are stored as integers representing the smallest unit — for IDR this is whole Rupiah (IDR has no practical sub-unit, but fractional amounts like Rp1.5 may arise from percentage-based calculations). Display formatting uses comma for thousands (`Rp2,500`) and dot for fractions (`Rp1.5`).
 - **No admin auth**: Admin endpoints are fully open. Acceptable for development/demo. Must add auth before production.
 - **Cart line item snapshot not updated on product change**: By design — snapshots freeze state at add-time. If product price changes, existing cart items keep old price. This matches Medusa behavior.
 - **Docker dependency for full PG testing**: Integration tests can run against SQLite in-memory without Docker, but full PostgreSQL compatibility requires `docker compose up`. Mitigation: CI pipeline runs both; local dev can use either.

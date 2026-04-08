@@ -1,11 +1,11 @@
 ## ADDED Requirements
 
 ### Requirement: Store create cart
-The system SHALL provide `POST /store/carts` that creates a new cart. The `currency_code` field defaults to `"usd"`. The response SHALL return the cart with empty items, `item_total: 0`, and `total: 0`.
+The system SHALL provide `POST /store/carts` that creates a new cart. The `currency_code` field defaults to `"idr"`. The response SHALL return the cart with empty items, `item_total: 0`, and `total: 0`.
 
 #### Scenario: Create cart with defaults
 - **WHEN** a POST request is sent to `/store/carts` with body `{}`
-- **THEN** the system returns 200 with `{"cart": {"id": "cart_...", "currency_code": "usd", "items": [], "item_total": 0, "total": 0}}`
+- **THEN** the system returns 200 with `{"cart": {"id": "cart_...", "currency_code": "idr", "items": [], "item_total": 0, "total": 0}}`
 
 #### Scenario: Create cart with email
 - **WHEN** a POST request is sent to `/store/carts` with body `{"currency_code": "eur", "email": "buyer@example.com"}`

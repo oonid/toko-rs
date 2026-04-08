@@ -7,18 +7,22 @@ use sqlx::SqlitePool;
 #[derive(Clone)]
 pub struct CartRepository {
     pool: SqlitePool,
+    default_currency_code: String,
 }
 
 impl CartRepository {
-    pub fn new(pool: SqlitePool) -> Self {
-        Self { pool }
+    pub fn new(pool: SqlitePool, default_currency_code: String) -> Self {
+        Self {
+            pool,
+            default_currency_code,
+        }
     }
 
     pub async fn create_cart(&self, input: CreateCartInput) -> Result<CartWithItems, AppError> {
         let cart_id = generate_entity_id("cart");
         let currency = input
             .currency_code
-            .unwrap_or_else(|| "usd".to_string())
+            .unwrap_or_else(|| self.default_currency_code.clone())
             .to_lowercase();
 
         let cart = sqlx::query_as::<_, Cart>(

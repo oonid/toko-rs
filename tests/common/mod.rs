@@ -4,7 +4,7 @@ use toko_rs::{app_router, db, AppState};
 pub async fn setup_test_app() -> (Router, db::AppDb) {
     let db_url = "sqlite::memory:".to_string();
 
-    let (app_db, repos) = db::create_db(&db_url)
+    let (app_db, repos) = db::create_db(&db_url, "idr")
         .await
         .expect("Failed to bind in-memory sqlite pool");
 

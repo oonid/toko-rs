@@ -38,8 +38,11 @@ pub fn app_router(state: AppState) -> Router {
         .with_state(state)
 }
 
-pub async fn build_app_state(database_url: &str) -> Result<(AppState, db::AppDb), error::AppError> {
-    let (app_db, repos) = db::create_db(database_url).await?;
+pub async fn build_app_state(
+    database_url: &str,
+    default_currency_code: &str,
+) -> Result<(AppState, db::AppDb), error::AppError> {
+    let (app_db, repos) = db::create_db(database_url, default_currency_code).await?;
     db::run_migrations(&app_db).await?;
     let state = AppState {
         db: app_db.clone(),
@@ -73,7 +76,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_health_check_connected() {
-        let (state, _) = build_app_state("sqlite::memory:").await.unwrap();
+        let (state, _) = build_app_state("sqlite::memory:", "idr").await.unwrap();
         let app = app_router(state);
         let req = axum::http::Request::builder()
             .uri("/health")
@@ -92,7 +95,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_app_state() {
-        let (state, db) = build_app_state("sqlite::memory:").await.unwrap();
+        let (state, db) = build_app_state("sqlite::memory:", "idr").await.unwrap();
         assert!(db::ping(&db).await);
         assert!(matches!(db, db::AppDb::Sqlite(_)));
         let _ = &state;

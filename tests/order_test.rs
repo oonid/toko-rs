@@ -36,7 +36,7 @@ async fn create_cart_with_item(app: &axum::Router, pool: &sqlx::SqlitePool) -> S
         .oneshot(request(
             Method::POST,
             "/store/carts",
-            &json!({"currency_code": "usd"}),
+            &json!({"currency_code": "idr"}),
         ))
         .await
         .unwrap();
@@ -79,7 +79,7 @@ async fn test_complete_cart_creates_order() {
     assert!(body["order"]["id"].as_str().unwrap().starts_with("order_"));
     assert_eq!(body["order"]["display_id"], 1);
     assert_eq!(body["order"]["status"], "pending");
-    assert_eq!(body["order"]["currency_code"], "usd");
+    assert_eq!(body["order"]["currency_code"], "idr");
     assert_eq!(body["order"]["items"].as_array().unwrap().len(), 1);
     assert_eq!(body["order"]["items"][0]["quantity"], 2);
     assert_eq!(body["order"]["items"][0]["unit_price"], 1000);
@@ -87,7 +87,7 @@ async fn test_complete_cart_creates_order() {
     assert_eq!(body["order"]["total"], 2000);
     assert_eq!(body["payment"]["status"], "pending");
     assert_eq!(body["payment"]["amount"], 2000);
-    assert_eq!(body["payment"]["currency_code"], "usd");
+    assert_eq!(body["payment"]["currency_code"], "idr");
     assert!(body["payment"]["id"].as_str().unwrap().starts_with("pay_"));
 }
 
@@ -100,7 +100,7 @@ async fn test_complete_empty_cart_rejected() {
         .oneshot(request(
             Method::POST,
             "/store/carts",
-            &json!({"currency_code": "usd"}),
+            &json!({"currency_code": "idr"}),
         ))
         .await
         .unwrap();
@@ -245,7 +245,7 @@ async fn test_list_orders_by_customer() {
         .oneshot(request(
             Method::POST,
             "/store/carts",
-            &json!({"currency_code": "usd", "customer_id": "cus_test1"}),
+            &json!({"currency_code": "idr", "customer_id": "cus_test1"}),
         ))
         .await
         .unwrap();

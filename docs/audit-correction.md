@@ -1,7 +1,7 @@
 # Audit Corrections: Medusa Compatibility
 
 Completed 2026-04-08. Tasks 4a–4f done.
-Post-implementation audit fixes: 2026-04-08. Tasks 7a.1–7a.4 done.
+Post-implementation audit fixes: 2026-04-08. Tasks 7a.1–7a.4, 7b.1–7b.7, 7f.1–7f.8 done.
 
 ## Source
 
@@ -376,9 +376,9 @@ Source: comprehensive audit comparing all SQLite migrations against their PG cou
 |---|---|---|---|---|
 | 7b.1 | 001_products | `status` | `TEXT NOT NULL DEFAULT 'draft'` | + `CHECK (status IN ('draft','published','proposed','rejected'))` |
 | 7b.2 | 001_products | `sku` unique | (none) | `CREATE UNIQUE INDEX uq_product_variants_sku ON product_variants (sku) WHERE deleted_at IS NULL AND sku IS NOT NULL` |
-| 7b.3 | 003_carts | `currency_code` | `TEXT NOT NULL` | `TEXT NOT NULL DEFAULT 'usd'` |
+| 7b.3 | 003_carts | `currency_code` | `TEXT NOT NULL` | `TEXT NOT NULL DEFAULT 'usd'` (later changed to `'idr'` in 7f) |
 | 7b.4 | 005_payments | `provider` | `TEXT` (nullable, no default) | `TEXT NOT NULL DEFAULT 'manual'` |
-| 7b.5 | 005_payments | `currency_code` | `TEXT NOT NULL` | `TEXT NOT NULL DEFAULT 'usd'` |
+| 7b.5 | 005_payments | `currency_code` | `TEXT NOT NULL` | `TEXT NOT NULL DEFAULT 'usd'` (later changed to `'idr'` in 7f) |
 | 7b.6 | 005_payments | `status` | `TEXT NOT NULL DEFAULT 'pending'` | + `CHECK (status IN ('pending','authorized','captured','failed','refunded'))` |
 | 7b.7 | 004_orders (PG+SQLite) | `status` | `TEXT NOT NULL DEFAULT 'pending'` | + `CHECK (status IN ('pending','completed','canceled','requires_action','archived'))` |
 
@@ -396,14 +396,100 @@ All constraints now match between PG and SQLite:
 |---|---|---|
 | products.status CHECK | Yes | Yes |
 | product_variants.sku UNIQUE partial | Yes | Yes |
-| carts.currency_code DEFAULT 'usd' | Yes | Yes |
+| carts.currency_code DEFAULT 'idr' | Yes | Yes |
 | orders.status CHECK | Yes | Yes |
 | payment_records.status CHECK | Yes | Yes |
 | payment_records.provider NOT NULL DEFAULT | Yes | Yes |
-| payment_records.currency_code DEFAULT 'usd' | Yes | Yes |
+| payment_records.currency_code DEFAULT 'idr' | Yes | Yes |
 
 ### TDD Record (7b)
 
 1. **RED**: N/A — existing tests already produce valid data; constraints add safety net only
 2. **GREEN**: Applied all 7 migration fixes + 1 model type fix. No test changes needed.
 3. **Verify**: 69 tests pass, clippy clean
+
+---
+
+## 7f. Default Currency Change USD → IDR (Config-Driven)
+
+Completed 2026-04-08.
+
+### Context
+
+toko-rs is developed primarily for the Indonesian market. The default currency should reflect this by using IDR (Indonesian Rupiah) instead of USD. Rather than a simple find-and-replace of the hardcoded `"usd"` string, the change introduces a `DEFAULT_CURRENCY_CODE` configuration variable that can be overridden via environment variables — aligning with Medusa's pattern of deriving the default currency from region configuration, but simplified for P1 which has no region concept.
+
+### Design Decision: Config-driven default
+
+**Approach chosen**: `DEFAULT_CURRENCY_CODE` environment variable with serde default `"idr"`, threaded through `AppConfig` → `Repositories` → `CartRepository`.
+
+**Alternatives considered**:
+- Hardcode `"idr"` everywhere — simpler but requires code changes for any future market.
+- Region-based lookup (Medusa pattern) — over-engineering for P1's single-currency scope.
+
+The config-driven approach means a deployment in another market only requires changing one environment variable, no code changes.
+
+### IDR Price Semantics
+
+The `price` integer column is unit-agnostic — it stores a numeric value with no inherent scale. For IDR:
+
+- **Storage**: Integer values. Fractional amounts are permitted (e.g., `1500` represents Rp1,500; `15` represents Rp15). Percentage-based calculations (tax, discounts) may produce fractional results like Rp1.5, which are stored as-is.
+- **Display formatting**: Thousands use comma separator (`2500` → `Rp2,500`). Fractions use dot (`3/2` → `Rp1.5`).
+- **No sub-unit convention**: Unlike USD (cents = dollars × 100), IDR has no practical sub-unit. The integer value is the face value. This is documented in `design.md` as a known P1 simplification.
+
+### Changes Made
+
+| # | Area | File(s) | Change |
+|---|---|---|---|
+| 7f.1 | Config | `src/config.rs` | Added `DEFAULT_CURRENCY_CODE` field with serde default `"idr"`. Updated `test_load_with_env_vars` and `test_defaults_when_not_set` to verify default. |
+| 7f.2 | State wiring | `src/cart/repository.rs`, `src/db.rs`, `src/lib.rs`, `src/main.rs`, `tests/common/mod.rs` | `CartRepository` now holds `default_currency_code: String`, set from config. `create_db()` and `build_app_state()` accept the currency code parameter. Hardcoded `"usd"` fallback in `create_cart()` replaced with `self.default_currency_code.clone()`. |
+| 7f.3 | PG migrations | `migrations/003_carts.sql`, `migrations/005_payments.sql` | `DEFAULT 'usd'` → `DEFAULT 'idr'` |
+| 7f.4 | SQLite migrations | `migrations/sqlite/003_carts.sql`, `migrations/sqlite/005_payments.sql` | `DEFAULT 'usd'` → `DEFAULT 'idr'` |
+| 7f.5 | Integration tests | `tests/cart_test.rs`, `tests/order_test.rs` | All `"usd"` assertions and payloads changed to `"idr"`. The `"eur"` override test (`test_store_create_cart_with_email`) left unchanged — it tests the ability to specify an explicit currency code. |
+| 7f.6 | Change specs | `specs/cart-module/spec.md`, `specs/database-schema/spec.md`, `specs/foundation/spec.md` | Default currency references updated from `"usd"` to `"idr"`. `DEFAULT_CURRENCY_CODE` added to foundation config requirement. |
+| 7f.7 | Docs + config | `.env.example`, `design.md` | Added `DEFAULT_CURRENCY_CODE=idr` with documentation. Added "Default currency" row to design.md divergence table. Added IDR formatting convention to risks section. |
+
+### Files Changed (complete list)
+
+- `src/config.rs` — new field + 2 updated tests
+- `src/cart/repository.rs` — `CartRepository` struct + constructor + `create_cart()`
+- `src/db.rs` — `create_db()` signature + 3 updated tests
+- `src/lib.rs` — `build_app_state()` signature + 2 updated tests
+- `src/main.rs` — passes `config.default_currency_code`
+- `tests/common/mod.rs` — `setup_test_app()` passes `"idr"`
+- `tests/cart_test.rs` — 7 occurrences `"usd"` → `"idr"`
+- `tests/order_test.rs` — 5 occurrences `"usd"` → `"idr"`
+- `migrations/003_carts.sql` — `DEFAULT 'idr'`
+- `migrations/005_payments.sql` — `DEFAULT 'idr'`
+- `migrations/sqlite/003_carts.sql` — `DEFAULT 'idr'`
+- `migrations/sqlite/005_payments.sql` — `DEFAULT 'idr'`
+- `.env.example` — `DEFAULT_CURRENCY_CODE=idr` section
+- `openspec/changes/implementation-p1-core-mvp/design.md` — divergence table + risks
+- `openspec/changes/implementation-p1-core-mvp/specs/cart-module/spec.md` — default `"idr"`
+- `openspec/changes/implementation-p1-core-mvp/specs/database-schema/spec.md` — default `idr`
+- `openspec/changes/implementation-p1-core-mvp/specs/foundation/spec.md` — config field
+- `openspec/changes/implementation-p1-core-mvp/tasks.md` — section 7f added
+
+### Note on migration edits
+
+Existing migrations were edited directly (no new migration file) because toko-rs has not been deployed — there are no existing databases to preserve. This is a pre-release change.
+
+### TDD Record (7f)
+
+1. **RED**: N/A — all tests that referenced `"usd"` were updated to `"idr"` in the same pass as the code change
+2. **GREEN**: All code, migration, and test changes applied atomically
+3. **Verify**: 69 tests pass, clippy clean, zero warnings
+
+### Updated Error Mapping Table (post 7a + 7f)
+
+The error mapping table from section 7a is unchanged by 7f — currency is a data concern, not an error handling concern. The final mapping remains:
+
+| toko-rs Variant | HTTP Status | `type` | `code` |
+|---|---|---|---|
+| `NotFound` | 404 | `not_found` | `invalid_request_error` |
+| `InvalidData` | 400 | `invalid_data` | `invalid_request_error` |
+| `DuplicateError` | 422 | `duplicate_error` | `invalid_request_error` |
+| `Conflict` | 409 | `unexpected_state` | `invalid_state_error` |
+| `Unauthorized` | 401 | `unauthorized` | `unknown_error` |
+| `UnexpectedState` | 500 | `unexpected_state` | `invalid_state_error` |
+| `DatabaseError` | 500 | `database_error` | `api_error` |
+| `MigrationError` | 500 | `database_error` | `api_error` |

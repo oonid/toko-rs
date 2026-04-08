@@ -19,7 +19,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let (state, app_db) = build_app_state(&config.database_url).await?;
+    let (state, app_db) =
+        build_app_state(&config.database_url, &config.default_currency_code).await?;
     tracing::info!("Connected to database and migrations executed");
 
     if std::env::args().any(|arg| arg == "--seed") {

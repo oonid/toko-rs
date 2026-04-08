@@ -30,7 +30,7 @@ The system SHALL create 2 tables for the customer module:
 
 ### Requirement: Cart module tables
 The system SHALL create 2 tables for the cart module:
-- `carts`: id (TEXT PK, prefix `cart_`), customer_id (FK → customers), email, currency_code (TEXT default usd), shipping_address (JSONB, dormant in P1), billing_address (JSONB, dormant in P1), metadata (JSONB), completed_at, timestamps
+- `carts`: id (TEXT PK, prefix `cart_`), customer_id (FK → customers), email, currency_code (TEXT default idr), shipping_address (JSONB, dormant in P1), billing_address (JSONB, dormant in P1), metadata (JSONB), completed_at, timestamps
 - `cart_line_items`: id (TEXT PK, prefix `cali_`), cart_id (FK → carts CASCADE), title (TEXT NOT NULL), quantity (INTEGER default 1), unit_price (INTEGER NOT NULL), variant_id, product_id, snapshot (JSONB), metadata (JSONB), timestamps
 
 #### Scenario: Cart tables created on startup
@@ -57,7 +57,7 @@ The system SHALL create 1 table for idempotency key tracking:
 
 ### Requirement: Payment table
 The system SHALL create 1 table for payments:
-- `payment_records`: id (TEXT PK, prefix `pay_`), order_id (FK → orders), amount (INTEGER NOT NULL), currency_code (TEXT default usd), status (TEXT CHECK pending|authorized|captured|failed|refunded, default pending), provider (TEXT default manual), metadata (JSONB), created_at, updated_at
+- `payment_records`: id (TEXT PK, prefix `pay_`), order_id (FK → orders), amount (INTEGER NOT NULL), currency_code (TEXT default idr), status (TEXT CHECK pending|authorized|captured|failed|refunded, default pending), provider (TEXT default manual), metadata (JSONB), created_at, updated_at
 
 #### Scenario: Payment table created on startup
 - **WHEN** the server starts and runs migrations

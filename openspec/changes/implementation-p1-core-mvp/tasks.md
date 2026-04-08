@@ -180,6 +180,17 @@ Audit source: comprehensive comparison of implementation against Medusa vendor r
 - [ ] 7e.1 Update `specs/error-handling/spec.md` error table: document `AppError::Conflict` variant mapping if keeping `"conflict"` type, or update spec to match implementation after 7a.1 fix.
 - [ ] 7e.2 Update `docs/audit-correction.md` with post-audit correction entries for all fixes applied in 7a–7d.
 
+### 7f. Default currency change USD → IDR (config-driven)
+
+- [x] 7f.1 Add `DEFAULT_CURRENCY_CODE` to `AppConfig` in `src/config.rs` with serde default `"idr"`, update config tests
+- [x] 7f.2 Thread `default_currency_code` through `Repositories` struct to `CartRepository`, replace hardcoded `"usd"` fallback in `create_cart()`
+- [x] 7f.3 Update PG migrations `003_carts.sql` and `005_payments.sql`: change `DEFAULT 'usd'` → `DEFAULT 'idr'`
+- [x] 7f.4 Update SQLite migrations `003_carts.sql` and `005_payments.sql`: change `DEFAULT 'usd'` → `DEFAULT 'idr'`
+- [x] 7f.5 Update integration tests: change `"usd"` assertions/payloads to `"idr"` in `tests/cart_test.rs` and `tests/order_test.rs`; keep `"eur"` override test as-is
+- [x] 7f.6 Update change specs: `cart-module/spec.md`, `database-schema/spec.md`, and `foundation/spec.md` to reference `"idr"` as default currency
+- [x] 7f.7 Add `DEFAULT_CURRENCY_CODE=idr` to `.env.example` with documentation; add IDR price semantics to `design.md` divergence table and risks section
+- [x] 7f.8 Verify `cargo test` passes, clippy clean — all tests updated
+
 ## 8. Phase 1-E — Integration Wiring (DONE)
 
 - [x] 8.1 Mount all module routes in main router: /admin/products/*, /store/products/*, /store/carts/*, /store/orders/*, /store/customers/*

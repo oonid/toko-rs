@@ -21,7 +21,10 @@ pub struct Repositories {
     pub payment: PaymentRepository,
 }
 
-pub async fn create_db(database_url: &str) -> Result<(AppDb, Repositories), AppError> {
+pub async fn create_db(
+    database_url: &str,
+    default_currency_code: &str,
+) -> Result<(AppDb, Repositories), AppError> {
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
         .connect(database_url)
@@ -29,7 +32,7 @@ pub async fn create_db(database_url: &str) -> Result<(AppDb, Repositories), AppE
 
     let repos = Repositories {
         product: ProductRepository::new(pool.clone()),
-        cart: CartRepository::new(pool.clone()),
+        cart: CartRepository::new(pool.clone(), default_currency_code.to_string()),
         customer: CustomerRepository::new(pool.clone()),
         order: OrderRepository::new(pool.clone()),
         payment: PaymentRepository::new(pool.clone()),
@@ -59,19 +62,19 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_sqlite_db() {
-        let (app_db, _repos) = create_db("sqlite::memory:").await.unwrap();
+        let (app_db, _repos) = create_db("sqlite::memory:", "idr").await.unwrap();
         assert!(matches!(app_db, AppDb::Sqlite(_)));
     }
 
     #[tokio::test]
     async fn test_run_migrations_sqlite() {
-        let (app_db, _) = create_db("sqlite::memory:").await.unwrap();
+        let (app_db, _) = create_db("sqlite::memory:", "idr").await.unwrap();
         run_migrations(&app_db).await.unwrap();
     }
 
     #[tokio::test]
     async fn test_ping_sqlite() {
-        let (app_db, _) = create_db("sqlite::memory:").await.unwrap();
+        let (app_db, _) = create_db("sqlite::memory:", "idr").await.unwrap();
         run_migrations(&app_db).await.unwrap();
         assert!(ping(&app_db).await);
     }

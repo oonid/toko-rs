@@ -12,6 +12,10 @@ fn default_rust_log() -> String {
     "toko_rs=debug,tower_http=debug".to_string()
 }
 
+fn default_currency_code() -> String {
+    "idr".to_string()
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct AppConfig {
     pub database_url: String,
@@ -21,6 +25,8 @@ pub struct AppConfig {
     pub port: u16,
     #[serde(default = "default_rust_log")]
     pub rust_log: String,
+    #[serde(default = "default_currency_code")]
+    pub default_currency_code: String,
 }
 
 impl AppConfig {
@@ -47,11 +53,20 @@ mod tests {
         let orig_log = std::env::var("RUST_LOG").ok();
         std::env::set_var("RUST_LOG", "debug");
 
+        let orig_cc = std::env::var("DEFAULT_CURRENCY_CODE").ok();
+        std::env::remove_var("DEFAULT_CURRENCY_CODE");
+
         let config = AppConfig::load().unwrap();
         assert_eq!(config.database_url, "sqlite::memory:");
         assert_eq!(config.host, "0.0.0.0");
         assert_eq!(config.port, 4242);
         assert_eq!(config.rust_log, "debug");
+        assert_eq!(config.default_currency_code, "idr");
+
+        match orig_cc {
+            Some(v) => std::env::set_var("DEFAULT_CURRENCY_CODE", v),
+            None => std::env::remove_var("DEFAULT_CURRENCY_CODE"),
+        }
 
         match orig {
             Some(v) => std::env::set_var("DATABASE_URL", v),
@@ -83,11 +98,13 @@ mod tests {
         std::env::remove_var("HOST");
         std::env::remove_var("PORT");
         std::env::remove_var("RUST_LOG");
+        std::env::remove_var("DEFAULT_CURRENCY_CODE");
         dotenvy::dotenv().ok();
 
         let config = AppConfig::load().unwrap();
         assert_eq!(config.host, "0.0.0.0");
         assert_eq!(config.port, 3000);
+        assert_eq!(config.default_currency_code, "idr");
 
         match orig_db {
             Some(v) => std::env::set_var("DATABASE_URL", v),
