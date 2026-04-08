@@ -100,9 +100,15 @@ The system SHALL provide reusable utility functions in `src/types.rs` that all m
 ### Requirement: Module boundary rules
 Each domain module (product, cart, order, customer, payment) SHALL be internally organized with consistent structure: `mod.rs`, `models.rs`, `repository.rs`, `routes.rs`, `types.rs`. Modules SHALL NOT import types, models, or repositories from other domain modules. Modules MAY import from shared infrastructure: `types.rs` (top-level), `error.rs`, `db.rs`. This mirrors Medusa's module isolation principle where modules are independent service packages that communicate through shared interfaces, not direct imports.
 
+**P1 exception for cross-module SQL joins**: A module MAY issue SQL queries that JOIN against another module's tables when the join is needed for data enrichment (e.g., cart looking up variant prices from `product_variants`). This is a P1 simplification — the join is done via raw SQL, not through importing another module's Rust types. In P2, cross-module data access should be mediated through a shared service interface or event bus, matching Medusa's DI container pattern. See `design.md` Decision 8 for rationale.
+
 #### Scenario: Module imports are self-contained
 - **WHEN** a module's code is reviewed for imports
 - **THEN** it does not contain `use crate::product::*` from within the cart module (or any other cross-module import)
+
+#### Scenario: Cross-module SQL joins are permitted in P1
+- **WHEN** the cart module needs to look up variant prices and product titles
+- **THEN** it issues a direct SQL JOIN against `product_variants` and `products` tables without importing `crate::product::*` types
 
 ### Requirement: Medusa vendor reference mapping
 Each module spec SHALL reference the specific Medusa source files that define the API contract for that module. This ensures implementers can verify response shapes, validation rules, and error handling against the authoritative source.

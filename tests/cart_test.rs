@@ -199,14 +199,23 @@ async fn test_cart_full_flow() {
     let res = app.clone().oneshot(request).await.unwrap();
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
 
-    // 9. Test complete cart stub
+    // 9. Test complete cart stub — returns 409 with JSON error
     let request = Request::builder()
         .method(Method::POST)
         .uri(&format!("/store/carts/{}/complete", cart_id))
         .body(Body::empty())
         .unwrap();
     let res = app.clone().oneshot(request).await.unwrap();
-    assert_eq!(res.status(), StatusCode::NOT_IMPLEMENTED);
+    assert_eq!(res.status(), StatusCode::CONFLICT);
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let err_resp: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(err_resp["type"], "conflict");
+    assert!(err_resp["message"]
+        .as_str()
+        .unwrap()
+        .contains("not yet implemented"));
 
     // 10. Test GET non-existent cart
     let request = Request::builder()
@@ -249,4 +258,95 @@ async fn test_cart_full_flow() {
         .unwrap();
     let res = app.oneshot(request).await.unwrap();
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_cart_item_total_computed() {
+    let (app, db) = common::setup_test_app().await;
+    let toko_rs::db::AppDb::Sqlite(pool) = db;
+
+    sqlx::query("INSERT INTO products (id, title, handle, status) VALUES ('prod_1', 'Test', 'test', 'published')")
+        .execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO product_variants (id, product_id, title, price) VALUES ('var_1', 'prod_1', 'Default', 1000)")
+        .execute(&pool).await.unwrap();
+
+    let payload = json!({"currency_code": "usd"});
+    let request = Request::builder()
+        .method(Method::POST)
+        .uri("/store/carts")
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(request).await.unwrap();
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(res.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(body["cart"]["item_total"], 0);
+    assert_eq!(body["cart"]["total"], 0);
+    let cart_id = body["cart"]["id"].as_str().unwrap();
+
+    let payload = json!({"variant_id": "var_1", "quantity": 3});
+    let request = Request::builder()
+        .method(Method::POST)
+        .uri(&format!("/store/carts/{}/line-items", cart_id))
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(request).await.unwrap();
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(res.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(body["cart"]["item_total"], 3000);
+    assert_eq!(body["cart"]["total"], 3000);
+}
+
+#[tokio::test]
+async fn test_cart_update_completed_cart_rejected() {
+    let (app, db) = common::setup_test_app().await;
+    let toko_rs::db::AppDb::Sqlite(pool) = db;
+
+    let payload = json!({"currency_code": "usd"});
+    let request = Request::builder()
+        .method(Method::POST)
+        .uri("/store/carts")
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(request).await.unwrap();
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(res.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    let cart_id = body["cart"]["id"].as_str().unwrap();
+
+    sqlx::query("UPDATE carts SET completed_at = CURRENT_TIMESTAMP WHERE id = ?")
+        .bind(cart_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let payload = json!({"email": "new@test.com"});
+    let request = Request::builder()
+        .method(Method::POST)
+        .uri(&format!("/store/carts/{}", cart_id))
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+    let res = app.oneshot(request).await.unwrap();
+    assert_eq!(res.status(), StatusCode::CONFLICT);
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(res.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(body["type"], "conflict");
 }

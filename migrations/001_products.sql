@@ -44,7 +44,7 @@ CREATE TABLE product_variants (
     CONSTRAINT uq_product_variants_sku UNIQUE (sku) WHERE deleted_at IS NULL AND sku IS NOT NULL
 );
 
-CREATE TABLE product_variant_options (
+CREATE TABLE product_variant_option (
     id TEXT PRIMARY KEY,
     variant_id TEXT NOT NULL REFERENCES product_variants(id) ON DELETE CASCADE,
     option_value_id TEXT NOT NULL REFERENCES product_option_values(id) ON DELETE CASCADE
@@ -52,5 +52,7 @@ CREATE TABLE product_variant_options (
 
 CREATE INDEX idx_products_status ON products (status) WHERE deleted_at IS NULL;
 CREATE INDEX idx_product_options_product_id ON product_options (product_id);
+CREATE UNIQUE INDEX uq_product_options_product_id_title ON product_options (product_id, title) WHERE deleted_at IS NULL;
 CREATE INDEX idx_product_option_values_option_id ON product_option_values (option_id);
+CREATE UNIQUE INDEX uq_product_option_values_option_id_value ON product_option_values (option_id, value) WHERE deleted_at IS NULL;
 CREATE INDEX idx_product_variants_product_id ON product_variants (product_id) WHERE deleted_at IS NULL;

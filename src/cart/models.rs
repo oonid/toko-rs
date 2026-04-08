@@ -43,4 +43,6 @@ pub struct CartWithItems {
     #[serde(flatten)]
     pub cart: Cart,
     pub items: Vec<CartLineItem>,
+    pub item_total: i64,
+    pub total: i64,
 }

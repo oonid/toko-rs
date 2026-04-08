@@ -39,6 +39,8 @@ impl CartRepository {
         Ok(CartWithItems {
             cart,
             items: vec![],
+            item_total: 0,
+            total: 0,
         })
     }
 
@@ -57,7 +59,15 @@ impl CartRepository {
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(CartWithItems { cart, items })
+        let item_total = items.iter().map(|i| i.quantity * i.unit_price).sum();
+        let total = item_total;
+
+        Ok(CartWithItems {
+            cart,
+            items,
+            item_total,
+            total,
+        })
     }
 
     pub async fn update_cart(
@@ -65,6 +75,17 @@ impl CartRepository {
         cart_id: &str,
         input: UpdateCartInput,
     ) -> Result<CartWithItems, AppError> {
+        let cart =
+            sqlx::query_as::<_, Cart>(r#"SELECT * FROM carts WHERE id = ? AND deleted_at IS NULL"#)
+                .bind(cart_id)
+                .fetch_optional(&self.pool)
+                .await?
+                .ok_or_else(|| AppError::NotFound("Cart not found".into()))?;
+
+        if cart.completed_at.is_some() {
+            return Err(AppError::Conflict("Cannot update a completed cart".into()));
+        }
+
         sqlx::query(
             r#"
             UPDATE carts 

@@ -23,6 +23,8 @@ impl ProductRepository {
             .handle
             .unwrap_or_else(|| generate_handle(&input.title));
 
+        let mut tx = self.pool.begin().await?;
+
         let product = sqlx::query_as::<_, Product>(
             r#"
             INSERT INTO products (id, title, handle, description, status, thumbnail, metadata)
@@ -37,54 +39,51 @@ impl ProductRepository {
         .bind(input.status.as_deref().unwrap_or("draft"))
         .bind(&input.thumbnail)
         .bind(input.metadata.clone().map(sqlx::types::Json))
-        .fetch_one(&self.pool)
+        .fetch_one(&mut *tx)
         .await
         .map_err(|e| Self::map_unique_violation(e, "Product", &handle))?;
 
-        let mut options_out = Vec::new();
         if let Some(opts) = input.options {
             for opt_input in opts {
                 let opt_id = generate_entity_id("opt");
-                let option = sqlx::query_as::<_, ProductOption>(
+                sqlx::query_as::<_, ProductOption>(
                     "INSERT INTO product_options (id, product_id, title) VALUES (?, ?, ?) RETURNING *",
                 )
                 .bind(&opt_id)
                 .bind(&product_id)
                 .bind(&opt_input.title)
-                .fetch_one(&self.pool)
+                .fetch_one(&mut *tx)
                 .await?;
 
-                let mut values_out = Vec::new();
                 for val_str in opt_input.values {
                     let val_id = generate_entity_id("optval");
-                    let val = sqlx::query_as::<_, ProductOptionValue>(
+                    sqlx::query_as::<_, ProductOptionValue>(
                         "INSERT INTO product_option_values (id, option_id, value) VALUES (?, ?, ?) RETURNING *",
                     )
                     .bind(&val_id)
                     .bind(&opt_id)
                     .bind(&val_str)
-                    .fetch_one(&self.pool)
+                    .fetch_one(&mut *tx)
                     .await?;
-                    values_out.push(val);
                 }
-                options_out.push(ProductOptionWithValues {
-                    option,
-                    values: values_out,
-                });
             }
         }
 
         if let Some(vars) = input.variants {
             for (rank, var_input) in vars.into_iter().enumerate() {
-                self.insert_variant(&product_id, &var_input, rank as i64)
-                    .await?;
-                self.resolve_variant_options(&product_id, &var_input, &var_input.options)
-                    .await?;
+                Self::insert_variant_tx(&mut tx, &product_id, &var_input, rank as i64).await?;
+                Self::resolve_variant_options_tx(
+                    &mut tx,
+                    &product_id,
+                    &var_input,
+                    &var_input.options,
+                )
+                .await?;
             }
         }
 
-        let loaded = self.load_relations(product.clone()).await?;
-
+        tx.commit().await?;
+        let loaded = self.load_relations(product).await?;
         Ok(loaded)
     }
 
@@ -247,11 +246,13 @@ impl ProductRepository {
         product_id: &str,
         input: &CreateProductVariantInput,
     ) -> Result<ProductWithRelations, AppError> {
+        let mut tx = self.pool.begin().await?;
+
         let _product = sqlx::query_as::<_, Product>(
             "SELECT * FROM products WHERE id = ? AND deleted_at IS NULL",
         )
         .bind(product_id)
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut *tx)
         .await?
         .ok_or_else(|| {
             AppError::NotFound(format!("Product with id {} was not found", product_id))
@@ -261,18 +262,18 @@ impl ProductRepository {
             "SELECT COALESCE(MAX(variant_rank), -1) + 1 FROM product_variants WHERE product_id = ?",
         )
         .bind(product_id)
-        .fetch_one(&self.pool)
+        .fetch_one(&mut *tx)
         .await?;
 
-        self.insert_variant(product_id, input, rank.0).await?;
-        self.resolve_variant_options(product_id, input, &input.options)
-            .await?;
+        Self::insert_variant_tx(&mut tx, product_id, input, rank.0).await?;
+        Self::resolve_variant_options_tx(&mut tx, product_id, input, &input.options).await?;
 
+        tx.commit().await?;
         self.find_by_id_any(product_id).await
     }
 
-    async fn insert_variant(
-        &self,
+    async fn insert_variant_tx(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         product_id: &str,
         input: &CreateProductVariantInput,
         rank: i64,
@@ -292,7 +293,7 @@ impl ProductRepository {
         .bind(input.price)
         .bind(rank)
         .bind(input.metadata.clone().map(sqlx::types::Json))
-        .fetch_one(&self.pool)
+        .fetch_one(&mut **tx)
         .await
         .map_err(|e| {
             if let sqlx::Error::Database(ref db_err) = e {
@@ -307,8 +308,8 @@ impl ProductRepository {
         })
     }
 
-    async fn resolve_variant_options(
-        &self,
+    async fn resolve_variant_options_tx(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         product_id: &str,
         input: &CreateProductVariantInput,
         options_map: &Option<std::collections::HashMap<String, String>>,
@@ -322,7 +323,7 @@ impl ProductRepository {
         )
         .bind(product_id)
         .bind(&input.title)
-        .fetch_one(&self.pool)
+        .fetch_one(&mut **tx)
         .await
         .map_err(|_| AppError::NotFound(format!("Variant '{}' not found", input.title)))?;
 
@@ -337,17 +338,17 @@ impl ProductRepository {
             .bind(product_id)
             .bind(opt_title)
             .bind(val_str)
-            .fetch_optional(&self.pool)
+            .fetch_optional(&mut **tx)
             .await?;
 
             if let Some(val) = val {
                 sqlx::query(
-                    "INSERT INTO product_variant_options (id, variant_id, option_value_id) VALUES (?, ?, ?)",
+                    "INSERT INTO product_variant_option (id, variant_id, option_value_id) VALUES (?, ?, ?)",
                 )
                 .bind(generate_entity_id("pvo"))
                 .bind(&variant_id.0)
                 .bind(&val.id)
-                .execute(&self.pool)
+                .execute(&mut **tx)
                 .await?;
             }
         }
@@ -389,7 +390,7 @@ impl ProductRepository {
             let opts = sqlx::query_as::<_, VariantOptionValue>(
                 r#"
                 SELECT pov.id, pov.value, pov.option_id
-                FROM product_variant_options pvo
+                FROM product_variant_option pvo
                 JOIN product_option_values pov ON pvo.option_value_id = pov.id
                 WHERE pvo.variant_id = ?
                 "#,

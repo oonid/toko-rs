@@ -23,6 +23,9 @@ pub enum AppError {
     #[error("Unexpected State: {0}")]
     UnexpectedState(String),
 
+    #[error("Conflict: {0}")]
+    Conflict(String),
+
     #[error("Database Error: {0}")]
     DatabaseError(#[from] sqlx::Error),
 
@@ -35,7 +38,9 @@ impl AppError {
         match self {
             AppError::NotFound(_) => StatusCode::NOT_FOUND,
             AppError::InvalidData(_) => StatusCode::BAD_REQUEST,
-            AppError::DuplicateError(_) | AppError::UnexpectedState(_) => StatusCode::CONFLICT,
+            AppError::DuplicateError(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            AppError::UnexpectedState(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            AppError::Conflict(_) => StatusCode::CONFLICT,
             AppError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
             AppError::DatabaseError(_) | AppError::MigrationError(_) => {
                 StatusCode::INTERNAL_SERVER_ERROR
@@ -50,6 +55,7 @@ impl AppError {
             AppError::DuplicateError(_) => "duplicate_error",
             AppError::Unauthorized(_) => "unauthorized",
             AppError::UnexpectedState(_) => "unexpected_state",
+            AppError::Conflict(_) => "conflict",
             AppError::DatabaseError(_) => "database_error",
             AppError::MigrationError(_) => "migration_error",
         }
@@ -62,6 +68,7 @@ impl AppError {
             AppError::DuplicateError(_) => "invalid_request_error",
             AppError::Unauthorized(_) => "unknown_error",
             AppError::UnexpectedState(_) => "invalid_state_error",
+            AppError::Conflict(_) => "invalid_state_error",
             AppError::DatabaseError(_) => "api_error",
             AppError::MigrationError(_) => "api_error",
         }
@@ -131,7 +138,7 @@ mod tests {
     async fn test_duplicate_error() {
         let resp = AppError::DuplicateError("dup".into()).into_response();
         let body = into_body(resp).await;
-        assert_eq!(body["_status"], 409);
+        assert_eq!(body["_status"], 422);
         assert_eq!(body["code"], "invalid_request_error");
         assert_eq!(body["type"], "duplicate_error");
     }
@@ -149,9 +156,18 @@ mod tests {
     async fn test_unexpected_state() {
         let resp = AppError::UnexpectedState("bad state".into()).into_response();
         let body = into_body(resp).await;
-        assert_eq!(body["_status"], 409);
+        assert_eq!(body["_status"], 500);
         assert_eq!(body["code"], "invalid_state_error");
         assert_eq!(body["type"], "unexpected_state");
+    }
+
+    #[tokio::test]
+    async fn test_conflict() {
+        let resp = AppError::Conflict("cart already completed".into()).into_response();
+        let body = into_body(resp).await;
+        assert_eq!(body["_status"], 409);
+        assert_eq!(body["code"], "invalid_state_error");
+        assert_eq!(body["type"], "conflict");
     }
 
     #[tokio::test]
@@ -186,10 +202,14 @@ mod tests {
         );
         assert_eq!(
             AppError::DuplicateError("".into()).status_code(),
-            StatusCode::CONFLICT
+            StatusCode::UNPROCESSABLE_ENTITY
         );
         assert_eq!(
             AppError::UnexpectedState("".into()).status_code(),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+        assert_eq!(
+            AppError::Conflict("".into()).status_code(),
             StatusCode::CONFLICT
         );
         assert_eq!(

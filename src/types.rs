@@ -25,5 +25,5 @@ pub struct FindParams {
 }
 
 fn default_limit() -> i64 {
-    50
+    20
 }

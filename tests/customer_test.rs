@@ -59,7 +59,7 @@ async fn test_register_customer_duplicate_email() {
         .body(Body::from(payload2.to_string()))
         .unwrap();
     let resp = app.oneshot(req2).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::CONFLICT);
+    assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let body = body_json(resp).await;
     assert_eq!(body["type"], "duplicate_error");
 }

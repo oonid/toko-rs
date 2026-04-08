@@ -78,7 +78,7 @@ async fn test_admin_create_product_duplicate_handle() {
         .body(Body::from(payload.to_string()))
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::CONFLICT);
+    assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
 }
 
 #[tokio::test]
@@ -444,4 +444,31 @@ async fn test_admin_update_product_partial() {
     let body = body_json(resp).await;
     assert_eq!(body["product"]["description"], "Updated desc only");
     assert_eq!(body["product"]["title"], "Classic T-Shirt");
+}
+
+#[tokio::test]
+async fn test_admin_create_product_reuse_handle_after_soft_delete() {
+    let (app, _) = common::setup_test_app().await;
+    let created = create_sample_product(&app).await;
+    let id = created["product"]["id"].as_str().unwrap();
+
+    let del_req = Request::builder()
+        .method(Method::DELETE)
+        .uri(&format!("/admin/products/{}", id))
+        .body(Body::empty())
+        .unwrap();
+    let del_resp = app.clone().oneshot(del_req).await.unwrap();
+    assert_eq!(del_resp.status(), StatusCode::OK);
+
+    let payload = json!({"title": "Classic T-Shirt"});
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri("/admin/products")
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert!(body["product"]["id"].as_str().unwrap().starts_with("prod_"));
 }

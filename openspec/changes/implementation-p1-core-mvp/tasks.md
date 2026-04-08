@@ -70,73 +70,110 @@
 - [x] 3.7 Wire customer routes into main router
 - [x] 3.8 Write integration tests: 10 tests — register success, duplicate email, missing email, invalid email, get profile, get without header, get not found, update profile, update without header, response format
 
-## 4. Phase 1-B — Cart Module
+## 4. Audit Fixes — Medusa Compatibility Corrections
 
-- [ ] 4.1 Define cart models: Cart, CartLineItem, CartWithItems, LineItemSnapshot
-- [ ] 4.2 Define cart request/response types: StoreCreateCartRequest, StoreUpdateCartRequest, StoreAddLineItemRequest, StoreUpdateLineItemRequest, CartResponse
-- [ ] 4.3 Implement cart repository (single repo, PgPool): create, find_by_id (with items + computed totals), update, mark_completed
-- [ ] 4.4 Implement line item repository: add_line_item (with variant lookup + snapshot), update_line_item (soft delete at qty 0), remove_line_item
-- [ ] 4.5 Implement cart validation: check not completed before mutations
-- [ ] 4.6 Implement cart routes: POST /store/carts, GET /store/carts/:id, POST /store/carts/:id
-- [ ] 4.7 Implement line item routes: POST /store/carts/:id/line-items, POST /store/carts/:id/line-items/:line_id, DELETE /store/carts/:id/line-items/:line_id
-- [ ] 4.8 Wire cart repository into AppState
-- [ ] 4.9 Wire cart routes into main router
-- [ ] 4.10 Write integration tests: create cart, add item, update quantity, remove item, invalid variant, completed cart mutation, quantity validation
+### 4a. Error handling alignment with Medusa error handler
 
-## 5. Phase 1-C — Order Module
+- [x] 4a.1 Fix `error_code()` mapping in `src/error.rs`: align with Medusa's error-handler.ts — most error types should NOT override `code`; only `duplicate_error` → `invalid_request_error`, `database_error` → `api_error`, and unknown → `unknown_error` have explicit overrides — **audit confirmed current code mappings are already correct per OAS enum; no change needed**
+- [x] 4a.2 Fix `DuplicateError` HTTP status: 409 → 422 (Medusa maps `duplicate_error` to 422, not 409)
+- [x] 4a.3 Fix `UnexpectedState` HTTP status: 409 → 500 (Medusa default for `unexpected_state`; documented divergence for future cart conflict scenarios in `docs/audit-correction.md`)
+- [x] 4a.4 Update error unit tests in `src/error.rs` to verify corrected mappings — also updated integration tests in `tests/product_test.rs` and `tests/customer_test.rs`; 51 tests pass, clippy clean
 
-- [ ] 5.1 Define payment model: PaymentRecord struct with id, order_id, amount, currency_code, status, provider, metadata, timestamps
-- [ ] 5.2 Implement payment repository (single repo, PgPool): create, find_by_order_id
-- [ ] 5.3 Define order models: Order, OrderLineItem, OrderWithItems
-- [ ] 5.4 Define order response types: OrderResponse, OrderListResponse, CartCompleteResponse
-- [ ] 5.5 Implement order repository: create_from_cart (atomic transaction with display_id auto-increment, item copy, payment creation, cart completion), find_by_id, list_by_customer
-- [ ] 5.6 Implement order routes: POST /store/carts/:id/complete, GET /store/orders, GET /store/orders/:id
-- [ ] 5.7 Wire order and payment repositories into AppState
-- [ ] 5.8 Wire order routes into main router
-- [ ] 5.9 Write integration tests: full flow (cart → order), empty cart completion, completed cart re-completion, display_id increment, payment record verification, order list by customer
+### 4b. Database schema alignment with Medusa models
 
-## 6. Phase 1-E — Integration Wiring
+- [x] 4b.1 Rename pivot table `product_variant_options` → `product_variant_option` (singular) in both PG/SQLite migrations and 2 SQL queries in `src/product/repository.rs` — matches Medusa's `pivotTable: "product_variant_option"`
+- [x] 4b.2 Fix SQLite `products.handle` constraint: replaced column-level `UNIQUE` with `CREATE UNIQUE INDEX uq_products_handle ON products (handle) WHERE deleted_at IS NULL` — now matches PG migration behavior; new test `test_admin_create_product_reuse_handle_after_soft_delete` verifies handle re-use after delete
+- [x] 4b.3 Add missing unique index `uq_product_options_product_id_title ON product_options (product_id, title) WHERE deleted_at IS NULL` per Medusa `IDX_option_product_id_title_unique` — applied to both PG and SQLite
+- [x] 4b.4 Add missing unique index `uq_product_option_values_option_id_value ON product_option_values (option_id, value) WHERE deleted_at IS NULL` per Medusa `IDX_option_value_option_id_unique` — applied to both PG and SQLite
+- [x] 4b.5 Apply 4b.2–4b.4 to both PG and SQLite migration sets — 52 tests pass, clippy clean
 
-- [x] 6.1 Mount all module routes in main router: /admin/products/*, /store/products/*, /store/carts/*, /store/orders/*, /store/customers/*
-- [x] 6.2 Apply middleware stack: TraceLayer + CorsLayer
-- [x] 6.3 Wire AppState with all repository handles
-- [x] 6.4 Implement health check with database connectivity test
-- [x] 6.5 Wire customer routes into main router (done in Phase 1-D)
-- [ ] 6.6 Wire order routes into main router (when order module ready)
-- [ ] 6.7 Verify all 20 endpoints respond correctly
+### 4c. Product repository transactional safety
 
-## 7. Phase 1-F — Seed Data
+- [x] 4c.1 Wrap `create_product` and `add_variant` in `self.pool.begin()` transactions — refactored `insert_variant` and `resolve_variant_options` into static `insert_variant_tx`/`resolve_variant_options_tx` methods that accept `&mut Transaction`; failure mid-way now rolls back cleanly
 
-- [ ] 7.1 Implement seed function with 3-5 sample products (all published, with options and variants)
-- [ ] 7.2 Add 1 sample customer to seed
-- [ ] 7.3 Make seed idempotent (check existence before inserting)
-- [ ] 7.4 Wire --seed CLI flag to seed function
-- [ ] 7.5 Smoke test full Browse → Cart → Checkout flow via curl
+### 4d. Cart module pre-existing fixes
 
-## 8. Phase 1-G — Test Suite
+- [x] 4d.1 Add `item_total` and `total` computed fields to `CartWithItems` — computed as `sum(quantity * unit_price)` in `get_cart()`, initialized to 0 in `create_cart()`; test `test_cart_item_total_computed` verifies 3x$10 → total=3000
+- [x] 4d.2 Add completed-cart guard to `update_cart` — checks `completed_at IS NOT NULL`, returns 409 `Conflict`; added `AppError::Conflict` variant (`type: "conflict"`, code: `"invalid_state_error"`, status: 409) matching Medusa's conflict error type; test `test_cart_update_completed_cart_rejected` verifies
+- [x] 4d.3 Fix `store_complete_cart` stub — returns `AppError::Conflict("Cart completion is not yet implemented")` with proper JSON body instead of bare `StatusCode::NOT_IMPLEMENTED`
 
-- [ ] 8.1 Create test infrastructure: setup_test_db (in-memory SQLite + migrations), create_test_app, helper functions
-- [ ] 8.2 Write product tests: admin CRUD, store filtering, contract validation
-- [ ] 8.3 Write cart tests: create, add/update/remove items, completed cart guard, quantity validation
-- [ ] 8.4 Write order tests: full flow, empty/completed cart errors, display_id, payment record, customer filtering
-- [ ] 8.5 Write customer tests: register, duplicate email, profile CRUD, auth header
-- [ ] 8.6 Write contract tests: verify all response JSON shapes match API contract using assert-json-diff
-- [ ] 8.7 Write error contract tests: verify all error responses include `code`, `type`, `message` fields matching specs/store.oas.yaml Error schema
-- [ ] 8.8 Verify `cargo test` passes all tests with 100% endpoint coverage
+### 4e. Configuration defaults
 
-## 9. Phase 1-H — Polish
+- [x] 4e.1 Add serde defaults to `AppConfig`: `HOST` → `"0.0.0.0"`, `PORT` → `3000`, `RUST_LOG` → `"toko_rs=debug,tower_http=debug"`; test `test_defaults_when_not_set` verifies with `serial_test` guard
+- [x] 4e.2 Change `FindParams.limit` default: 50 → 20 to match Medusa's default pagination
 
-- [ ] 9.1 Run `cargo clippy -- -D warnings` — zero warnings
-- [ ] 9.2 Run `cargo fmt` — consistent formatting
-- [ ] 9.3 Verify all `#[tracing::instrument]` annotations on handlers
-- [ ] 9.4 Verify all 20 endpoints return correct Medusa-compatible JSON shapes
+### 4f. Spec reconciliation
 
-## 10. Architecture & TDD Quality Gates (cross-cutting)
+- [x] 4f.1 Update `specs/foundation/spec.md` module boundary rule — added "P1 exception for cross-module SQL joins" with new scenario documenting cart → product_variants JOIN pattern
+- [x] 4f.2 Verify all tests pass after audit fixes — 56 tests pass, clippy clean
 
-- [x] 10.1 Verify module boundary rules: no cross-module imports (product does not import cart, etc.)
-- [x] 10.2 Verify all shared infrastructure has unit tests (error.rs, config.rs, db.rs, seed.rs, lib.rs)
-- [x] 10.3 Verify `cargo clippy -- -D warnings` passes with zero warnings
-- [x] 10.4 Verify `cargo llvm-cov --summary-only` shows >90% line coverage
-- [x] 10.5 Verify error responses match 3-field OAS Error schema (`code`, `type`, `message`) — implemented in Phase 2b.12
-- [ ] 10.6 Verify contract tests reference Medusa vendor files for response shape validation
-- [ ] 10.7 Verify HTTP method convention: POST for create AND update (no PUT) on all mutation endpoints
+## 5. Phase 1-B — Cart Module
+
+- [ ] 5.1 Define cart models: Cart, CartLineItem, CartWithItems, LineItemSnapshot
+- [ ] 5.2 Define cart request/response types: StoreCreateCartRequest, StoreUpdateCartRequest, StoreAddLineItemRequest, StoreUpdateLineItemRequest, CartResponse
+- [ ] 5.3 Implement cart repository (single repo, PgPool): create, find_by_id (with items + computed totals), update, mark_completed
+- [ ] 5.4 Implement line item repository: add_line_item (with variant lookup + snapshot), update_line_item (soft delete at qty 0), remove_line_item
+- [ ] 5.5 Implement cart validation: check not completed before mutations
+- [ ] 5.6 Implement cart routes: POST /store/carts, GET /store/carts/:id, POST /store/carts/:id
+- [ ] 5.7 Implement line item routes: POST /store/carts/:id/line-items, POST /store/carts/:id/line-items/:line_id, DELETE /store/carts/:id/line-items/:line_id
+- [ ] 5.8 Wire cart repository into AppState
+- [ ] 5.9 Wire cart routes into main router
+- [ ] 5.10 Write integration tests: create cart, add item, update quantity, remove item, invalid variant, completed cart mutation, quantity validation
+
+## 6. Phase 1-C — Order Module
+
+- [ ] 6.1 Define payment model: PaymentRecord struct with id, order_id, amount, currency_code, status, provider, metadata, timestamps
+- [ ] 6.2 Implement payment repository (single repo, PgPool): create, find_by_order_id
+- [ ] 6.3 Define order models: Order, OrderLineItem, OrderWithItems
+- [ ] 6.4 Define order response types: OrderResponse, OrderListResponse, CartCompleteResponse
+- [ ] 6.5 Implement order repository: create_from_cart (atomic transaction with display_id auto-increment, item copy, payment creation, cart completion), find_by_id, list_by_customer
+- [ ] 6.6 Implement order routes: POST /store/carts/:id/complete, GET /store/orders, GET /store/orders/:id
+- [ ] 6.7 Wire order and payment repositories into AppState
+- [ ] 6.8 Wire order routes into main router
+- [ ] 6.9 Write integration tests: full flow (cart → order), empty cart completion, completed cart re-completion, display_id increment, payment record verification, order list by customer
+
+## 7. Phase 1-E — Integration Wiring
+
+- [x] 7.1 Mount all module routes in main router: /admin/products/*, /store/products/*, /store/carts/*, /store/orders/*, /store/customers/*
+- [x] 7.2 Apply middleware stack: TraceLayer + CorsLayer
+- [x] 7.3 Wire AppState with all repository handles
+- [x] 7.4 Implement health check with database connectivity test
+- [x] 7.5 Wire customer routes into main router (done in Phase 1-D)
+- [ ] 7.6 Wire order routes into main router (when order module ready)
+- [ ] 7.7 Verify all 20 endpoints respond correctly
+
+## 8. Phase 1-F — Seed Data
+
+- [ ] 8.1 Implement seed function with 3-5 sample products (all published, with options and variants)
+- [ ] 8.2 Add 1 sample customer to seed
+- [ ] 8.3 Make seed idempotent (check existence before inserting)
+- [ ] 8.4 Wire --seed CLI flag to seed function
+- [ ] 8.5 Smoke test full Browse → Cart → Checkout flow via curl
+
+## 9. Phase 1-G — Test Suite
+
+- [ ] 9.1 Create test infrastructure: setup_test_db (in-memory SQLite + migrations), create_test_app, helper functions
+- [ ] 9.2 Write product tests: admin CRUD, store filtering, contract validation
+- [ ] 9.3 Write cart tests: create, add/update/remove items, completed cart guard, quantity validation
+- [ ] 9.4 Write order tests: full flow, empty/completed cart errors, display_id, payment record, customer filtering
+- [ ] 9.5 Write customer tests: register, duplicate email, profile CRUD, auth header
+- [ ] 9.6 Write contract tests: verify all response JSON shapes match API contract using assert-json-diff
+- [ ] 9.7 Write error contract tests: verify all error responses include `code`, `type`, `message` fields matching specs/store.oas.yaml Error schema
+- [ ] 9.8 Verify `cargo test` passes all tests with 100% endpoint coverage
+
+## 10. Phase 1-H — Polish
+
+- [ ] 10.1 Run `cargo clippy -- -D warnings` — zero warnings
+- [ ] 10.2 Run `cargo fmt` — consistent formatting
+- [ ] 10.3 Verify all `#[tracing::instrument]` annotations on handlers
+- [ ] 10.4 Verify all 20 endpoints return correct Medusa-compatible JSON shapes
+
+## 11. Architecture & TDD Quality Gates (cross-cutting)
+
+- [x] 11.1 Verify module boundary rules: no cross-module imports (product does not import cart, etc.)
+- [x] 11.2 Verify all shared infrastructure has unit tests (error.rs, config.rs, db.rs, seed.rs, lib.rs)
+- [x] 11.3 Verify `cargo clippy -- -D warnings` passes with zero warnings
+- [x] 11.4 Verify `cargo llvm-cov --summary-only` shows >90% line coverage
+- [x] 11.5 Verify error responses match 3-field OAS Error schema (`code`, `type`, `message`) — implemented in Phase 2b.12
+- [ ] 11.6 Verify contract tests reference Medusa vendor files for response shape validation
+- [ ] 11.7 Verify HTTP method convention: POST for create AND update (no PUT) on all mutation endpoints

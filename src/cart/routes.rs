@@ -2,7 +2,6 @@ use super::types::*;
 use crate::{error::AppError, AppState};
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
     routing::{get, post},
     Json, Router,
 };
@@ -96,6 +95,8 @@ async fn store_update_line_item(
 async fn store_complete_cart(
     State(_state): State<AppState>,
     Path(_id): Path<String>,
-) -> StatusCode {
-    StatusCode::NOT_IMPLEMENTED
+) -> Result<Json<serde_json::Value>, AppError> {
+    Err(AppError::Conflict(
+        "Cart completion is not yet implemented".into(),
+    ))
 }
