@@ -7,252 +7,83 @@ use axum::{
 use serde_json::json;
 use tower::ServiceExt;
 
+async fn body_json(resp: axum::http::Response<Body>) -> serde_json::Value {
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    serde_json::from_slice(&bytes).unwrap()
+}
+
+async fn seed_in_pool(pool: &sqlx::SqlitePool) {
+    sqlx::query("INSERT INTO products (id, title, handle, status) VALUES ('prod_1', 'Test Product', 'test', 'published')")
+        .execute(pool).await.unwrap();
+    sqlx::query("INSERT INTO product_variants (id, product_id, title, sku, price) VALUES ('var_1', 'prod_1', 'Small', 'TEST-S', 1000)")
+        .execute(pool).await.unwrap();
+}
+
+fn request(method: Method, uri: &str, payload: &serde_json::Value) -> Request<Body> {
+    let is_body = method == Method::POST || method == Method::PUT || method == Method::PATCH;
+    let mut builder = Request::builder().method(method).uri(uri);
+    if is_body {
+        builder = builder.header("content-type", "application/json");
+        builder.body(Body::from(payload.to_string())).unwrap()
+    } else {
+        builder.body(Body::empty()).unwrap()
+    }
+}
+
 #[tokio::test]
-async fn test_store_create_cart_success() {
-    let (app, _db) = common::setup_test_app().await;
+async fn test_store_create_cart_with_defaults() {
+    let (app, _) = common::setup_test_app().await;
 
-    let payload = json!({
-        "email": "customer@example.com",
-        "currency_code": "usd"
-    });
-
+    let payload = json!({});
     let request = Request::builder()
         .method(Method::POST)
         .uri("/store/carts")
         .header("content-type", "application/json")
         .body(Body::from(payload.to_string()))
         .unwrap();
+    let res = app.oneshot(request).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = body_json(res).await;
+    assert!(body["cart"]["id"].as_str().unwrap().starts_with("cart_"));
+    assert_eq!(body["cart"]["currency_code"], "usd");
+    assert_eq!(body["cart"]["items"].as_array().unwrap().len(), 0);
+    assert_eq!(body["cart"]["item_total"], 0);
+    assert_eq!(body["cart"]["total"], 0);
+}
 
-    let response = app.oneshot(request).await.unwrap();
+#[tokio::test]
+async fn test_store_create_cart_with_email() {
+    let (app, _) = common::setup_test_app().await;
 
-    if response.status() != StatusCode::OK {
-        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        panic!(
-            "API Error Response: {:?}",
-            String::from_utf8_lossy(&body_bytes)
-        );
-    }
-
-    assert_eq!(response.status(), StatusCode::OK);
+    let payload = json!({
+        "currency_code": "eur",
+        "email": "buyer@example.com"
+    });
+    let request = Request::builder()
+        .method(Method::POST)
+        .uri("/store/carts")
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+    let res = app.oneshot(request).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = body_json(res).await;
+    assert_eq!(body["cart"]["currency_code"], "eur");
+    assert_eq!(body["cart"]["email"], "buyer@example.com");
 }
 
 #[tokio::test]
 async fn test_store_create_cart_validation_failure() {
-    let (app, _db) = common::setup_test_app().await;
+    let (app, _) = common::setup_test_app().await;
 
-    // missing required currency and invalid email
     let payload = json!({
         "email": "not-an-email"
     });
-
     let request = Request::builder()
         .method(Method::POST)
         .uri("/store/carts")
-        .header("content-type", "application/json")
-        .body(Body::from(payload.to_string()))
-        .unwrap();
-
-    let response = app.oneshot(request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST); // hits validation
-}
-
-#[tokio::test]
-async fn test_cart_full_flow() {
-    let (app, db) = common::setup_test_app().await;
-
-    let toko_rs::db::AppDb::Sqlite(pool) = db;
-
-    // Insert dummy product & variant
-    sqlx::query("INSERT INTO products (id, title, handle, status) VALUES ('prod_1', 'Test', 'test', 'published')")
-        .execute(&pool).await.unwrap();
-    sqlx::query("INSERT INTO product_variants (id, product_id, title, price) VALUES ('var_1', 'prod_1', 'Default', 1000)")
-        .execute(&pool).await.unwrap();
-
-    // 1. Create cart
-    let payload = json!({"currency_code": "usd"});
-    let request = Request::builder()
-        .method(Method::POST)
-        .uri("/store/carts")
-        .header("content-type", "application/json")
-        .body(Body::from(payload.to_string()))
-        .unwrap();
-    let res = app.clone().oneshot(request).await.unwrap();
-    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let cart_resp: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
-    let cart_id = cart_resp["cart"]["id"].as_str().unwrap();
-
-    // 2. Add line item
-    let payload = json!({"variant_id": "var_1", "quantity": 2});
-    let request = Request::builder()
-        .method(Method::POST)
-        .uri(&format!("/store/carts/{}/line-items", cart_id))
-        .header("content-type", "application/json")
-        .body(Body::from(payload.to_string()))
-        .unwrap();
-    let res = app.clone().oneshot(request).await.unwrap();
-    assert_eq!(res.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let cart_resp: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
-    assert_eq!(cart_resp["cart"]["items"].as_array().unwrap().len(), 1);
-    let line_id = cart_resp["cart"]["items"][0]["id"].as_str().unwrap();
-
-    // 3. Update line item (quantity = 3)
-    let payload = json!({"quantity": 3});
-    let request = Request::builder()
-        .method(Method::POST)
-        .uri(&format!("/store/carts/{}/line-items/{}", cart_id, line_id))
-        .header("content-type", "application/json")
-        .body(Body::from(payload.to_string()))
-        .unwrap();
-    let res = app.clone().oneshot(request).await.unwrap();
-    assert_eq!(res.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let cart_resp: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
-    assert_eq!(
-        cart_resp["cart"]["items"][0]["quantity"].as_i64().unwrap(),
-        3
-    );
-
-    // 4. Update cart email
-    let payload = json!({"email": "test@test.com"});
-    let request = Request::builder()
-        .method(Method::POST)
-        .uri(&format!("/store/carts/{}", cart_id))
-        .header("content-type", "application/json")
-        .body(Body::from(payload.to_string()))
-        .unwrap();
-    let res = app.clone().oneshot(request).await.unwrap();
-    assert_eq!(res.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let cart_resp: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
-    assert_eq!(
-        cart_resp["cart"]["email"].as_str().unwrap(),
-        "test@test.com"
-    );
-
-    // 5. Delete line item
-    let request = Request::builder()
-        .method(Method::DELETE)
-        .uri(&format!("/store/carts/{}/line-items/{}", cart_id, line_id))
-        .body(Body::empty())
-        .unwrap();
-    let res = app.clone().oneshot(request).await.unwrap();
-    assert_eq!(res.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let cart_resp: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
-    assert_eq!(cart_resp["cart"]["items"].as_array().unwrap().len(), 0);
-
-    // 6. Test GET cart
-    let request = Request::builder()
-        .method(Method::GET)
-        .uri(&format!("/store/carts/{}", cart_id))
-        .body(Body::empty())
-        .unwrap();
-    let res = app.clone().oneshot(request).await.unwrap();
-    assert_eq!(res.status(), StatusCode::OK);
-
-    // 7. Add line item and update to 0 to trigger delete branch
-    let payload = json!({"variant_id": "var_1", "quantity": 1});
-    let request = Request::builder()
-        .method(Method::POST)
-        .uri(&format!("/store/carts/{}/line-items", cart_id))
-        .header("content-type", "application/json")
-        .body(Body::from(payload.to_string()))
-        .unwrap();
-    let res = app.clone().oneshot(request).await.unwrap();
-    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let cart_resp: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
-    let line_id = cart_resp["cart"]["items"][0]["id"].as_str().unwrap();
-
-    let payload = json!({"quantity": 0});
-    let request = Request::builder()
-        .method(Method::POST)
-        .uri(&format!("/store/carts/{}/line-items/{}", cart_id, line_id))
-        .header("content-type", "application/json")
-        .body(Body::from(payload.to_string()))
-        .unwrap();
-    let res = app.clone().oneshot(request).await.unwrap();
-    assert_eq!(res.status(), StatusCode::OK);
-
-    // 8. Test invalid cart ID on add_line_item
-    let payload = json!({"variant_id": "var_1", "quantity": 1});
-    let request = Request::builder()
-        .method(Method::POST)
-        .uri("/store/carts/invalid_cart/line-items")
-        .header("content-type", "application/json")
-        .body(Body::from(payload.to_string()))
-        .unwrap();
-    let res = app.clone().oneshot(request).await.unwrap();
-    assert_eq!(res.status(), StatusCode::NOT_FOUND);
-
-    // 9. Test complete cart stub — returns 409 with JSON error
-    let request = Request::builder()
-        .method(Method::POST)
-        .uri(&format!("/store/carts/{}/complete", cart_id))
-        .body(Body::empty())
-        .unwrap();
-    let res = app.clone().oneshot(request).await.unwrap();
-    assert_eq!(res.status(), StatusCode::CONFLICT);
-    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let err_resp: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
-    assert_eq!(err_resp["type"], "conflict");
-    assert!(err_resp["message"]
-        .as_str()
-        .unwrap()
-        .contains("not yet implemented"));
-
-    // 10. Test GET non-existent cart
-    let request = Request::builder()
-        .method(Method::GET)
-        .uri("/store/carts/cart_nonexistent")
-        .body(Body::empty())
-        .unwrap();
-    let res = app.clone().oneshot(request).await.unwrap();
-    assert_eq!(res.status(), StatusCode::NOT_FOUND);
-
-    // 11. Test update non-existent cart
-    let payload = json!({"email": "nope@test.com"});
-    let request = Request::builder()
-        .method(Method::POST)
-        .uri("/store/carts/cart_nonexistent")
-        .header("content-type", "application/json")
-        .body(Body::from(payload.to_string()))
-        .unwrap();
-    let res = app.clone().oneshot(request).await.unwrap();
-    assert_eq!(res.status(), StatusCode::NOT_FOUND);
-
-    // 12. Test add line item with invalid variant
-    let payload = json!({"variant_id": "var_nonexistent", "quantity": 1});
-    let request = Request::builder()
-        .method(Method::POST)
-        .uri(&format!("/store/carts/{}/line-items", cart_id))
-        .header("content-type", "application/json")
-        .body(Body::from(payload.to_string()))
-        .unwrap();
-    let res = app.clone().oneshot(request).await.unwrap();
-    assert_eq!(res.status(), StatusCode::NOT_FOUND);
-
-    // 13. Test add line item validation (quantity < 1)
-    let payload = json!({"variant_id": "var_1", "quantity": 0});
-    let request = Request::builder()
-        .method(Method::POST)
-        .uri(&format!("/store/carts/{}/line-items", cart_id))
         .header("content-type", "application/json")
         .body(Body::from(payload.to_string()))
         .unwrap();
@@ -261,47 +92,289 @@ async fn test_cart_full_flow() {
 }
 
 #[tokio::test]
+async fn test_cart_full_flow() {
+    let (app, db) = common::setup_test_app().await;
+    let toko_rs::db::AppDb::Sqlite(pool) = db;
+    seed_in_pool(&pool).await;
+
+    // 1. Create cart
+    let payload = json!({"currency_code": "usd"});
+    let res = app
+        .clone()
+        .oneshot(request(Method::POST, "/store/carts", &payload))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let cart_resp = body_json(res).await;
+    let cart_id = cart_resp["cart"]["id"].as_str().unwrap();
+
+    // 2. Add line item with snapshot
+    let payload = json!({"variant_id": "var_1", "quantity": 2});
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/line-items", cart_id),
+            &payload,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let cart_resp = body_json(res).await;
+    assert_eq!(cart_resp["cart"]["items"].as_array().unwrap().len(), 1);
+    let item = &cart_resp["cart"]["items"][0];
+    assert_eq!(item["unit_price"], 1000);
+    assert_eq!(item["quantity"], 2);
+    let snapshot = &item["snapshot"];
+    assert_eq!(snapshot["product_title"], "Test Product");
+    assert_eq!(snapshot["variant_title"], "Small");
+    assert_eq!(snapshot["variant_sku"], "TEST-S");
+    assert_eq!(cart_resp["cart"]["item_total"], 2000);
+    assert_eq!(cart_resp["cart"]["total"], 2000);
+    let line_id = item["id"].as_str().unwrap();
+
+    // 3. Update line item quantity to 5
+    let payload = json!({"quantity": 5});
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/line-items/{}", cart_id, line_id),
+            &payload,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let cart_resp = body_json(res).await;
+    assert_eq!(cart_resp["cart"]["items"][0]["quantity"], 5);
+    assert_eq!(cart_resp["cart"]["item_total"], 5000);
+
+    // 4. Update cart email
+    let payload = json!({"email": "test@test.com"});
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}", cart_id),
+            &payload,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let cart_resp = body_json(res).await;
+    assert_eq!(cart_resp["cart"]["email"], "test@test.com");
+
+    // 5. Delete line item
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::DELETE,
+            &format!("/store/carts/{}/line-items/{}", cart_id, line_id),
+            &json!(null),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let cart_resp = body_json(res).await;
+    assert_eq!(cart_resp["cart"]["items"].as_array().unwrap().len(), 0);
+    assert_eq!(cart_resp["cart"]["item_total"], 0);
+
+    // 6. GET cart still works
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::GET,
+            &format!("/store/carts/{}", cart_id),
+            &json!(null),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    // 7. Add item then update quantity to 0 triggers soft-delete
+    let payload = json!({"variant_id": "var_1", "quantity": 1});
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/line-items", cart_id),
+            &payload,
+        ))
+        .await
+        .unwrap();
+    let cart_resp = body_json(res).await;
+    let line_id2 = cart_resp["cart"]["items"][0]["id"].as_str().unwrap();
+
+    let payload = json!({"quantity": 0});
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/line-items/{}", cart_id, line_id2),
+            &payload,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let cart_resp = body_json(res).await;
+    assert_eq!(cart_resp["cart"]["items"].as_array().unwrap().len(), 0);
+
+    // 8. Add item to non-existent cart → 404
+    let payload = json!({"variant_id": "var_1", "quantity": 1});
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            "/store/carts/invalid_cart/line-items",
+            &payload,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+
+    // 9. Complete cart stub → 409 with JSON
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/complete", cart_id),
+            &json!(null),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::CONFLICT);
+    let err = body_json(res).await;
+    assert_eq!(err["type"], "conflict");
+
+    // 10. GET non-existent cart → 404
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::GET,
+            "/store/carts/cart_nonexistent",
+            &json!(null),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+
+    // 11. Update non-existent cart → 404
+    let payload = json!({"email": "nope@test.com"});
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            "/store/carts/cart_nonexistent",
+            &payload,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+
+    // 12. Add item with non-existent variant → 404
+    let payload = json!({"variant_id": "var_nonexistent", "quantity": 1});
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/line-items", cart_id),
+            &payload,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+
+    // 13. Add item with quantity 0 → 400
+    let payload = json!({"variant_id": "var_1", "quantity": 0});
+    let res = app
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/line-items", cart_id),
+            &payload,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_cart_add_same_variant_merges_quantity() {
+    let (app, db) = common::setup_test_app().await;
+    let toko_rs::db::AppDb::Sqlite(pool) = db;
+    seed_in_pool(&pool).await;
+
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            "/store/carts",
+            &json!({"currency_code": "usd"}),
+        ))
+        .await
+        .unwrap();
+    let cart_id = body_json(res).await["cart"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let payload = json!({"variant_id": "var_1", "quantity": 2});
+    app.clone()
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/line-items", cart_id),
+            &payload,
+        ))
+        .await
+        .unwrap();
+
+    let payload = json!({"variant_id": "var_1", "quantity": 3});
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/line-items", cart_id),
+            &payload,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let cart_resp = body_json(res).await;
+    assert_eq!(cart_resp["cart"]["items"].as_array().unwrap().len(), 1);
+    assert_eq!(cart_resp["cart"]["items"][0]["quantity"], 5);
+    assert_eq!(cart_resp["cart"]["item_total"], 5000);
+}
+
+#[tokio::test]
 async fn test_cart_item_total_computed() {
     let (app, db) = common::setup_test_app().await;
     let toko_rs::db::AppDb::Sqlite(pool) = db;
+    seed_in_pool(&pool).await;
 
-    sqlx::query("INSERT INTO products (id, title, handle, status) VALUES ('prod_1', 'Test', 'test', 'published')")
-        .execute(&pool).await.unwrap();
-    sqlx::query("INSERT INTO product_variants (id, product_id, title, price) VALUES ('var_1', 'prod_1', 'Default', 1000)")
-        .execute(&pool).await.unwrap();
-
-    let payload = json!({"currency_code": "usd"});
-    let request = Request::builder()
-        .method(Method::POST)
-        .uri("/store/carts")
-        .header("content-type", "application/json")
-        .body(Body::from(payload.to_string()))
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            "/store/carts",
+            &json!({"currency_code": "usd"}),
+        ))
+        .await
         .unwrap();
-    let res = app.clone().oneshot(request).await.unwrap();
-    let body: serde_json::Value = serde_json::from_slice(
-        &axum::body::to_bytes(res.into_body(), usize::MAX)
-            .await
-            .unwrap(),
-    )
-    .unwrap();
+    let body = body_json(res).await;
     assert_eq!(body["cart"]["item_total"], 0);
     assert_eq!(body["cart"]["total"], 0);
     let cart_id = body["cart"]["id"].as_str().unwrap();
 
     let payload = json!({"variant_id": "var_1", "quantity": 3});
-    let request = Request::builder()
-        .method(Method::POST)
-        .uri(&format!("/store/carts/{}/line-items", cart_id))
-        .header("content-type", "application/json")
-        .body(Body::from(payload.to_string()))
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/line-items", cart_id),
+            &payload,
+        ))
+        .await
         .unwrap();
-    let res = app.clone().oneshot(request).await.unwrap();
-    let body: serde_json::Value = serde_json::from_slice(
-        &axum::body::to_bytes(res.into_body(), usize::MAX)
-            .await
-            .unwrap(),
-    )
-    .unwrap();
+    let body = body_json(res).await;
     assert_eq!(body["cart"]["item_total"], 3000);
     assert_eq!(body["cart"]["total"], 3000);
 }
@@ -311,42 +384,115 @@ async fn test_cart_update_completed_cart_rejected() {
     let (app, db) = common::setup_test_app().await;
     let toko_rs::db::AppDb::Sqlite(pool) = db;
 
-    let payload = json!({"currency_code": "usd"});
-    let request = Request::builder()
-        .method(Method::POST)
-        .uri("/store/carts")
-        .header("content-type", "application/json")
-        .body(Body::from(payload.to_string()))
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            "/store/carts",
+            &json!({"currency_code": "usd"}),
+        ))
+        .await
         .unwrap();
-    let res = app.clone().oneshot(request).await.unwrap();
-    let body: serde_json::Value = serde_json::from_slice(
-        &axum::body::to_bytes(res.into_body(), usize::MAX)
-            .await
-            .unwrap(),
-    )
-    .unwrap();
-    let cart_id = body["cart"]["id"].as_str().unwrap();
+    let cart_id = body_json(res).await["cart"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     sqlx::query("UPDATE carts SET completed_at = CURRENT_TIMESTAMP WHERE id = ?")
-        .bind(cart_id)
+        .bind(&cart_id)
         .execute(&pool)
         .await
         .unwrap();
 
-    let payload = json!({"email": "new@test.com"});
-    let request = Request::builder()
-        .method(Method::POST)
-        .uri(&format!("/store/carts/{}", cart_id))
-        .header("content-type", "application/json")
-        .body(Body::from(payload.to_string()))
+    let res = app
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}", cart_id),
+            &json!({"email": "new@test.com"}),
+        ))
+        .await
         .unwrap();
-    let res = app.oneshot(request).await.unwrap();
     assert_eq!(res.status(), StatusCode::CONFLICT);
-    let body: serde_json::Value = serde_json::from_slice(
-        &axum::body::to_bytes(res.into_body(), usize::MAX)
-            .await
-            .unwrap(),
-    )
-    .unwrap();
+    let body = body_json(res).await;
     assert_eq!(body["type"], "conflict");
+}
+
+#[tokio::test]
+async fn test_cart_add_item_to_completed_cart_rejected() {
+    let (app, db) = common::setup_test_app().await;
+    let toko_rs::db::AppDb::Sqlite(pool) = db;
+    seed_in_pool(&pool).await;
+
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            "/store/carts",
+            &json!({"currency_code": "usd"}),
+        ))
+        .await
+        .unwrap();
+    let cart_id = body_json(res).await["cart"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    sqlx::query("UPDATE carts SET completed_at = CURRENT_TIMESTAMP WHERE id = ?")
+        .bind(&cart_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let payload = json!({"variant_id": "var_1", "quantity": 1});
+    let res = app
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/line-items", cart_id),
+            &payload,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::CONFLICT);
+}
+
+#[tokio::test]
+async fn test_cart_get_response_format() {
+    let (app, db) = common::setup_test_app().await;
+    let toko_rs::db::AppDb::Sqlite(pool) = db;
+    seed_in_pool(&pool).await;
+
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            "/store/carts",
+            &json!({"currency_code": "usd"}),
+        ))
+        .await
+        .unwrap();
+    let cart_id = body_json(res).await["cart"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let res = app
+        .oneshot(request(
+            Method::GET,
+            &format!("/store/carts/{}", cart_id),
+            &json!(null),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = body_json(res).await;
+    let cart = &body["cart"];
+    assert!(cart["id"].is_string());
+    assert!(cart["currency_code"].is_string());
+    assert!(cart["items"].is_array());
+    assert!(cart["item_total"].is_number());
+    assert!(cart["total"].is_number());
+    assert!(cart["created_at"].is_string());
+    assert!(cart["updated_at"].is_string());
+    assert!(cart["completed_at"].is_null());
+    assert!(cart["deleted_at"].is_null());
 }

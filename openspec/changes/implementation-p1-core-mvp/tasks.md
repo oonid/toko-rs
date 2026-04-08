@@ -107,18 +107,18 @@
 - [x] 4f.1 Update `specs/foundation/spec.md` module boundary rule — added "P1 exception for cross-module SQL joins" with new scenario documenting cart → product_variants JOIN pattern
 - [x] 4f.2 Verify all tests pass after audit fixes — 56 tests pass, clippy clean
 
-## 5. Phase 1-B — Cart Module
+## 5. Phase 1-B — Cart Module (DONE)
 
-- [ ] 5.1 Define cart models: Cart, CartLineItem, CartWithItems, LineItemSnapshot
-- [ ] 5.2 Define cart request/response types: StoreCreateCartRequest, StoreUpdateCartRequest, StoreAddLineItemRequest, StoreUpdateLineItemRequest, CartResponse
-- [ ] 5.3 Implement cart repository (single repo, PgPool): create, find_by_id (with items + computed totals), update, mark_completed
-- [ ] 5.4 Implement line item repository: add_line_item (with variant lookup + snapshot), update_line_item (soft delete at qty 0), remove_line_item
-- [ ] 5.5 Implement cart validation: check not completed before mutations
-- [ ] 5.6 Implement cart routes: POST /store/carts, GET /store/carts/:id, POST /store/carts/:id
-- [ ] 5.7 Implement line item routes: POST /store/carts/:id/line-items, POST /store/carts/:id/line-items/:line_id, DELETE /store/carts/:id/line-items/:line_id
-- [ ] 5.8 Wire cart repository into AppState
-- [ ] 5.9 Wire cart routes into main router
-- [ ] 5.10 Write integration tests: create cart, add item, update quantity, remove item, invalid variant, completed cart mutation, quantity validation
+- [x] 5.1 Define cart models: Cart, CartLineItem, CartWithItems — CartWithItems includes computed `item_total` and `total` fields; `CartLineItem` includes `snapshot` JSON for variant info capture
+- [x] 5.2 Define cart request/response types: CreateCartInput (currency_code defaults to "usd"), UpdateCartInput, AddLineItemInput (variant_id required, quantity >= 1), UpdateLineItemInput (quantity >= 0), CartResponse wraps CartWithItems
+- [x] 5.3 Implement cart repository: `create_cart` (insert + empty items), `get_cart` (with items + computed totals), `update_cart` (COALESCE partial + completed-cart guard → 409), `mark_completed` (for Phase 1-C)
+- [x] 5.4 Implement line item repository: `add_line_item` (variant lookup via SQL JOIN + snapshot + merge-same-variant quantity), `update_line_item` (soft-delete at qty 0), `delete_line_item` (soft-delete)
+- [x] 5.5 Implement cart validation: completed-cart guard on `update_cart` and `add_line_item` → 409 Conflict; `AppError::Conflict` variant added matching Medusa's `"conflict"` error type
+- [x] 5.6 Implement cart routes: POST /store/carts, GET /store/carts/:id, POST /store/carts/:id — all return `CartResponse` with computed totals
+- [x] 5.7 Implement line item routes: POST /store/carts/:id/line-items, POST /store/carts/:id/line-items/:line_id, DELETE /store/carts/:id/line-items/:line_id — POST /store/carts/:id/complete returns 409 stub for Phase 1-C
+- [x] 5.8 Wire cart repository into AppState — `CartRepository` in `Repositories` struct, initialized in `create_db()`
+- [x] 5.9 Wire cart routes into main router — `app_router()` merges `cart::routes::router()`
+- [x] 5.10 Write integration tests: 9 tests — create with defaults, create with email, validation, full flow (13 steps), same-variant merge, computed totals, completed cart rejected (update), completed cart rejected (add item), response format contract
 
 ## 6. Phase 1-C — Order Module
 

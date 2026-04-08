@@ -113,14 +113,17 @@ impl CartRepository {
     ) -> Result<CartWithItems, AppError> {
         let mut tx = self.pool.begin().await?;
 
-        let cart_exists: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM carts WHERE id = ? AND deleted_at IS NULL)",
-        )
-        .bind(cart_id)
-        .fetch_one(&mut *tx)
-        .await?;
-        if !cart_exists {
-            return Err(AppError::NotFound("Cart not found".into()));
+        let cart =
+            sqlx::query_as::<_, Cart>("SELECT * FROM carts WHERE id = ? AND deleted_at IS NULL")
+                .bind(cart_id)
+                .fetch_optional(&mut *tx)
+                .await?
+                .ok_or_else(|| AppError::NotFound("Cart not found".into()))?;
+
+        if cart.completed_at.is_some() {
+            return Err(AppError::Conflict(
+                "Cannot add items to a completed cart".into(),
+            ));
         }
 
         let row = sqlx::query(
@@ -232,5 +235,22 @@ impl CartRepository {
         .await?;
 
         self.get_cart(cart_id).await
+    }
+
+    pub async fn mark_completed(&self, cart_id: &str) -> Result<(), AppError> {
+        let result = sqlx::query(
+            "UPDATE carts SET completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL AND completed_at IS NULL",
+        )
+        .bind(cart_id)
+        .execute(&self.pool)
+        .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(AppError::NotFound(
+                "Cart not found or already completed".into(),
+            ));
+        }
+
+        Ok(())
     }
 }

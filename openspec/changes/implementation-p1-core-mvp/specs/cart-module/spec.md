@@ -31,7 +31,7 @@ The system SHALL provide `POST /store/carts/:id` that updates email and/or metad
 
 #### Scenario: Update completed cart
 - **WHEN** a POST request is sent to `/store/carts/:id` for a cart where `completed_at IS NOT NULL`
-- **THEN** the system returns 409 with `{"type": "unexpected_state", "message": "..."}`
+- **THEN** the system returns 409 with `{"type": "conflict", "message": "Cannot update a completed cart"}`
 
 ### Requirement: Store add line item to cart
 The system SHALL provide `POST /store/carts/:id/line-items` that adds a line item. The `variant_id` and `quantity` fields are required. The system SHALL look up the variant's price and product info to create a snapshot. The `quantity` MUST be greater than 0. Returns the full updated cart.
