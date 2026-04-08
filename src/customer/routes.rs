@@ -28,7 +28,7 @@ pub struct CustomerId {
     pub id: String,
 }
 
-async fn auth_customer_id(
+pub async fn auth_customer_id(
     mut req: Request,
     next: Next,
 ) -> Result<axum::response::Response, AppError> {

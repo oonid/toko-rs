@@ -22,10 +22,16 @@ pub struct AppState {
 }
 
 pub fn app_router(state: AppState) -> Router {
+    let order_protected = order::routes::protected_router().layer(axum::middleware::from_fn(
+        customer::routes::auth_customer_id,
+    ));
+
     Router::new()
         .merge(product::routes::router())
         .merge(cart::routes::router())
         .merge(customer::routes::router())
+        .merge(order::routes::router())
+        .merge(order_protected)
         .route("/health", axum::routing::get(health_check))
         .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive())

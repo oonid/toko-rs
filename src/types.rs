@@ -24,6 +24,6 @@ pub struct FindParams {
     pub with_deleted: Option<bool>,
 }
 
-fn default_limit() -> i64 {
+pub fn default_limit() -> i64 {
     20
 }

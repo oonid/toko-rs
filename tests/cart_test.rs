@@ -232,21 +232,7 @@ async fn test_cart_full_flow() {
         .unwrap();
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
 
-    // 9. Complete cart stub → 409 with JSON
-    let res = app
-        .clone()
-        .oneshot(request(
-            Method::POST,
-            &format!("/store/carts/{}/complete", cart_id),
-            &json!(null),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(res.status(), StatusCode::CONFLICT);
-    let err = body_json(res).await;
-    assert_eq!(err["type"], "conflict");
-
-    // 10. GET non-existent cart → 404
+    // 9. GET non-existent cart → 404
     let res = app
         .clone()
         .oneshot(request(
@@ -258,7 +244,7 @@ async fn test_cart_full_flow() {
         .unwrap();
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
 
-    // 11. Update non-existent cart → 404
+    // 10. Update non-existent cart → 404
     let payload = json!({"email": "nope@test.com"});
     let res = app
         .clone()
@@ -271,7 +257,7 @@ async fn test_cart_full_flow() {
         .unwrap();
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
 
-    // 12. Add item with non-existent variant → 404
+    // 11. Add item with non-existent variant → 404
     let payload = json!({"variant_id": "var_nonexistent", "quantity": 1});
     let res = app
         .clone()
@@ -284,9 +270,10 @@ async fn test_cart_full_flow() {
         .unwrap();
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
 
-    // 13. Add item with quantity 0 → 400
+    // 12. Add item with quantity 0 → 400
     let payload = json!({"variant_id": "var_1", "quantity": 0});
     let res = app
+        .clone()
         .oneshot(request(
             Method::POST,
             &format!("/store/carts/{}/line-items", cart_id),
@@ -295,6 +282,41 @@ async fn test_cart_full_flow() {
         .await
         .unwrap();
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+
+    // 13. Complete cart → real order (cart must have an item)
+    let payload = json!({"variant_id": "var_1", "quantity": 1});
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/line-items", cart_id),
+            &payload,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(
+        body_json(res).await["cart"]["items"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/complete", cart_id),
+            &json!(null),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let complete_resp = body_json(res).await;
+    assert_eq!(complete_resp["type"], "order");
+    assert_eq!(complete_resp["order"]["display_id"], 1);
+    assert_eq!(complete_resp["payment"]["status"], "pending");
 }
 
 #[tokio::test]

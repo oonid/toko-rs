@@ -19,7 +19,6 @@ pub fn router() -> Router<AppState> {
             "/store/carts/{id}/line-items/{line_id}",
             post(store_update_line_item).delete(store_delete_line_item),
         )
-        .route("/store/carts/{id}/complete", post(store_complete_cart))
 }
 
 async fn store_create_cart(
@@ -89,14 +88,4 @@ async fn store_update_line_item(
         .update_line_item(&id, &line_id, payload)
         .await?;
     Ok(Json(CartResponse { cart }))
-}
-
-// Stub for Phase 1-C
-async fn store_complete_cart(
-    State(_state): State<AppState>,
-    Path(_id): Path<String>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    Err(AppError::Conflict(
-        "Cart completion is not yet implemented".into(),
-    ))
 }

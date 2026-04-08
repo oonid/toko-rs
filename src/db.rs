@@ -1,6 +1,8 @@
 use crate::cart::repository::CartRepository;
 use crate::customer::repository::CustomerRepository;
 use crate::error::AppError;
+use crate::order::repository::OrderRepository;
+use crate::payment::repository::PaymentRepository;
 use crate::product::repository::ProductRepository;
 use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::SqlitePool;
@@ -15,6 +17,8 @@ pub struct Repositories {
     pub product: ProductRepository,
     pub cart: CartRepository,
     pub customer: CustomerRepository,
+    pub order: OrderRepository,
+    pub payment: PaymentRepository,
 }
 
 pub async fn create_db(database_url: &str) -> Result<(AppDb, Repositories), AppError> {
@@ -27,6 +31,8 @@ pub async fn create_db(database_url: &str) -> Result<(AppDb, Repositories), AppE
         product: ProductRepository::new(pool.clone()),
         cart: CartRepository::new(pool.clone()),
         customer: CustomerRepository::new(pool.clone()),
+        order: OrderRepository::new(pool.clone()),
+        payment: PaymentRepository::new(pool.clone()),
     };
 
     Ok((AppDb::Sqlite(pool), repos))
