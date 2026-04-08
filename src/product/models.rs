@@ -74,7 +74,7 @@ pub struct ProductVariantWithOptions {
     pub options: Vec<VariantOptionValue>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
 pub struct VariantOptionValue {
     pub id: String,
     pub value: String,

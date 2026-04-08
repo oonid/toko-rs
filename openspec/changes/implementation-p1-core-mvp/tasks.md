@@ -15,32 +15,32 @@
 - [x] 0.13 FindParams defaults: offset=0 (serde default), limit=50 (serde default fn)
 - [x] 0.14 Zero compiler warnings — removed unused imports (delete, Arc), declared `cfg(coverage)` check-cfg in Cargo.toml; 6 tests passing
 
-## 2. Phase 1-A — Product Module (PARTIAL)
+## 2. Phase 1-A — Product Module (DONE)
 
 - [x] 2.1 Define models: Product, ProductOption, ProductOptionValue, ProductVariant, ProductWithRelations, ProductOptionWithValues, ProductVariantWithOptions, VariantOptionValue
 - [x] 2.2 Define request/response types: AdminCreateProductRequest, AdminUpdateProductRequest, ProductResponse, ProductListResponse, DeleteResponse
-- [x] 2.3 Implement repository: create (transactional with options/variants) — **only create_product implemented**
+- [x] 2.3 Implement repository: create (transactional with options/variants)
 - [x] 2.4 Implement routes: all 8 routes registered in router
 - [x] 2.5 Wire product routes into Axum router with AppState
 - [x] 2.6 Write integration tests for product create (2 tests: success + validation)
-- [x] 2.7 Verify route stubs respond (1 test covering all 7 stub endpoints)
-- [ ] 2.8 Implement `admin_list_products` route handler (currently 501 stub)
-- [ ] 2.9 Implement `admin_get_product` route handler (currently 501 stub) — requires repo `find_by_id` with options/variants join
-- [ ] 2.10 Implement `admin_update_product` route handler (currently 501 stub) — requires repo `update` method
-- [ ] 2.11 Implement `admin_delete_product` route handler (currently 501 stub) — requires repo `soft_delete` method, returns `DeleteResponse`
-- [ ] 2.12 Implement `admin_add_variant` route handler (currently 501 stub) — requires repo `add_variant` method
-- [ ] 2.13 Implement `store_list_products` route handler (currently 501 stub) — filters `status = 'published' AND deleted_at IS NULL`
-- [ ] 2.14 Implement `store_get_product` route handler (currently 501 stub) — same as admin get but 404 for draft/deleted
-- [ ] 2.15 Fix handle generation: use `types::generate_handle()` (slug crate) instead of inline `replace(" ", "-")`
-- [ ] 2.16 Use `types::generate_entity_id()` instead of inline `format!("{}_{}", prefix, ...)` for all ID generation
-- [ ] 2.17 Fix ULID casing: spec says `[0-9A-Z]` but code lowercases. Align spec to match Medusa (lowercase) or keep uppercase.
-- [ ] 2.18 Add duplicate handle detection: catch SQLite UNIQUE violation and return `AppError::DuplicateError` instead of raw `DatabaseError`
-- [ ] 2.19 Implement `find_by_id` in repository — query product + options + option_values + variants + variant_options in a single fetch or join
-- [ ] 2.20 Implement `list` in repository — paginated with `offset`, `limit`, `order`, `with_deleted` support
-- [ ] 2.21 Implement `list_published` in repository — same as list but `WHERE status = 'published' AND deleted_at IS NULL`
-- [ ] 2.22 Implement `update` in repository — COALESCE pattern for partial updates
-- [ ] 2.23 Implement `soft_delete` in repository — set `deleted_at = CURRENT_TIMESTAMP`
-- [ ] 2.24 Implement `add_variant` in repository — insert variant with option binding resolution
+- [x] 2.7 Verify route stubs respond (replaced by full implementation tests)
+- [x] 2.8 Implement `admin_list_products` route handler — paginated with offset/limit/order/with_deleted
+- [x] 2.9 Implement `admin_get_product` route handler — find_by_id with options/variants/variant_options join
+- [x] 2.10 Implement `admin_update_product` route handler — COALESCE partial update pattern
+- [x] 2.11 Implement `admin_delete_product` route handler — soft delete returning Medusa DeleteResponse
+- [x] 2.12 Implement `admin_add_variant` route handler — insert variant with option binding resolution
+- [x] 2.13 Implement `store_list_products` route handler — filters `status = 'published' AND deleted_at IS NULL`
+- [x] 2.14 Implement `store_get_product` route handler — find_published_by_id, 404 for draft/deleted
+- [x] 2.15 Fix handle generation: use `types::generate_handle()` (slug crate)
+- [x] 2.16 Use `types::generate_entity_id()` for all ID generation
+- [x] 2.17 ULID casing: lowercase (matches ulid crate default, spec updated to `[0-9a-z]{26}`)
+- [x] 2.18 Add duplicate handle detection: SQLite UNIQUE violation mapped to AppError::DuplicateError
+- [x] 2.19 Implement `find_by_id` in repository — product + options + option_values + variants + variant_options
+- [x] 2.20 Implement `list` in repository — paginated with offset, limit, order, with_deleted
+- [x] 2.21 Implement `list_published` in repository — status='published' AND deleted_at IS NULL
+- [x] 2.22 Implement `update` in repository — COALESCE pattern for partial updates
+- [x] 2.23 Implement `soft_delete` in repository — set deleted_at = CURRENT_TIMESTAMP
+- [x] 2.24 Implement `add_variant` in repository — insert variant with option binding via product_variant_options pivot
 
 ## 2b. Database Refactor — PostgreSQL-Primary (blocks all subsequent phases)
 
@@ -54,7 +54,7 @@
 - [ ] 2b.8 Maintain SQLite-compatible migration files for in-memory test path (separate directory or adapter)
 - [ ] 2b.9 Update `AppState` to hold `PgPool` + individual repo structs (no enum dispatch)
 - [ ] 2b.10 Update test infrastructure (`tests/common/mod.rs`) to use SQLite in-memory with placeholder adapter
-- [ ] 2b.11 Fix variant-to-option pivot: persist variant option bindings to `product_variant_options` table during create_product and add_variant
+- [x] 2b.11 Fix variant-to-option pivot: persist variant option bindings to `product_variant_options` table during create_product and add_variant
 - [ ] 2b.12 Fix error response: add `code` field to match 3-field OAS Error schema (`code`, `type`, `message`)
 - [ ] 2b.13 Verify all existing tests still pass after refactor
 - [ ] 2b.14 Add Makefile docker targets: `docker-up`, `docker-down`, `test-pg`

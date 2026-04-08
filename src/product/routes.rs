@@ -2,7 +2,6 @@ use super::types::*;
 use crate::{error::AppError, types::FindParams, AppState};
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
     routing::{get, post},
     Json, Router,
 };
@@ -10,7 +9,6 @@ use validator::Validate;
 
 pub fn router() -> Router<AppState> {
     Router::new()
-        // Admin routes
         .route(
             "/admin/products",
             post(admin_create_product).get(admin_list_products),
@@ -22,7 +20,6 @@ pub fn router() -> Router<AppState> {
                 .delete(admin_delete_product),
         )
         .route("/admin/products/{id}/variants", post(admin_add_variant))
-        // Store routes
         .route("/store/products", get(store_list_products))
         .route("/store/products/{id}", get(store_get_product))
 }
@@ -35,54 +32,86 @@ async fn admin_create_product(
         .validate()
         .map_err(|e| AppError::InvalidData(e.to_string()))?;
 
-    let product_with_relations = state.product_repo.create_product(payload).await?;
+    let product = state.product_repo.create_product(payload).await?;
 
-    Ok(Json(ProductResponse {
-        product: product_with_relations,
-    }))
+    Ok(Json(ProductResponse { product }))
 }
 
 async fn admin_list_products(
-    State(_state): State<AppState>,
-    Query(_params): Query<FindParams>,
-) -> StatusCode {
-    StatusCode::NOT_IMPLEMENTED
+    State(state): State<AppState>,
+    Query(params): Query<FindParams>,
+) -> Result<Json<ProductListResponse>, AppError> {
+    let (products, count) = state.product_repo.list_products(&params).await?;
+
+    Ok(Json(ProductListResponse {
+        products,
+        count,
+        offset: params.offset,
+        limit: params.limit,
+    }))
 }
 
-async fn admin_get_product(State(_state): State<AppState>, Path(_id): Path<String>) -> StatusCode {
-    StatusCode::NOT_IMPLEMENTED
+async fn admin_get_product(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<ProductResponse>, AppError> {
+    let product = state.product_repo.get_product(&id).await?;
+    Ok(Json(ProductResponse { product }))
 }
 
 async fn admin_update_product(
-    State(_state): State<AppState>,
-    Path(_id): Path<String>,
-    Json(_payload): Json<UpdateProductInput>,
-) -> StatusCode {
-    StatusCode::NOT_IMPLEMENTED
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(payload): Json<UpdateProductInput>,
+) -> Result<Json<ProductResponse>, AppError> {
+    let product = state.product_repo.update_product(&id, &payload).await?;
+    Ok(Json(ProductResponse { product }))
 }
 
 async fn admin_delete_product(
-    State(_state): State<AppState>,
-    Path(_id): Path<String>,
-) -> StatusCode {
-    StatusCode::NOT_IMPLEMENTED
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<DeleteResponse>, AppError> {
+    state.product_repo.delete_product(&id).await?;
+
+    Ok(Json(DeleteResponse {
+        id,
+        object: "product".to_string(),
+        deleted: true,
+    }))
 }
 
 async fn admin_add_variant(
-    State(_state): State<AppState>,
-    Path(_id): Path<String>,
-    Json(_payload): Json<CreateProductVariantInput>,
-) -> StatusCode {
-    StatusCode::NOT_IMPLEMENTED
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(payload): Json<CreateProductVariantInput>,
+) -> Result<Json<ProductResponse>, AppError> {
+    payload
+        .validate()
+        .map_err(|e| AppError::InvalidData(e.to_string()))?;
+
+    let product = state.product_repo.add_variant(&id, &payload).await?;
+    Ok(Json(ProductResponse { product }))
 }
 
 async fn store_list_products(
-    State(_state): State<AppState>,
-    Query(_params): Query<FindParams>,
-) -> StatusCode {
-    StatusCode::NOT_IMPLEMENTED
+    State(state): State<AppState>,
+    Query(params): Query<FindParams>,
+) -> Result<Json<ProductListResponse>, AppError> {
+    let (products, count) = state.product_repo.list_published_products(&params).await?;
+
+    Ok(Json(ProductListResponse {
+        products,
+        count,
+        offset: params.offset,
+        limit: params.limit,
+    }))
 }
 
-async fn store_get_product(State(_state): State<AppState>, Path(_id): Path<String>) -> StatusCode {
-    StatusCode::NOT_IMPLEMENTED
+async fn store_get_product(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<ProductResponse>, AppError> {
+    let product = state.product_repo.get_published_product(&id).await?;
+    Ok(Json(ProductResponse { product }))
 }

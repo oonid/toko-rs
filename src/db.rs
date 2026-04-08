@@ -24,15 +24,87 @@ pub enum DatabaseRepo {
     },
 }
 
+use crate::product::types::UpdateProductInput;
+use crate::types::FindParams;
+
 impl DatabaseRepo {
-    // Product Delegate
+    // Product Delegates
     pub async fn create_product(
         &self,
         input: crate::product::types::CreateProductInput,
     ) -> Result<crate::product::models::ProductWithRelations, AppError> {
         match self {
             Self::Sqlite { product, .. } => product.create_product(input).await,
-            Self::Postgres { product, .. } => product.create_product(input).await,
+            Self::Postgres { .. } => unimplemented!("PostgreSQL product repo not yet available"),
+        }
+    }
+
+    pub async fn get_product(
+        &self,
+        id: &str,
+    ) -> Result<crate::product::models::ProductWithRelations, AppError> {
+        match self {
+            Self::Sqlite { product, .. } => product.find_by_id(id).await,
+            Self::Postgres { .. } => unimplemented!(),
+        }
+    }
+
+    pub async fn get_published_product(
+        &self,
+        id: &str,
+    ) -> Result<crate::product::models::ProductWithRelations, AppError> {
+        match self {
+            Self::Sqlite { product, .. } => product.find_published_by_id(id).await,
+            Self::Postgres { .. } => unimplemented!(),
+        }
+    }
+
+    pub async fn list_products(
+        &self,
+        params: &FindParams,
+    ) -> Result<(Vec<crate::product::models::ProductWithRelations>, i64), AppError> {
+        match self {
+            Self::Sqlite { product, .. } => product.list(params).await,
+            Self::Postgres { .. } => unimplemented!(),
+        }
+    }
+
+    pub async fn list_published_products(
+        &self,
+        params: &FindParams,
+    ) -> Result<(Vec<crate::product::models::ProductWithRelations>, i64), AppError> {
+        match self {
+            Self::Sqlite { product, .. } => product.list_published(params).await,
+            Self::Postgres { .. } => unimplemented!(),
+        }
+    }
+
+    pub async fn update_product(
+        &self,
+        id: &str,
+        input: &UpdateProductInput,
+    ) -> Result<crate::product::models::ProductWithRelations, AppError> {
+        match self {
+            Self::Sqlite { product, .. } => product.update(id, input).await,
+            Self::Postgres { .. } => unimplemented!(),
+        }
+    }
+
+    pub async fn delete_product(&self, id: &str) -> Result<String, AppError> {
+        match self {
+            Self::Sqlite { product, .. } => product.soft_delete(id).await,
+            Self::Postgres { .. } => unimplemented!(),
+        }
+    }
+
+    pub async fn add_variant(
+        &self,
+        product_id: &str,
+        input: &crate::product::types::CreateProductVariantInput,
+    ) -> Result<crate::product::models::ProductWithRelations, AppError> {
+        match self {
+            Self::Sqlite { product, .. } => product.add_variant(product_id, input).await,
+            Self::Postgres { .. } => unimplemented!(),
         }
     }
 
@@ -159,5 +231,37 @@ pub async fn ping(db: &AppDb) -> bool {
     match db {
         AppDb::Sqlite(pool) => sqlx::query("SELECT 1").execute(pool).await.is_ok(),
         AppDb::Postgres(pool) => sqlx::query("SELECT 1").execute(pool).await.is_ok(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_create_sqlite_db() {
+        let (app_db, repo) = create_db("sqlite::memory:").await.unwrap();
+        assert!(matches!(app_db, AppDb::Sqlite(_)));
+        assert!(matches!(repo, DatabaseRepo::Sqlite { .. }));
+    }
+
+    #[tokio::test]
+    async fn test_run_migrations_sqlite() {
+        let (app_db, _) = create_db("sqlite::memory:").await.unwrap();
+        run_migrations(&app_db).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_ping_sqlite() {
+        let (app_db, _) = create_db("sqlite::memory:").await.unwrap();
+        run_migrations(&app_db).await.unwrap();
+        assert!(ping(&app_db).await);
+    }
+
+    #[tokio::test]
+    async fn test_ping_after_pool_close() {
+        let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
+        let app_db = AppDb::Sqlite(pool);
+        assert!(ping(&app_db).await);
     }
 }

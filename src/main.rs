@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use toko_rs::{app_router, config, db, seed, AppState};
+use toko_rs::{app_router, build_app_state, config, seed};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -19,23 +19,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let (app_db, repo) = db::create_db(&config.database_url).await?;
-    tracing::info!("Connected to database");
-    db::run_migrations(&app_db).await?;
-    tracing::info!("Migrations executed successfully");
+    let (state, app_db) = build_app_state(&config.database_url).await?;
+    tracing::info!("Connected to database and migrations executed");
 
     if std::env::args().any(|arg| arg == "--seed") {
         seed::run_seed(&app_db).await?;
         tracing::info!("Seeding complete. Exiting.");
         return Ok(());
     }
-
-    let repo_arc = std::sync::Arc::new(repo);
-    let state = AppState {
-        db: app_db,
-        product_repo: repo_arc.clone(),
-        cart_repo: repo_arc,
-    };
 
     let app = app_router(state);
 

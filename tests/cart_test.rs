@@ -1,8 +1,11 @@
 mod common;
 
-use axum::{body::Body, http::{Method, Request, StatusCode}};
-use tower::ServiceExt; 
+use axum::{
+    body::Body,
+    http::{Method, Request, StatusCode},
+};
 use serde_json::json;
+use tower::ServiceExt;
 
 #[tokio::test]
 async fn test_store_create_cart_success() {
@@ -23,10 +26,15 @@ async fn test_store_create_cart_success() {
     let response = app.oneshot(request).await.unwrap();
 
     if response.status() != StatusCode::OK {
-        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
-        panic!("API Error Response: {:?}", String::from_utf8_lossy(&body_bytes));
+        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        panic!(
+            "API Error Response: {:?}",
+            String::from_utf8_lossy(&body_bytes)
+        );
     }
-    
+
     assert_eq!(response.status(), StatusCode::OK);
 }
 
@@ -67,74 +75,181 @@ async fn test_cart_full_flow() {
 
     // 1. Create cart
     let payload = json!({"currency_code": "usd"});
-    let request = Request::builder().method(Method::POST).uri("/store/carts").header("content-type", "application/json").body(Body::from(payload.to_string())).unwrap();
+    let request = Request::builder()
+        .method(Method::POST)
+        .uri("/store/carts")
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
     let res = app.clone().oneshot(request).await.unwrap();
-    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let cart_resp: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     let cart_id = cart_resp["cart"]["id"].as_str().unwrap();
 
     // 2. Add line item
     let payload = json!({"variant_id": "var_1", "quantity": 2});
-    let request = Request::builder().method(Method::POST).uri(&format!("/store/carts/{}/line-items", cart_id)).header("content-type", "application/json").body(Body::from(payload.to_string())).unwrap();
+    let request = Request::builder()
+        .method(Method::POST)
+        .uri(&format!("/store/carts/{}/line-items", cart_id))
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
     let res = app.clone().oneshot(request).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let cart_resp: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(cart_resp["cart"]["items"].as_array().unwrap().len(), 1);
     let line_id = cart_resp["cart"]["items"][0]["id"].as_str().unwrap();
 
     // 3. Update line item (quantity = 3)
     let payload = json!({"quantity": 3});
-    let request = Request::builder().method(Method::POST).uri(&format!("/store/carts/{}/line-items/{}", cart_id, line_id)).header("content-type", "application/json").body(Body::from(payload.to_string())).unwrap();
+    let request = Request::builder()
+        .method(Method::POST)
+        .uri(&format!("/store/carts/{}/line-items/{}", cart_id, line_id))
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
     let res = app.clone().oneshot(request).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let cart_resp: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
-    assert_eq!(cart_resp["cart"]["items"][0]["quantity"].as_i64().unwrap(), 3);
+    assert_eq!(
+        cart_resp["cart"]["items"][0]["quantity"].as_i64().unwrap(),
+        3
+    );
 
     // 4. Update cart email
     let payload = json!({"email": "test@test.com"});
-    let request = Request::builder().method(Method::POST).uri(&format!("/store/carts/{}", cart_id)).header("content-type", "application/json").body(Body::from(payload.to_string())).unwrap();
+    let request = Request::builder()
+        .method(Method::POST)
+        .uri(&format!("/store/carts/{}", cart_id))
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
     let res = app.clone().oneshot(request).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let cart_resp: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
-    assert_eq!(cart_resp["cart"]["email"].as_str().unwrap(), "test@test.com");
+    assert_eq!(
+        cart_resp["cart"]["email"].as_str().unwrap(),
+        "test@test.com"
+    );
 
     // 5. Delete line item
-    let request = Request::builder().method(Method::DELETE).uri(&format!("/store/carts/{}/line-items/{}", cart_id, line_id)).body(Body::empty()).unwrap();
+    let request = Request::builder()
+        .method(Method::DELETE)
+        .uri(&format!("/store/carts/{}/line-items/{}", cart_id, line_id))
+        .body(Body::empty())
+        .unwrap();
     let res = app.clone().oneshot(request).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let cart_resp: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(cart_resp["cart"]["items"].as_array().unwrap().len(), 0);
 
     // 6. Test GET cart
-    let request = Request::builder().method(Method::GET).uri(&format!("/store/carts/{}", cart_id)).body(Body::empty()).unwrap();
+    let request = Request::builder()
+        .method(Method::GET)
+        .uri(&format!("/store/carts/{}", cart_id))
+        .body(Body::empty())
+        .unwrap();
     let res = app.clone().oneshot(request).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
 
     // 7. Add line item and update to 0 to trigger delete branch
     let payload = json!({"variant_id": "var_1", "quantity": 1});
-    let request = Request::builder().method(Method::POST).uri(&format!("/store/carts/{}/line-items", cart_id)).header("content-type", "application/json").body(Body::from(payload.to_string())).unwrap();
+    let request = Request::builder()
+        .method(Method::POST)
+        .uri(&format!("/store/carts/{}/line-items", cart_id))
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
     let res = app.clone().oneshot(request).await.unwrap();
-    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let cart_resp: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     let line_id = cart_resp["cart"]["items"][0]["id"].as_str().unwrap();
 
     let payload = json!({"quantity": 0});
-    let request = Request::builder().method(Method::POST).uri(&format!("/store/carts/{}/line-items/{}", cart_id, line_id)).header("content-type", "application/json").body(Body::from(payload.to_string())).unwrap();
+    let request = Request::builder()
+        .method(Method::POST)
+        .uri(&format!("/store/carts/{}/line-items/{}", cart_id, line_id))
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
     let res = app.clone().oneshot(request).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
 
     // 8. Test invalid cart ID on add_line_item
     let payload = json!({"variant_id": "var_1", "quantity": 1});
-    let request = Request::builder().method(Method::POST).uri("/store/carts/invalid_cart/line-items").header("content-type", "application/json").body(Body::from(payload.to_string())).unwrap();
+    let request = Request::builder()
+        .method(Method::POST)
+        .uri("/store/carts/invalid_cart/line-items")
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
     let res = app.clone().oneshot(request).await.unwrap();
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
 
     // 9. Test complete cart stub
-    let request = Request::builder().method(Method::POST).uri(&format!("/store/carts/{}/complete", cart_id)).body(Body::empty()).unwrap();
+    let request = Request::builder()
+        .method(Method::POST)
+        .uri(&format!("/store/carts/{}/complete", cart_id))
+        .body(Body::empty())
+        .unwrap();
     let res = app.clone().oneshot(request).await.unwrap();
     assert_eq!(res.status(), StatusCode::NOT_IMPLEMENTED);
+
+    // 10. Test GET non-existent cart
+    let request = Request::builder()
+        .method(Method::GET)
+        .uri("/store/carts/cart_nonexistent")
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(request).await.unwrap();
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+
+    // 11. Test update non-existent cart
+    let payload = json!({"email": "nope@test.com"});
+    let request = Request::builder()
+        .method(Method::POST)
+        .uri("/store/carts/cart_nonexistent")
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(request).await.unwrap();
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+
+    // 12. Test add line item with invalid variant
+    let payload = json!({"variant_id": "var_nonexistent", "quantity": 1});
+    let request = Request::builder()
+        .method(Method::POST)
+        .uri(&format!("/store/carts/{}/line-items", cart_id))
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(request).await.unwrap();
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+
+    // 13. Test add line item validation (quantity < 1)
+    let payload = json!({"variant_id": "var_1", "quantity": 0});
+    let request = Request::builder()
+        .method(Method::POST)
+        .uri(&format!("/store/carts/{}/line-items", cart_id))
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+    let res = app.oneshot(request).await.unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
 }

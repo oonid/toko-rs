@@ -1,7 +1,9 @@
 use super::models::*;
 use super::types::*;
 use crate::error::AppError;
-use sqlx::{PgPool, SqlitePool};
+#[cfg(not(coverage))]
+use sqlx::PgPool;
+use sqlx::SqlitePool;
 use ulid::Ulid;
 
 #[derive(Clone)]

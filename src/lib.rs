@@ -31,6 +31,18 @@ pub fn app_router(state: AppState) -> Router {
         .with_state(state)
 }
 
+pub async fn build_app_state(database_url: &str) -> Result<(AppState, db::AppDb), error::AppError> {
+    let (app_db, repo) = db::create_db(database_url).await?;
+    db::run_migrations(&app_db).await?;
+    let repo_arc = Arc::new(repo);
+    let state = AppState {
+        db: app_db.clone(),
+        product_repo: repo_arc.clone(),
+        cart_repo: repo_arc,
+    };
+    Ok((state, app_db))
+}
+
 async fn health_check(
     axum::extract::State(state): axum::extract::State<AppState>,
 ) -> axum::Json<serde_json::Value> {
@@ -47,4 +59,37 @@ async fn health_check(
         "database": database,
         "version": env!("CARGO_PKG_VERSION")
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn test_health_check_connected() {
+        let (state, _) = build_app_state("sqlite::memory:").await.unwrap();
+        let app = app_router(state);
+        let req = axum::http::Request::builder()
+            .uri("/health")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), 200);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let val: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(val["status"], "ok");
+        assert_eq!(val["database"], "connected");
+        assert_eq!(val["version"], env!("CARGO_PKG_VERSION"));
+    }
+
+    #[tokio::test]
+    async fn test_build_app_state() {
+        let (state, db) = build_app_state("sqlite::memory:").await.unwrap();
+        assert!(db::ping(&db).await);
+        assert!(matches!(db, db::AppDb::Sqlite(_)));
+        let _ = &state;
+    }
 }
