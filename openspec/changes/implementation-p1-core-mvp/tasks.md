@@ -208,6 +208,7 @@ Audit source: comprehensive comparison of implementation against Medusa vendor r
 - [x] 9.3 Make seed idempotent (check existence before inserting) — fixed IDs + SELECT COUNT(*) check for parents, INSERT OR IGNORE for children
 - [x] 9.4 Wire --seed CLI flag to seed function — already wired in main.rs:26-30
 - [x] 9.5 Smoke test full Browse → Cart → Checkout flow — 2 integration tests in tests/seed_flow_test.rs exercising browse→cart→checkout and customer order history
+- [x] 9.6 Comprehensive curl walkthrough for all 20 endpoints — docs/seed-data.md with copy-paste-ready curl examples covering all 8 product, 6 cart, 3 customer, and 3 order endpoints plus error scenarios (404, 409, 422, method not allowed)
 
 ## 10. Phase 1-G — Test Suite
 
