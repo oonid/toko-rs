@@ -81,15 +81,14 @@ impl AppError {
     }
 }
 
-pub fn map_sqlite_constraint(e: sqlx::Error) -> AppError {
+pub fn map_db_constraint(e: sqlx::Error) -> AppError {
     if let sqlx::Error::Database(ref db_err) = e {
-        let code = db_err.code().and_then(|c| c.parse::<i32>().ok());
-        match code {
-            Some(2067) => {
+        match db_err.code().as_deref() {
+            Some("23505") => {
                 AppError::DuplicateError("A record with this value already exists".into())
             }
-            Some(787) => AppError::NotFound("Referenced record not found".into()),
-            Some(1299) => AppError::InvalidData("A required field is missing".into()),
+            Some("23503") => AppError::NotFound("Referenced record not found".into()),
+            Some("23502") => AppError::InvalidData("A required field is missing".into()),
             _ => AppError::DatabaseError(e),
         }
     } else {
@@ -268,9 +267,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_map_sqlite_constraint_non_db_error() {
+    async fn test_map_db_constraint_non_db_error() {
         let e = sqlx::Error::Configuration("cfg fail".into());
-        let result = map_sqlite_constraint(e);
+        let result = map_db_constraint(e);
         assert!(matches!(result, AppError::DatabaseError(_)));
     }
 }

@@ -87,14 +87,14 @@ Referenced by `design.md` (P1 divergences table) and `proposal.md` (schema scope
 
 | Medusa Equivalent | toko-rs Table | Notes |
 |---|---|---|
-| Autoincrement sequences (Medusa uses `@AutoIncrement` on display_id) | `_sequences` | Application-managed sequence table. Pre-seeded with `order_display_id = 0`. Currently unused by code (uses `MAX(display_id)+1` instead) |
+| Autoincrement sequences (Medusa uses `@AutoIncrement` on display_id) | `_sequences` | Application-managed sequence table. Pre-seeded with `order_display_id = 0`. Atomic `UPDATE _sequences SET value = value + 1 WHERE name = 'order_display_id' RETURNING value` used for display_id generation |
 | None (Medusa handles idempotency at framework level) | `idempotency_keys` | toko-rs addition — maps idempotency key to response ID for preventing double-order creation |
 
 ### Summary
 
 | Category | Count | Tables |
 |---|---|---|
-| **Implemented (exact or near-match)** | 8 | `products`, `product_options`, `product_option_values`, `product_variants`, `product_variant_option`, `customers`, `customer_addresses` (dormant), `carts` |
+| **Implemented (exact or near-match)** | 8 | `products`, `product_options`, `product_option_values`, `product_variants`, `product_variant_option`, `customers`, `customer_addresses` (active read), `carts` |
 | **Implemented (simplified)** | 4 | `cart_line_items`, `orders`, `order_line_items`, `payment_records` |
 | **Collapsed into column** | 3 Medusa tables → 6 JSON columns | `cart_address` → `carts.shipping_address`/`billing_address`, `order_address` → `orders.shipping_address`/`billing_address`, `order_summary` → computed fields |
 | **Collapsed (merged table)** | 1 Medusa table → existing table | `order_item` → merged into `order_line_items` |
@@ -115,8 +115,8 @@ The old `DatabaseRepo` enum with `match self { Sqlite {..} => ..., Postgres {..}
 
 ```
 src/db.rs
-  AppDb         — enum holding the pool (currently Sqlite only; Postgres variant added in future)
-  Repositories  — struct with individual repo instances (product, cart, ...)
+  AppDb         — enum holding the pool (currently Sqlite only; Postgres variant added in Task 15)
+  Repositories  — struct with individual repo instances (product, cart, customer, order, payment)
   create_db()   — creates pool + repos
   run_migrations() — runs migration directory matching the pool type
   ping()        — health check query
@@ -126,6 +126,9 @@ src/db.rs
 pub struct Repositories {
     pub product: ProductRepository,
     pub cart: CartRepository,
+    pub customer: CustomerRepository,
+    pub order: OrderRepository,
+    pub payment: PaymentRepository,
 }
 ```
 
@@ -145,6 +148,9 @@ Routes access repos directly: `state.repos.product.find_by_id(&id)`. No delegati
 Each module owns a single repository struct:
 - `src/product/repository.rs` — `ProductRepository` (SqlitePool)
 - `src/cart/repository.rs` — `CartRepository` (SqlitePool)
+- `src/customer/repository.rs` — `CustomerRepository` (SqlitePool)
+- `src/order/repository.rs` — `OrderRepository` (SqlitePool)
+- `src/payment/repository.rs` — `PaymentRepository` (SqlitePool)
 
 No cross-module imports. `db.rs` is the only shared coupling point that wires repos together.
 
@@ -211,11 +217,13 @@ Now matches 3-field OAS Error schema from `specs/store.oas.yaml`:
 |---|---|---|---|
 | `NotFound` | `invalid_request_error` | `not_found` | 404 |
 | `InvalidData` | `invalid_request_error` | `invalid_data` | 400 |
-| `DuplicateError` | `invalid_request_error` | `duplicate_error` | 409 |
-| `UnexpectedState` | `invalid_state_error` | `unexpected_state` | 409 |
+| `DuplicateError` | `invalid_request_error` | `duplicate_error` | 422 |
+| `Conflict` | `invalid_state_error` | `conflict` | 409 |
+| `Forbidden` | `invalid_state_error` | `forbidden` | 403 |
 | `Unauthorized` | `unknown_error` | `unauthorized` | 401 |
+| `UnexpectedState` | `invalid_state_error` | `unexpected_state` | 500 |
 | `DatabaseError` | `api_error` | `database_error` | 500 |
-| `MigrationError` | `api_error` | `migration_error` | 500 |
+| `MigrationError` | `api_error` | `database_error` | 500 |
 
 ## Docker Integration
 
@@ -231,7 +239,295 @@ make test-pg      # run tests against PostgreSQL
 
 | Metric | Value |
 |---|---|
-| Tests | 41 passing |
+| Tests | 117 passing |
 | Clippy | Zero warnings (`-D warnings`) |
-| Line coverage | 92.42% (`cargo llvm-cov`) |
 | Warnings | Zero compiler warnings |
+
+---
+
+## Task 15: PostgreSQL Driver Support
+
+**Status**: Planned. Added 2026-04-10.
+
+### Design Decision (from design.md Decision 2)
+
+All repositories use `PgPool` natively with PostgreSQL `$1, $2, $3` placeholders. SQLite support is retained for tests via a thin placeholder translation helper that converts `$N` → `?` at query preparation time. This avoids duplicating every query (the rejected approach was dual-repo enum dispatch which would produce ~60 duplicated method bodies).
+
+**Rejected alternatives** (documented in design.md):
+- `sqlx::any::AnyPool` — cannot represent database-native features (e.g., PG `JSONB` operators, SQLite `INSERT OR IGNORE`)
+- Dual `SqliteXxxRepository` / `PostgresXxxRepository` structs — doubles maintenance cost per module
+- `#[cfg]` feature-gated query bodies — fragmented testing, untested PG stubs
+
+### Why Not AnyPool
+
+Previously considered and rejected because:
+1. `AnyPool` homogenizes database capabilities to the lowest common denominator
+2. PG-specific features (`JSONB` operators, `RETURNING` with conflict targets, advisory locks) would be inaccessible
+3. SQLite-specific features (`INSERT OR IGNORE`, `PRAGMA` statements) would also be lost
+4. Error types differ between SQLite and PG — `AnyPool` erases the database-specific error codes that `map_sqlite_constraint()` relies on
+5. Design Decision 2 explicitly states: "PostgreSQL is the primary and only target for production queries"
+
+### Current State (SQLite-only)
+
+All 5 repositories + `seed.rs` are hardcoded to `SqlitePool` with `?` placeholders:
+- `src/product/repository.rs` — ~20 queries
+- `src/cart/repository.rs` — ~12 queries
+- `src/customer/repository.rs` — ~6 queries
+- `src/order/repository.rs` — ~8 queries
+- `src/payment/repository.rs` — ~3 queries
+- `src/seed.rs` — ~12 queries using `INSERT OR IGNORE` (SQLite-only syntax)
+
+Total: ~55 SQL queries using `?` placeholders.
+
+### Implementation Plan (Task 15)
+
+#### 15a. Infrastructure (db.rs, placeholder translator)
+
+1. Add `Postgres(PgPool)` variant to `AppDb` enum
+2. `create_db()` detects URL prefix: `postgres://` → `PgPool`, `sqlite://` → `SqlitePool`
+3. `run_migrations()` uses `./migrations/` for PG, `./migrations/sqlite/` for SQLite
+4. Implement placeholder translator: thin adapter that rewrites `$1, $2, ...` → `?` when active pool is SQLite
+
+#### 15b. Repository rewrite ($N placeholders)
+
+All repositories rewritten with `$1, $2, $3` (PostgreSQL-native) placeholders:
+- Pool type uses the translated abstraction
+- Transaction types updated from `sqlx::Transaction<'_, sqlx::Sqlite>` to appropriate type
+- Existing 117 tests continue passing via translator
+
+#### 15c. Seed rewrite (ON CONFLICT DO NOTHING)
+
+All 12 `INSERT OR IGNORE` statements replaced with `INSERT ... ON CONFLICT DO NOTHING`:
+- Works on both SQLite 3.24+ and PostgreSQL
+- Maintains seed idempotency on repeated runs
+
+#### 15d. Error mapping update
+
+`map_sqlite_constraint()` extended to handle PostgreSQL error codes alongside existing SQLite codes:
+
+| DB | Code | Error Type | toko-rs Variant |
+|---|---|---|---|
+| SQLite | 2067 | UNIQUE violation | `DuplicateError` |
+| SQLite | 787 | FK violation | `NotFound` |
+| SQLite | 1299 | NOT NULL violation | `InvalidData` |
+| PostgreSQL | 23505 | UNIQUE violation | `DuplicateError` |
+| PostgreSQL | 23503 | FK violation | `NotFound` |
+| PostgreSQL | 23502 | NOT NULL violation | `InvalidData` |
+
+### SQL Compatibility Matrix
+
+| Feature | SQLite | PostgreSQL | Resolution |
+|---|---|---|---|
+| Placeholders | `?` | `$1, $2...` | Translator handles conversion |
+| `RETURNING *` | 3.35+ | Native | Both support — no change needed |
+| `CURRENT_TIMESTAMP` | Yes | Yes | Both support |
+| `COALESCE(NULLIF(?, ''), col)` | Yes | Yes | Both support |
+| `TRUE`/`FALSE` literals | Yes | Yes | Both support |
+| `INSERT OR IGNORE` | Yes | **No** | Replaced with `ON CONFLICT DO NOTHING` (Task 15c) |
+| `CAST(? AS INTEGER)` | Yes | Yes (unusual but valid) | Keep as-is |
+| `_sequences UPDATE ... RETURNING` | Yes | Yes | Both support |
+| `JSONB` type | N/A | Native | PG migrations use `JSONB`, SQLite uses `TEXT` |
+| `TIMESTAMPTZ` | N/A | Native | PG migrations use `TIMESTAMPTZ`, SQLite uses `DATETIME` |
+| `BOOLEAN` | `INTEGER` (0/1) | Native | PG migrations use `BOOLEAN`, SQLite uses `INTEGER` |
+
+The only real SQL incompatibility is `INSERT OR IGNORE` in seed.rs — resolved by Task 15c.
+
+### Files to Change
+
+| File | Change |
+|---|---|
+| `src/db.rs` | Add `Postgres(PgPool)` variant, dual `create_db()`, dual `run_migrations()`, placeholder translator |
+| `src/product/repository.rs` | All queries: `?` → `$N` |
+| `src/cart/repository.rs` | All queries: `?` → `$N` |
+| `src/customer/repository.rs` | All queries: `?` → `$N` |
+| `src/order/repository.rs` | All queries: `?` → `$N` |
+| `src/payment/repository.rs` | All queries: `?` → `$N` |
+| `src/seed.rs` | `INSERT OR IGNORE` → `ON CONFLICT DO NOTHING`, `?` → `$N` |
+| `src/error.rs` | Add PG error code mapping (23505, 23503, 23502) |
+| `src/config.rs` | No change (DATABASE_URL already configurable) |
+| `src/main.rs` | No change (already uses `create_db` with URL) |
+| `src/lib.rs` | No change (router is DB-agnostic) |
+| `tests/common/mod.rs` | No change (uses SQLite in-memory, translator applies) |
+
+---
+
+## Task 16: E2E Integration Test Suite
+
+**Status**: Planned. Added 2026-04-10.
+
+### Design Decisions
+
+1. **Seed rewrite**: Use `ON CONFLICT DO NOTHING` (not separate seed functions per DB)
+2. **Test parameterization**: `E2E_DATABASE_URL` environment variable. SQLite in-memory by default; set to `postgres://...` for PostgreSQL cycle
+3. **Docker orchestration**: Both `testcontainers` (programmatic, for CI) and `docker-compose` (for local dev) supported
+4. **HTTP client**: `reqwest` (already in `[dev-dependencies]`) — raw HTTP requests similar to curl in `docs/seed-data.md`
+
+### Architecture
+
+```
+tests/e2e/
+  mod.rs              — test harness (start server, reqwest client, DB provisioning)
+  flows/
+    guest_checkout.rs     — full guest browse → cart → checkout cycle
+    customer_lifecycle.rs — register → profile → order history
+    admin_products.rs     — CRUD, variants, soft-delete
+    cart_manipulation.rs  — update, delete, completed guards
+    errors_validation.rs  — error responses, input validation
+    response_shapes.rs    — contract shape verification
+```
+
+### Test Harness
+
+`setup_e2e_app(database_url)`:
+1. Creates DB pool (SQLite in-memory OR PostgreSQL)
+2. Runs migrations (auto-detected by URL prefix)
+3. Seeds data via `run_seed()`
+4. Binds to `127.0.0.1:0` (OS-assigned random port)
+5. Starts `axum::serve` in background `tokio::spawn`
+6. Returns base URL + `reqwest::Client` + DB pool for direct assertions
+
+Environment variable control:
+```bash
+# SQLite in-memory (default, no Docker needed)
+cargo test --test e2e
+
+# PostgreSQL via Docker Compose
+docker compose up -d
+E2E_DATABASE_URL=postgres://postgres:postgres@localhost:5432/toko cargo test --test e2e
+
+# PostgreSQL via testcontainers (CI)
+E2E_DATABASE_URL=testcontainers:// cargo test --test e2e
+```
+
+### Test Coverage Plan (all 21 endpoints)
+
+#### Full Commerce Cycle — Guest Checkout (9 steps)
+
+| Step | Method | Path | Proves |
+|---|---|---|---|
+| 1 | GET | `/health` | Server responds, DB connected |
+| 2 | GET | `/store/products` | Seed data loaded, 3 published products |
+| 3 | GET | `/store/products/{id}` | Product detail with variants + options + calculated_price |
+| 4 | POST | `/store/carts` | Create cart with email |
+| 5 | POST | `/store/carts/{id}/line-items` | Add item (variant lookup, price snapshot) |
+| 6 | POST | `/store/carts/{id}/line-items` | Add same variant → quantity merge |
+| 7 | POST | `/store/carts/{id}/line-items/{line_id}` | Update quantity |
+| 8 | GET | `/store/carts/{id}` | Verify 22 total fields computed |
+| 9 | POST | `/store/carts/{id}/complete` | Checkout → order with display_id, payment_status |
+
+#### Full Commerce Cycle — Customer Lifecycle (8 steps)
+
+| Step | Method | Path | Proves |
+|---|---|---|---|
+| 10 | POST | `/store/customers` | Register customer |
+| 11 | GET | `/store/customers/me` | X-Customer-Id header extraction, addresses array |
+| 12 | POST | `/store/customers/me` | Update profile |
+| 13 | POST | `/store/carts` | Create cart with customer_id |
+| 14 | POST | `/store/carts/{id}/line-items` | Add item |
+| 15 | POST | `/store/carts/{id}/complete` | Complete as authenticated customer |
+| 16 | GET | `/store/orders` | List customer's orders (X-Customer-Id required) |
+| 17 | GET | `/store/orders/{id}` | Order detail with 22 total fields |
+
+#### Admin Product CRUD (6 endpoints)
+
+| Endpoint | Test case |
+|---|---|
+| `POST /admin/products` | Create draft product with options + variants |
+| `GET /admin/products` | List all (includes drafts) |
+| `GET /admin/products/{id}` | Get single with relations |
+| `POST /admin/products/{id}` | Publish + partial update |
+| `POST /admin/products/{id}/variants` | Add variant to existing product |
+| `DELETE /admin/products/{id}` | Soft-delete → 404 on store GET |
+
+#### Cart Manipulation
+
+| Test case | Endpoints |
+|---|---|
+| Update cart email | `POST /store/carts/{id}` |
+| Delete line item | `DELETE /store/carts/{id}/line-items/{id}` |
+| Set quantity to 0 removes item | `POST /store/carts/{id}/line-items/{id}` |
+| Create cart with empty body | `POST /store/carts` |
+| Create cart with different currency | `POST /store/carts` |
+| Completed cart guards (4x 409) | POST complete → update/add/update-line/delete-line |
+
+#### Error & Validation Cases
+
+| Test case | Expected |
+|---|---|
+| Empty cart checkout | 400 `invalid_data` |
+| Completed cart mutation | 409 `conflict` |
+| Duplicate email registration | 422 `duplicate_error` |
+| Missing X-Customer-Id | 401 `unauthorized` |
+| Unknown fields in body | 422 (serde deny_unknown_fields) |
+| Invalid product status | 422 (enum rejection) |
+| String metadata (not object) | 422 (HashMap rejection) |
+| Nonexistent entity | 404 `not_found` |
+| Invalid quantity | 400 |
+
+#### Response Shape Contract Verification
+
+| Entity | Fields verified |
+|---|---|
+| Product | `images: []`, `is_giftcard: false`, `discountable: true` |
+| Variant | `calculated_price: { calculated_amount, original_amount, is_calculated_price_tax_inclusive }` |
+| Cart | 22 total fields (`item_total`, `subtotal`, `tax_total`, `discount_total`, `shipping_total`, etc.) |
+| Cart line item | `requires_shipping`, `is_discountable`, `is_tax_inclusive` |
+| Order | 22 total fields + `payment_status: "not_paid"` + `fulfillment_status: "not_fulfilled"` + `fulfillments: []` + `shipping_methods: []` |
+| Customer | `addresses: []`, `default_billing_address_id: null`, `default_shipping_address_id: null` |
+| Error | `code`, `type`, `message` (3-field OAS schema) |
+
+### Docker & Testcontainers
+
+#### docker-compose.yml (existing, for local dev)
+
+```yaml
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: toko
+    ports:
+      - "5432:5432"
+```
+
+#### testcontainers (for CI)
+
+`testcontainers` crate with `postgres` feature added to `[dev-dependencies]`. When `E2E_DATABASE_URL=testcontainers://`, the harness programmatically starts a PG container, waits for readiness, and uses the container's URL.
+
+### Makefile Targets
+
+| Target | What it does |
+|---|---|
+| `test-e2e` | Runs E2E tests against SQLite in-memory (no Docker needed) |
+| `test-e2e-pg` | Starts Docker Compose PG → runs E2E tests against PG → stops container |
+| `test-e2e-tc` | Runs E2E tests using testcontainers (both SQLite + PG cycles) |
+
+### Dependencies to Add
+
+| Crate | Section | Purpose |
+|---|---|---|
+| `testcontainers` | `[dev-dependencies]` | Programmatic PG container for CI |
+| `testcontainers-modules` | `[dev-dependencies]` | Pre-built Postgres module |
+
+`reqwest` (already in `[dev-dependencies]`) used as HTTP client.
+
+### Files to Create/Change
+
+| File | Action |
+|---|---|
+| `tests/e2e/main.rs` | Create — test harness + all test modules |
+| `tests/e2e/flows/guest_checkout.rs` | Create — 9-step guest purchase cycle |
+| `tests/e2e/flows/customer_lifecycle.rs` | Create — 8-step customer lifecycle |
+| `tests/e2e/flows/admin_products.rs` | Create — admin CRUD tests |
+| `tests/e2e/flows/cart_manipulation.rs` | Create — cart update/delete/guard tests |
+| `tests/e2e/flows/errors_validation.rs` | Create — error response tests |
+| `tests/e2e/flows/response_shapes.rs` | Create — contract shape verification |
+| `Cargo.toml` | Add `testcontainers` + `testcontainers-modules` to `[dev-dependencies]` |
+| `Makefile` | Add `test-e2e`, `test-e2e-pg`, `test-e2e-tc` targets |
+| `docker-compose.yml` | May add test-specific PG with `toko_test` DB |
+
+### Prerequisite
+
+Task 15 (PostgreSQL Driver Support) must be completed before Task 16's PostgreSQL cycle can run. The SQLite E2E cycle can be built independently, but the full dual-database test requires the PG adapter to be in place.

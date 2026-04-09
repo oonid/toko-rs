@@ -2,7 +2,7 @@ use crate::db::AppDb;
 use crate::error::AppError;
 
 pub async fn run_seed(db: &AppDb) -> Result<(), AppError> {
-    let AppDb::Sqlite(pool) = db;
+    let AppDb::Postgres(pool) = db;
 
     tracing::info!("Seeding sample data...");
 
@@ -13,7 +13,7 @@ pub async fn run_seed(db: &AppDb) -> Result<(), AppError> {
     Ok(())
 }
 
-async fn seed_products(pool: &sqlx::SqlitePool) -> Result<(), AppError> {
+async fn seed_products(pool: &sqlx::PgPool) -> Result<(), AppError> {
     let products = [
         (
             "prod_seed_kaos_polos",
@@ -39,7 +39,7 @@ async fn seed_products(pool: &sqlx::SqlitePool) -> Result<(), AppError> {
     ];
 
     for (id, title, handle, description, thumbnail) in &products {
-        let exists: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM products WHERE id = ?")
+        let exists: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM products WHERE id = $1")
             .bind(id)
             .fetch_one(pool)
             .await?;
@@ -52,7 +52,8 @@ async fn seed_products(pool: &sqlx::SqlitePool) -> Result<(), AppError> {
         sqlx::query(
             r#"
             INSERT INTO products (id, title, handle, description, status, thumbnail)
-            VALUES (?, ?, ?, ?, 'published', ?)
+            VALUES ($1, $2, $3, $4, 'published', $5)
+            ON CONFLICT (id) DO NOTHING
             "#,
         )
         .bind(id)
@@ -73,14 +74,14 @@ async fn seed_products(pool: &sqlx::SqlitePool) -> Result<(), AppError> {
     Ok(())
 }
 
-async fn seed_kaos_polos_variants(pool: &sqlx::SqlitePool) -> Result<(), AppError> {
+async fn seed_kaos_polos_variants(pool: &sqlx::PgPool) -> Result<(), AppError> {
     let product_id = "prod_seed_kaos_polos";
 
     let options = [("opt_seed_kaos_size", "Ukuran", &["S", "M", "L", "XL"][..])];
 
     for (opt_id, opt_title, values) in &options {
         sqlx::query(
-            "INSERT OR IGNORE INTO product_options (id, product_id, title) VALUES (?, ?, ?)",
+            "INSERT INTO product_options (id, product_id, title) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING",
         )
         .bind(opt_id)
         .bind(product_id)
@@ -91,7 +92,7 @@ async fn seed_kaos_polos_variants(pool: &sqlx::SqlitePool) -> Result<(), AppErro
         for (i, val) in values.iter().enumerate() {
             let val_id = format!("optval_seed_kaos_s_{}", i);
             sqlx::query(
-                "INSERT OR IGNORE INTO product_option_values (id, option_id, value) VALUES (?, ?, ?)",
+                "INSERT INTO product_option_values (id, option_id, value) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING",
             )
             .bind(&val_id)
             .bind(opt_id)
@@ -134,7 +135,7 @@ async fn seed_kaos_polos_variants(pool: &sqlx::SqlitePool) -> Result<(), AppErro
 
     for (rank, (var_id, var_title, sku, price, opt_val)) in variants.iter().enumerate() {
         sqlx::query(
-            "INSERT OR IGNORE INTO product_variants (id, product_id, title, sku, price, variant_rank) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO product_variants (id, product_id, title, sku, price, variant_rank) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (id) DO NOTHING",
         )
         .bind(var_id)
         .bind(product_id)
@@ -146,7 +147,7 @@ async fn seed_kaos_polos_variants(pool: &sqlx::SqlitePool) -> Result<(), AppErro
         .await?;
 
         let val_id = sqlx::query_as::<_, (String,)>(
-            "SELECT id FROM product_option_values WHERE option_id = 'opt_seed_kaos_size' AND value = ?",
+            "SELECT id FROM product_option_values WHERE option_id = 'opt_seed_kaos_size' AND value = $1",
         )
         .bind(opt_val)
         .fetch_optional(pool)
@@ -154,7 +155,7 @@ async fn seed_kaos_polos_variants(pool: &sqlx::SqlitePool) -> Result<(), AppErro
 
         if let Some((vid,)) = val_id {
             sqlx::query(
-                "INSERT OR IGNORE INTO product_variant_option (id, variant_id, option_value_id) VALUES (?, ?, ?)",
+                "INSERT INTO product_variant_option (id, variant_id, option_value_id) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING",
             )
             .bind(format!("pvo_seed_kaos_{}", rank))
             .bind(var_id)
@@ -167,10 +168,10 @@ async fn seed_kaos_polos_variants(pool: &sqlx::SqlitePool) -> Result<(), AppErro
     Ok(())
 }
 
-async fn seed_jeans_slim_variants(pool: &sqlx::SqlitePool) -> Result<(), AppError> {
+async fn seed_jeans_slim_variants(pool: &sqlx::PgPool) -> Result<(), AppError> {
     let product_id = "prod_seed_jeans_slim";
 
-    sqlx::query("INSERT OR IGNORE INTO product_options (id, product_id, title) VALUES (?, ?, ?)")
+    sqlx::query("INSERT INTO product_options (id, product_id, title) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING")
         .bind("opt_seed_jeans_size")
         .bind(product_id)
         .bind("Ukuran")
@@ -181,7 +182,7 @@ async fn seed_jeans_slim_variants(pool: &sqlx::SqlitePool) -> Result<(), AppErro
     for (i, val) in sizes.iter().enumerate() {
         let val_id = format!("optval_seed_jeans_s_{}", i);
         sqlx::query(
-            "INSERT OR IGNORE INTO product_option_values (id, option_id, value) VALUES (?, ?, ?)",
+            "INSERT INTO product_option_values (id, option_id, value) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING",
         )
         .bind(&val_id)
         .bind("opt_seed_jeans_size")
@@ -223,7 +224,7 @@ async fn seed_jeans_slim_variants(pool: &sqlx::SqlitePool) -> Result<(), AppErro
 
     for (rank, (var_id, var_title, sku, price, opt_val)) in variants.iter().enumerate() {
         sqlx::query(
-            "INSERT OR IGNORE INTO product_variants (id, product_id, title, sku, price, variant_rank) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO product_variants (id, product_id, title, sku, price, variant_rank) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (id) DO NOTHING",
         )
         .bind(var_id)
         .bind(product_id)
@@ -235,7 +236,7 @@ async fn seed_jeans_slim_variants(pool: &sqlx::SqlitePool) -> Result<(), AppErro
         .await?;
 
         let val_id = sqlx::query_as::<_, (String,)>(
-            "SELECT id FROM product_option_values WHERE option_id = 'opt_seed_jeans_size' AND value = ?",
+            "SELECT id FROM product_option_values WHERE option_id = 'opt_seed_jeans_size' AND value = $1",
         )
         .bind(opt_val)
         .fetch_optional(pool)
@@ -243,7 +244,7 @@ async fn seed_jeans_slim_variants(pool: &sqlx::SqlitePool) -> Result<(), AppErro
 
         if let Some((vid,)) = val_id {
             sqlx::query(
-                "INSERT OR IGNORE INTO product_variant_option (id, variant_id, option_value_id) VALUES (?, ?, ?)",
+                "INSERT INTO product_variant_option (id, variant_id, option_value_id) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING",
             )
             .bind(format!("pvo_seed_jeans_{}", rank))
             .bind(var_id)
@@ -256,10 +257,10 @@ async fn seed_jeans_slim_variants(pool: &sqlx::SqlitePool) -> Result<(), AppErro
     Ok(())
 }
 
-async fn seed_sneakers_variants(pool: &sqlx::SqlitePool) -> Result<(), AppError> {
+async fn seed_sneakers_variants(pool: &sqlx::PgPool) -> Result<(), AppError> {
     let product_id = "prod_seed_sneakers";
 
-    sqlx::query("INSERT OR IGNORE INTO product_options (id, product_id, title) VALUES (?, ?, ?)")
+    sqlx::query("INSERT INTO product_options (id, product_id, title) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING")
         .bind("opt_seed_sneakers_size")
         .bind(product_id)
         .bind("Ukuran")
@@ -270,7 +271,7 @@ async fn seed_sneakers_variants(pool: &sqlx::SqlitePool) -> Result<(), AppError>
     for (i, val) in sizes.iter().enumerate() {
         let val_id = format!("optval_seed_snkr_s_{}", i);
         sqlx::query(
-            "INSERT OR IGNORE INTO product_option_values (id, option_id, value) VALUES (?, ?, ?)",
+            "INSERT INTO product_option_values (id, option_id, value) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING",
         )
         .bind(&val_id)
         .bind("opt_seed_sneakers_size")
@@ -319,7 +320,7 @@ async fn seed_sneakers_variants(pool: &sqlx::SqlitePool) -> Result<(), AppError>
 
     for (rank, (var_id, var_title, sku, price, opt_val)) in variants.iter().enumerate() {
         sqlx::query(
-            "INSERT OR IGNORE INTO product_variants (id, product_id, title, sku, price, variant_rank) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO product_variants (id, product_id, title, sku, price, variant_rank) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (id) DO NOTHING",
         )
         .bind(var_id)
         .bind(product_id)
@@ -331,7 +332,7 @@ async fn seed_sneakers_variants(pool: &sqlx::SqlitePool) -> Result<(), AppError>
         .await?;
 
         let val_id = sqlx::query_as::<_, (String,)>(
-            "SELECT id FROM product_option_values WHERE option_id = 'opt_seed_sneakers_size' AND value = ?",
+            "SELECT id FROM product_option_values WHERE option_id = 'opt_seed_sneakers_size' AND value = $1",
         )
         .bind(opt_val)
         .fetch_optional(pool)
@@ -339,7 +340,7 @@ async fn seed_sneakers_variants(pool: &sqlx::SqlitePool) -> Result<(), AppError>
 
         if let Some((vid,)) = val_id {
             sqlx::query(
-                "INSERT OR IGNORE INTO product_variant_option (id, variant_id, option_value_id) VALUES (?, ?, ?)",
+                "INSERT INTO product_variant_option (id, variant_id, option_value_id) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING",
             )
             .bind(format!("pvo_seed_snkr_{}", rank))
             .bind(var_id)
@@ -352,10 +353,10 @@ async fn seed_sneakers_variants(pool: &sqlx::SqlitePool) -> Result<(), AppError>
     Ok(())
 }
 
-async fn seed_customer(pool: &sqlx::SqlitePool) -> Result<(), AppError> {
+async fn seed_customer(pool: &sqlx::PgPool) -> Result<(), AppError> {
     let id = "cus_seed_budi";
 
-    let exists: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM customers WHERE id = ?")
+    let exists: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM customers WHERE id = $1")
         .bind(id)
         .fetch_one(pool)
         .await?;
@@ -368,7 +369,7 @@ async fn seed_customer(pool: &sqlx::SqlitePool) -> Result<(), AppError> {
     sqlx::query(
         r#"
         INSERT INTO customers (id, first_name, last_name, email, phone, has_account)
-        VALUES (?, ?, ?, ?, ?, TRUE)
+        VALUES ($1, $2, $3, $4, $5, TRUE)
         "#,
     )
     .bind(id)
@@ -387,19 +388,49 @@ async fn seed_customer(pool: &sqlx::SqlitePool) -> Result<(), AppError> {
 mod tests {
     use super::*;
 
-    async fn setup_seed_db() -> sqlx::SqlitePool {
-        let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
-        sqlx::migrate!("./migrations/sqlite")
-            .run(&pool)
+    fn test_db_url() -> String {
+        std::env::var("DATABASE_URL")
+            .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/toko_test".to_string())
+    }
+
+    async fn setup_seed_db() -> sqlx::PgPool {
+        let pool = sqlx::PgPool::connect(&test_db_url()).await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        pool
+    }
+
+    async fn clean_seed_data(pool: &sqlx::PgPool) {
+        sqlx::query("DELETE FROM product_variant_option WHERE id LIKE 'pvo_seed_%'")
+            .execute(pool)
             .await
             .unwrap();
-        pool
+        sqlx::query("DELETE FROM product_option_values WHERE id LIKE 'optval_seed_%'")
+            .execute(pool)
+            .await
+            .unwrap();
+        sqlx::query("DELETE FROM product_options WHERE id LIKE 'opt_seed_%'")
+            .execute(pool)
+            .await
+            .unwrap();
+        sqlx::query("DELETE FROM product_variants WHERE id LIKE 'var_seed_%'")
+            .execute(pool)
+            .await
+            .unwrap();
+        sqlx::query("DELETE FROM products WHERE id LIKE 'prod_seed_%'")
+            .execute(pool)
+            .await
+            .unwrap();
+        sqlx::query("DELETE FROM customers WHERE id LIKE 'cus_seed_%'")
+            .execute(pool)
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
     async fn test_seed_creates_products_and_customer() {
         let pool = setup_seed_db().await;
-        let app_db = AppDb::Sqlite(pool.clone());
+        clean_seed_data(&pool).await;
+        let app_db = AppDb::Postgres(pool.clone());
         run_seed(&app_db).await.unwrap();
 
         let product_count: (i64,) =
@@ -427,7 +458,8 @@ mod tests {
     #[tokio::test]
     async fn test_seed_is_idempotent() {
         let pool = setup_seed_db().await;
-        let app_db = AppDb::Sqlite(pool.clone());
+        clean_seed_data(&pool).await;
+        let app_db = AppDb::Postgres(pool.clone());
 
         run_seed(&app_db).await.unwrap();
         run_seed(&app_db).await.unwrap();
@@ -487,7 +519,8 @@ mod tests {
     #[tokio::test]
     async fn test_seed_products_are_published() {
         let pool = setup_seed_db().await;
-        let app_db = AppDb::Sqlite(pool.clone());
+        clean_seed_data(&pool).await;
+        let app_db = AppDb::Postgres(pool.clone());
         run_seed(&app_db).await.unwrap();
 
         let draft_count: (i64,) = sqlx::query_as(
@@ -502,7 +535,8 @@ mod tests {
     #[tokio::test]
     async fn test_seed_variants_have_option_bindings() {
         let pool = setup_seed_db().await;
-        let app_db = AppDb::Sqlite(pool.clone());
+        clean_seed_data(&pool).await;
+        let app_db = AppDb::Postgres(pool.clone());
         run_seed(&app_db).await.unwrap();
 
         let binding_count: (i64,) = sqlx::query_as(
@@ -520,7 +554,8 @@ mod tests {
     #[tokio::test]
     async fn test_seed_customer_has_account() {
         let pool = setup_seed_db().await;
-        let app_db = AppDb::Sqlite(pool.clone());
+        clean_seed_data(&pool).await;
+        let app_db = AppDb::Postgres(pool.clone());
         run_seed(&app_db).await.unwrap();
 
         let has_account: (bool,) =
@@ -537,7 +572,8 @@ mod tests {
     #[tokio::test]
     async fn test_seed_variant_ranks_are_ordered() {
         let pool = setup_seed_db().await;
-        let app_db = AppDb::Sqlite(pool.clone());
+        clean_seed_data(&pool).await;
+        let app_db = AppDb::Postgres(pool.clone());
         run_seed(&app_db).await.unwrap();
 
         let ranks: Vec<(String, i64)> = sqlx::query_as(

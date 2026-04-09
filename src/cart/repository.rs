@@ -2,16 +2,16 @@ use super::models::*;
 use super::types::*;
 use crate::error::AppError;
 use crate::types::{generate_entity_id, metadata_to_json};
-use sqlx::SqlitePool;
+use sqlx::PgPool;
 
 #[derive(Clone)]
 pub struct CartRepository {
-    pool: SqlitePool,
+    pool: PgPool,
     default_currency_code: String,
 }
 
 impl CartRepository {
-    pub fn new(pool: SqlitePool, default_currency_code: String) -> Self {
+    pub fn new(pool: PgPool, default_currency_code: String) -> Self {
         Self {
             pool,
             default_currency_code,
@@ -28,7 +28,7 @@ impl CartRepository {
         let cart = sqlx::query_as::<_, Cart>(
             r#"
             INSERT INTO carts (id, customer_id, email, currency_code, metadata)
-            VALUES (?, ?, ?, ?, ?)
+            VALUES ($1, $2, $3, $4, $5)
             RETURNING *
             "#,
         )
@@ -44,15 +44,16 @@ impl CartRepository {
     }
 
     pub async fn get_cart(&self, cart_id: &str) -> Result<CartWithItems, AppError> {
-        let cart =
-            sqlx::query_as::<_, Cart>(r#"SELECT * FROM carts WHERE id = ? AND deleted_at IS NULL"#)
-                .bind(cart_id)
-                .fetch_optional(&self.pool)
-                .await?
-                .ok_or_else(|| AppError::NotFound("Cart not found".into()))?;
+        let cart = sqlx::query_as::<_, Cart>(
+            r#"SELECT * FROM carts WHERE id = $1 AND deleted_at IS NULL"#,
+        )
+        .bind(cart_id)
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Cart not found".into()))?;
 
         let items = sqlx::query_as::<_, CartLineItem>(
-            r#"SELECT * FROM cart_line_items WHERE cart_id = ? AND deleted_at IS NULL"#,
+            r#"SELECT * FROM cart_line_items WHERE cart_id = $1 AND deleted_at IS NULL"#,
         )
         .bind(cart_id)
         .fetch_all(&self.pool)
@@ -66,12 +67,13 @@ impl CartRepository {
         cart_id: &str,
         input: UpdateCartInput,
     ) -> Result<CartWithItems, AppError> {
-        let cart =
-            sqlx::query_as::<_, Cart>(r#"SELECT * FROM carts WHERE id = ? AND deleted_at IS NULL"#)
-                .bind(cart_id)
-                .fetch_optional(&self.pool)
-                .await?
-                .ok_or_else(|| AppError::NotFound("Cart not found".into()))?;
+        let cart = sqlx::query_as::<_, Cart>(
+            r#"SELECT * FROM carts WHERE id = $1 AND deleted_at IS NULL"#,
+        )
+        .bind(cart_id)
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Cart not found".into()))?;
 
         if cart.completed_at.is_some() {
             return Err(AppError::Conflict("Cannot update a completed cart".into()));
@@ -81,11 +83,11 @@ impl CartRepository {
             r#"
             UPDATE carts 
             SET 
-                email = COALESCE(?, email),
-                customer_id = COALESCE(?, customer_id),
-                metadata = COALESCE(?, metadata),
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = ? AND deleted_at IS NULL
+                email = COALESCE($1, email),
+                customer_id = COALESCE($2, customer_id),
+                metadata = COALESCE($3, metadata),
+                updated_at = now()
+            WHERE id = $4 AND deleted_at IS NULL
             "#,
         )
         .bind(&input.email)
@@ -105,7 +107,7 @@ impl CartRepository {
         let mut tx = self.pool.begin().await?;
 
         let cart =
-            sqlx::query_as::<_, Cart>("SELECT * FROM carts WHERE id = ? AND deleted_at IS NULL")
+            sqlx::query_as::<_, Cart>("SELECT * FROM carts WHERE id = $1 AND deleted_at IS NULL")
                 .bind(cart_id)
                 .fetch_optional(&mut *tx)
                 .await?
@@ -123,7 +125,7 @@ impl CartRepository {
                    p.id as product_id, p.title as product_title
             FROM product_variants v
             JOIN products p ON p.id = v.product_id
-            WHERE v.id = ? AND v.deleted_at IS NULL AND p.deleted_at IS NULL
+            WHERE v.id = $1 AND v.deleted_at IS NULL AND p.deleted_at IS NULL
             "#,
         )
         .bind(&input.variant_id)
@@ -145,8 +147,7 @@ impl CartRepository {
             "variant_sku": variant_sku
         });
 
-        // See if same variant already exists, if so update quantity
-        let existing = sqlx::query("SELECT id, quantity FROM cart_line_items WHERE cart_id = ? AND variant_id = ? AND deleted_at IS NULL")
+        let existing = sqlx::query("SELECT id, quantity FROM cart_line_items WHERE cart_id = $1 AND variant_id = $2 AND deleted_at IS NULL")
             .bind(cart_id)
             .bind(&input.variant_id)
             .fetch_optional(&mut *tx)
@@ -154,7 +155,7 @@ impl CartRepository {
 
         if let Some(ext) = existing {
             let ext_id: String = sqlx::Row::get(&ext, "id");
-            sqlx::query("UPDATE cart_line_items SET quantity = quantity + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+            sqlx::query("UPDATE cart_line_items SET quantity = quantity + $1, updated_at = now() WHERE id = $2")
                 .bind(input.quantity)
                 .bind(&ext_id)
                 .execute(&mut *tx)
@@ -163,7 +164,7 @@ impl CartRepository {
             sqlx::query(
                 r#"
                 INSERT INTO cart_line_items (id, cart_id, title, quantity, unit_price, variant_id, product_id, snapshot, metadata)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                 "#
             )
             .bind(&line_id)
@@ -194,7 +195,7 @@ impl CartRepository {
         }
 
         let cart =
-            sqlx::query_as::<_, Cart>("SELECT * FROM carts WHERE id = ? AND deleted_at IS NULL")
+            sqlx::query_as::<_, Cart>("SELECT * FROM carts WHERE id = $1 AND deleted_at IS NULL")
                 .bind(cart_id)
                 .fetch_optional(&self.pool)
                 .await?
@@ -209,10 +210,10 @@ impl CartRepository {
         sqlx::query(
             r#"
             UPDATE cart_line_items 
-            SET quantity = ?, 
-                metadata = COALESCE(?, metadata),
-                updated_at = CURRENT_TIMESTAMP 
-            WHERE id = ? AND cart_id = ? AND deleted_at IS NULL
+            SET quantity = $1, 
+                metadata = COALESCE($2, metadata),
+                updated_at = now() 
+            WHERE id = $3 AND cart_id = $4 AND deleted_at IS NULL
             "#,
         )
         .bind(input.quantity)
@@ -231,7 +232,7 @@ impl CartRepository {
         line_id: &str,
     ) -> Result<CartWithItems, AppError> {
         let cart =
-            sqlx::query_as::<_, Cart>("SELECT * FROM carts WHERE id = ? AND deleted_at IS NULL")
+            sqlx::query_as::<_, Cart>("SELECT * FROM carts WHERE id = $1 AND deleted_at IS NULL")
                 .bind(cart_id)
                 .fetch_optional(&self.pool)
                 .await?
@@ -244,7 +245,7 @@ impl CartRepository {
         }
 
         sqlx::query(
-            "UPDATE cart_line_items SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND cart_id = ? AND deleted_at IS NULL"
+            "UPDATE cart_line_items SET deleted_at = now() WHERE id = $1 AND cart_id = $2 AND deleted_at IS NULL"
         )
         .bind(line_id)
         .bind(cart_id)
@@ -256,7 +257,7 @@ impl CartRepository {
 
     pub async fn mark_completed(&self, cart_id: &str) -> Result<(), AppError> {
         let result = sqlx::query(
-            "UPDATE carts SET completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL AND completed_at IS NULL",
+            "UPDATE carts SET completed_at = now(), updated_at = now() WHERE id = $1 AND deleted_at IS NULL AND completed_at IS NULL",
         )
         .bind(cart_id)
         .execute(&self.pool)

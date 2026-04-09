@@ -25,10 +25,10 @@ fn request(method: Method, uri: &str, payload: &serde_json::Value) -> Request<Bo
     }
 }
 
-async fn create_cart_with_item(app: &axum::Router, pool: &sqlx::SqlitePool) -> String {
-    sqlx::query("INSERT OR IGNORE INTO products (id, title, handle, status) VALUES ('prod_1', 'Test Product', 'test', 'published')")
+async fn create_cart_with_item(app: &axum::Router, pool: &sqlx::PgPool) -> String {
+    sqlx::query("INSERT INTO products (id, title, handle, status) VALUES ('prod_1', 'Test Product', 'test', 'published') ON CONFLICT (id) DO NOTHING")
         .execute(pool).await.unwrap();
-    sqlx::query("INSERT OR IGNORE INTO product_variants (id, product_id, title, sku, price) VALUES ('var_1', 'prod_1', 'Small', 'TEST-S', 1000)")
+    sqlx::query("INSERT INTO product_variants (id, product_id, title, sku, price) VALUES ('var_1', 'prod_1', 'Small', 'TEST-S', 1000) ON CONFLICT (id) DO NOTHING")
         .execute(pool).await.unwrap();
 
     let res = app
@@ -62,7 +62,7 @@ async fn create_cart_with_item(app: &axum::Router, pool: &sqlx::SqlitePool) -> S
 #[tokio::test]
 async fn test_complete_cart_creates_order() {
     let (app, db) = common::setup_test_app().await;
-    let toko_rs::db::AppDb::Sqlite(pool) = db;
+    let toko_rs::db::AppDb::Postgres(pool) = db;
     let cart_id = create_cart_with_item(&app, &pool).await;
 
     let res = app
@@ -87,7 +87,7 @@ async fn test_complete_cart_creates_order() {
     assert_eq!(body["order"]["total"], 2000);
 
     let payment_count: (i64,) =
-        sqlx::query_as("SELECT COUNT(*) FROM payment_records WHERE order_id = ?")
+        sqlx::query_as("SELECT COUNT(*) FROM payment_records WHERE order_id = $1")
             .bind(body["order"]["id"].as_str().unwrap())
             .fetch_one(&pool)
             .await
@@ -132,7 +132,7 @@ async fn test_complete_empty_cart_rejected() {
 #[tokio::test]
 async fn test_complete_already_completed_cart_rejected() {
     let (app, db) = common::setup_test_app().await;
-    let toko_rs::db::AppDb::Sqlite(pool) = db;
+    let toko_rs::db::AppDb::Postgres(pool) = db;
     let cart_id = create_cart_with_item(&app, &pool).await;
 
     let res = app
@@ -160,7 +160,7 @@ async fn test_complete_already_completed_cart_rejected() {
 #[tokio::test]
 async fn test_display_id_increments() {
     let (app, db) = common::setup_test_app().await;
-    let toko_rs::db::AppDb::Sqlite(pool) = db;
+    let toko_rs::db::AppDb::Postgres(pool) = db;
 
     for i in 1..=3u64 {
         let cart_id = create_cart_with_item(&app, &pool).await;
@@ -183,7 +183,7 @@ async fn test_display_id_increments() {
 #[tokio::test]
 async fn test_get_order_by_id() {
     let (app, db) = common::setup_test_app().await;
-    let toko_rs::db::AppDb::Sqlite(pool) = db;
+    let toko_rs::db::AppDb::Postgres(pool) = db;
     let cart_id = create_cart_with_item(&app, &pool).await;
 
     let res = app
@@ -237,9 +237,9 @@ async fn test_get_order_not_found() {
 #[tokio::test]
 async fn test_list_orders_by_customer() {
     let (app, db) = common::setup_test_app().await;
-    let toko_rs::db::AppDb::Sqlite(pool) = db;
+    let toko_rs::db::AppDb::Postgres(pool) = db;
 
-    sqlx::query("INSERT INTO customers (id, first_name, email, has_account) VALUES ('cus_test1', 'Test', 'test@test.com', 1)")
+    sqlx::query("INSERT INTO customers (id, first_name, email, has_account) VALUES ('cus_test1', 'Test', 'test@test.com', TRUE)")
         .execute(&pool).await.unwrap();
     sqlx::query("INSERT INTO products (id, title, handle, status) VALUES ('prod_1', 'Test', 'test', 'published')")
         .execute(&pool).await.unwrap();
@@ -326,7 +326,7 @@ async fn test_complete_nonexistent_cart() {
 #[tokio::test]
 async fn test_order_and_payment_are_atomic() {
     let (app, db) = common::setup_test_app().await;
-    let toko_rs::db::AppDb::Sqlite(pool) = db;
+    let toko_rs::db::AppDb::Postgres(pool) = db;
     let cart_id = create_cart_with_item(&app, &pool).await;
 
     let res = app
@@ -342,7 +342,7 @@ async fn test_order_and_payment_are_atomic() {
     let order_id = body["order"]["id"].as_str().unwrap();
 
     let payment_count: (i64,) =
-        sqlx::query_as("SELECT COUNT(*) FROM payment_records WHERE order_id = ?")
+        sqlx::query_as("SELECT COUNT(*) FROM payment_records WHERE order_id = $1")
             .bind(order_id)
             .fetch_one(&pool)
             .await
@@ -352,7 +352,7 @@ async fn test_order_and_payment_are_atomic() {
         "payment record must exist after order creation"
     );
 
-    let order_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM orders WHERE id = ?")
+    let order_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM orders WHERE id = $1")
         .bind(order_id)
         .fetch_one(&pool)
         .await

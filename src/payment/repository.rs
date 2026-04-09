@@ -1,15 +1,15 @@
 use super::models::PaymentRecord;
 use crate::error::AppError;
 use crate::types::generate_entity_id;
-use sqlx::SqlitePool;
+use sqlx::PgPool;
 
 #[derive(Clone)]
 pub struct PaymentRepository {
-    pool: SqlitePool,
+    pool: PgPool,
 }
 
 impl PaymentRepository {
-    pub fn new(pool: SqlitePool) -> Self {
+    pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
 
@@ -23,7 +23,7 @@ impl PaymentRepository {
         sqlx::query_as::<_, PaymentRecord>(
             r#"
             INSERT INTO payment_records (id, order_id, amount, currency_code, status, provider)
-            VALUES (?, ?, ?, ?, 'pending', 'manual')
+            VALUES ($1, $2, $3, $4, 'pending', 'manual')
             RETURNING *
             "#,
         )
@@ -37,7 +37,7 @@ impl PaymentRepository {
     }
 
     pub async fn create_with_tx(
-        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
         order_id: &str,
         amount: i64,
         currency_code: &str,
@@ -46,7 +46,7 @@ impl PaymentRepository {
         sqlx::query_as::<_, PaymentRecord>(
             r#"
             INSERT INTO payment_records (id, order_id, amount, currency_code, status, provider)
-            VALUES (?, ?, ?, ?, 'pending', 'manual')
+            VALUES ($1, $2, $3, $4, 'pending', 'manual')
             RETURNING *
             "#,
         )
@@ -63,7 +63,7 @@ impl PaymentRepository {
         &self,
         order_id: &str,
     ) -> Result<Option<PaymentRecord>, AppError> {
-        sqlx::query_as::<_, PaymentRecord>("SELECT * FROM payment_records WHERE order_id = ?")
+        sqlx::query_as::<_, PaymentRecord>("SELECT * FROM payment_records WHERE order_id = $1")
             .bind(order_id)
             .fetch_optional(&self.pool)
             .await

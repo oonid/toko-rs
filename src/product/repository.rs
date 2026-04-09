@@ -2,15 +2,15 @@ use super::models::*;
 use super::types::*;
 use crate::error::AppError;
 use crate::types::{generate_entity_id, generate_handle, metadata_to_json, FindParams};
-use sqlx::SqlitePool;
+use sqlx::PgPool;
 
 #[derive(Clone)]
 pub struct ProductRepository {
-    pool: SqlitePool,
+    pool: PgPool,
 }
 
 impl ProductRepository {
-    pub fn new(pool: SqlitePool) -> Self {
+    pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
 
@@ -28,7 +28,7 @@ impl ProductRepository {
         let product = sqlx::query_as::<_, Product>(
             r#"
             INSERT INTO products (id, title, handle, description, status, thumbnail, metadata)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING *
             "#,
         )
@@ -49,7 +49,7 @@ impl ProductRepository {
                 option_titles.push(opt_input.title.clone());
                 let opt_id = generate_entity_id("opt");
                 sqlx::query_as::<_, ProductOption>(
-                    "INSERT INTO product_options (id, product_id, title) VALUES (?, ?, ?) RETURNING *",
+                    "INSERT INTO product_options (id, product_id, title) VALUES ($1, $2, $3) RETURNING *",
                 )
                 .bind(&opt_id)
                 .bind(&product_id)
@@ -60,7 +60,7 @@ impl ProductRepository {
                 for val_str in opt_input.values {
                     let val_id = generate_entity_id("optval");
                     sqlx::query_as::<_, ProductOptionValue>(
-                        "INSERT INTO product_option_values (id, option_id, value) VALUES (?, ?, ?) RETURNING *",
+                        "INSERT INTO product_option_values (id, option_id, value) VALUES ($1, $2, $3) RETURNING *",
                     )
                     .bind(&val_id)
                     .bind(&opt_id)
@@ -123,7 +123,7 @@ impl ProductRepository {
 
     pub async fn find_by_id(&self, id: &str) -> Result<ProductWithRelations, AppError> {
         let product = sqlx::query_as::<_, Product>(
-            "SELECT * FROM products WHERE id = ? AND deleted_at IS NULL",
+            "SELECT * FROM products WHERE id = $1 AND deleted_at IS NULL",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -135,7 +135,7 @@ impl ProductRepository {
 
     pub async fn find_published_by_id(&self, id: &str) -> Result<ProductWithRelations, AppError> {
         let product = sqlx::query_as::<_, Product>(
-            "SELECT * FROM products WHERE id = ? AND status = 'published' AND deleted_at IS NULL",
+            "SELECT * FROM products WHERE id = $1 AND status = 'published' AND deleted_at IS NULL",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -146,7 +146,7 @@ impl ProductRepository {
     }
 
     pub async fn find_by_id_any(&self, id: &str) -> Result<ProductWithRelations, AppError> {
-        let product = sqlx::query_as::<_, Product>("SELECT * FROM products WHERE id = ?")
+        let product = sqlx::query_as::<_, Product>("SELECT * FROM products WHERE id = $1")
             .bind(id)
             .fetch_optional(&self.pool)
             .await?
@@ -170,7 +170,7 @@ impl ProductRepository {
         let count: (i64,) = sqlx::query_as(&count_sql).fetch_one(&self.pool).await?;
 
         let query_sql = format!(
-            "SELECT * FROM products p {} ORDER BY {} LIMIT ? OFFSET ?",
+            "SELECT * FROM products p {} ORDER BY {} LIMIT $1 OFFSET $2",
             where_clause, order
         );
         let products = sqlx::query_as::<_, Product>(&query_sql)
@@ -199,7 +199,7 @@ impl ProductRepository {
 
         let order = params.order.as_deref().unwrap_or("created_at DESC");
         let query_sql = format!(
-            "SELECT * FROM products WHERE status = 'published' AND deleted_at IS NULL ORDER BY {} LIMIT ? OFFSET ?",
+            "SELECT * FROM products WHERE status = 'published' AND deleted_at IS NULL ORDER BY {} LIMIT $1 OFFSET $2",
             order
         );
         let products = sqlx::query_as::<_, Product>(&query_sql)
@@ -222,7 +222,7 @@ impl ProductRepository {
         input: &UpdateProductInput,
     ) -> Result<ProductWithRelations, AppError> {
         let _existing = sqlx::query_as::<_, Product>(
-            "SELECT * FROM products WHERE id = ? AND deleted_at IS NULL",
+            "SELECT * FROM products WHERE id = $1 AND deleted_at IS NULL",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -233,14 +233,14 @@ impl ProductRepository {
         sqlx::query(
             r#"
             UPDATE products SET
-                title = COALESCE(NULLIF(?, ''), title),
-                handle = COALESCE(NULLIF(?, ''), handle),
-                description = COALESCE(?, description),
-                status = COALESCE(NULLIF(?, ''), status),
-                thumbnail = COALESCE(?, thumbnail),
-                metadata = COALESCE(?, metadata),
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
+                title = COALESCE(NULLIF($1, ''), title),
+                handle = COALESCE(NULLIF($2, ''), handle),
+                description = COALESCE($3, description),
+                status = COALESCE(NULLIF($4, ''), status),
+                thumbnail = COALESCE($5, thumbnail),
+                metadata = COALESCE($6, metadata),
+                updated_at = now()
+            WHERE id = $7
             "#,
         )
         .bind(&input.title)
@@ -259,7 +259,7 @@ impl ProductRepository {
 
     pub async fn soft_delete(&self, id: &str) -> Result<String, AppError> {
         let result = sqlx::query(
-            "UPDATE products SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL",
+            "UPDATE products SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL",
         )
         .bind(id)
         .execute(&self.pool)
@@ -283,7 +283,7 @@ impl ProductRepository {
         let mut tx = self.pool.begin().await?;
 
         let _product = sqlx::query_as::<_, Product>(
-            "SELECT * FROM products WHERE id = ? AND deleted_at IS NULL",
+            "SELECT * FROM products WHERE id = $1 AND deleted_at IS NULL",
         )
         .bind(product_id)
         .fetch_optional(&mut *tx)
@@ -293,7 +293,7 @@ impl ProductRepository {
         })?;
 
         let rank: (i64,) = sqlx::query_as(
-            "SELECT COALESCE(MAX(variant_rank), -1) + 1 FROM product_variants WHERE product_id = ?",
+            "SELECT COALESCE(MAX(variant_rank), -1) + 1 FROM product_variants WHERE product_id = $1",
         )
         .bind(product_id)
         .fetch_one(&mut *tx)
@@ -307,7 +307,7 @@ impl ProductRepository {
     }
 
     async fn insert_variant_tx(
-        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
         product_id: &str,
         input: &CreateProductVariantInput,
         rank: i64,
@@ -316,7 +316,7 @@ impl ProductRepository {
         sqlx::query_as::<_, ProductVariant>(
             r#"
             INSERT INTO product_variants (id, product_id, title, sku, price, variant_rank, metadata)
-            VALUES (?, ?, ?, ?, CAST(? AS INTEGER), CAST(? AS INTEGER), ?)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING *
             "#,
         )
@@ -331,7 +331,7 @@ impl ProductRepository {
         .await
         .map_err(|e| {
             if let sqlx::Error::Database(ref db_err) = e {
-                if db_err.message().contains("UNIQUE") {
+                if db_err.code().as_deref() == Some("23505") {
                     return AppError::DuplicateError(format!(
                         "Variant with SKU '{}' already exists",
                         input.sku.as_deref().unwrap_or("")
@@ -343,7 +343,7 @@ impl ProductRepository {
     }
 
     async fn resolve_variant_options_tx(
-        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
         product_id: &str,
         variant_id: &str,
         options_map: &Option<std::collections::HashMap<String, String>>,
@@ -357,7 +357,7 @@ impl ProductRepository {
                 r#"
                 SELECT pov.* FROM product_option_values pov
                 JOIN product_options po ON pov.option_id = po.id
-                WHERE po.product_id = ? AND po.title = ? AND pov.value = ?
+                WHERE po.product_id = $1 AND po.title = $2 AND pov.value = $3
                 "#,
             )
             .bind(product_id)
@@ -374,7 +374,7 @@ impl ProductRepository {
             })?;
 
             sqlx::query(
-                "INSERT INTO product_variant_option (id, variant_id, option_value_id) VALUES (?, ?, ?)",
+                "INSERT INTO product_variant_option (id, variant_id, option_value_id) VALUES ($1, $2, $3)",
             )
             .bind(generate_entity_id("pvo"))
             .bind(variant_id)
@@ -388,7 +388,7 @@ impl ProductRepository {
 
     async fn load_relations(&self, product: Product) -> Result<ProductWithRelations, AppError> {
         let options = sqlx::query_as::<_, ProductOption>(
-            "SELECT * FROM product_options WHERE product_id = ?",
+            "SELECT * FROM product_options WHERE product_id = $1",
         )
         .bind(&product.id)
         .fetch_all(&self.pool)
@@ -397,7 +397,7 @@ impl ProductRepository {
         let mut options_with_values = Vec::with_capacity(options.len());
         for opt in &options {
             let values = sqlx::query_as::<_, ProductOptionValue>(
-                "SELECT * FROM product_option_values WHERE option_id = ?",
+                "SELECT * FROM product_option_values WHERE option_id = $1",
             )
             .bind(&opt.id)
             .fetch_all(&self.pool)
@@ -409,7 +409,7 @@ impl ProductRepository {
         }
 
         let variants = sqlx::query_as::<_, ProductVariant>(
-            "SELECT * FROM product_variants WHERE product_id = ?",
+            "SELECT * FROM product_variants WHERE product_id = $1",
         )
         .bind(&product.id)
         .fetch_all(&self.pool)
@@ -422,7 +422,7 @@ impl ProductRepository {
                 SELECT pov.id, pov.value, pov.option_id
                 FROM product_variant_option pvo
                 JOIN product_option_values pov ON pvo.option_value_id = pov.id
-                WHERE pvo.variant_id = ?
+                WHERE pvo.variant_id = $1
                 "#,
             )
             .bind(&v.id)
@@ -451,7 +451,7 @@ impl ProductRepository {
 
     fn map_unique_violation(e: sqlx::Error, entity: &str, handle: &str) -> AppError {
         if let sqlx::Error::Database(ref db_err) = e {
-            if db_err.message().contains("UNIQUE") {
+            if db_err.code().as_deref() == Some("23505") {
                 return AppError::DuplicateError(format!(
                     "{} with handle '{}' already exists",
                     entity, handle

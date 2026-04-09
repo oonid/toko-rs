@@ -322,3 +322,75 @@ Full audit documented in `docs/audit-p1-task12.md`. Fixes address Medusa API res
 - [x] 14f.4 Add `list_addresses` query + `wrap_with_addresses` helper in `src/customer/repository.rs` — reads from `customer_addresses` table, derives default address IDs
 - [x] 14f.5 Update all customer routes to return `CustomerWithAddresses` instead of bare `Customer`
 - [x] 14f.6 Strengthen contract test `test_contract_customer_response_shape` — asserts `addresses` array, `default_*_address_id` null
+
+## 15. PostgreSQL Driver Support
+
+Rewrite all repos, db.rs, and seed.rs to use `PgPool` natively (matching design.md Decision 2). All ~55 SQL queries rewritten with `$N` placeholders. SQLite placeholder translator deferred (tests now run against PG via Docker). PG migrations fixed: inline `UNIQUE WHERE` constraints → `CREATE UNIQUE INDEX ... WHERE`, `INTEGER` → `BIGINT` for i64 compatibility.
+
+### 15a. Infrastructure (db.rs, migrations)
+
+- [x] 15a.1 Rewrite `src/db.rs` — `AppDb::Postgres(PgPool)` variant, `PgPoolOptions`, migrations from `./migrations/`. Tests use `toko_test` database via `DATABASE_URL` env var.
+- [x] 15a.2 Fix PG migrations — inline `UNIQUE WHERE` constraints (invalid PG syntax) → `CREATE UNIQUE INDEX ... WHERE`. Affected: 001_products (handle, sku), 002_customers (email).
+- [x] 15a.3 Fix PG `INTEGER` → `BIGINT` for all `i64` columns (price, quantity, unit_price, amount, variant_rank, display_id, value) — PG `INTEGER` is INT4 (32-bit), Rust `i64` needs INT8.
+
+### 15b. Repository rewrite ($N placeholders)
+
+- [x] 15b.1 Rewrite `src/product/repository.rs` — all queries use `$1, $2, ...` placeholders. Transaction type: `sqlx::Transaction<'_, sqlx::Postgres>`. Unique violation detection: `db_err.code() == "23505"`.
+- [x] 15b.2 Rewrite `src/cart/repository.rs` — same pattern. `CURRENT_TIMESTAMP` → `now()`.
+- [x] 15b.3 Rewrite `src/customer/repository.rs` — same pattern.
+- [x] 15b.4 Rewrite `src/order/repository.rs` — same pattern. `_sequences UPDATE ... RETURNING` works on PG.
+- [x] 15b.5 Rewrite `src/payment/repository.rs` — `create_with_tx` transaction type `sqlx::Transaction<'_, sqlx::Postgres>`.
+
+### 15c. Seed rewrite (ON CONFLICT DO NOTHING)
+
+- [x] 15c.1 Rewrite `src/seed.rs` — all `INSERT OR IGNORE` → `INSERT ... ON CONFLICT (id) DO NOTHING`. All `?` → `$N`. `SqlitePool` → `PgPool`. Seed tests use `clean_seed_data()` helper.
+
+### 15d. Error mapping update
+
+- [x] 15d.1 Replace `map_sqlite_constraint()` with `map_db_constraint()` in `src/error.rs` — PG error codes: `23505` → DuplicateError, `23503` → NotFound, `23502` → InvalidData.
+
+### 15e. Test infrastructure + verification
+
+- [x] 15e.1 Update `tests/common/mod.rs` — `setup_test_app()` connects to `toko_test`, runs migrations, calls `clean_all_tables()` before each test for isolation.
+- [x] 15e.2 Update all test files — `AppDb::Sqlite` → `AppDb::Postgres`, `SqlitePool` → `PgPool`, `?` → `$1` in raw SQL, boolean `1` → `TRUE`, `INSERT OR IGNORE` → `ON CONFLICT DO NOTHING`.
+- [x] 15e.3 Run `DATABASE_URL=postgres://... cargo test -- --test-threads=1` — all 117 tests pass against PostgreSQL.
+- [x] 15e.4 Run `cargo clippy -- -D warnings` — zero warnings.
+
+## 16. E2E Integration Test Suite
+
+Full HTTP integration tests using `reqwest` against a live `axum::serve` instance. Tests run against SQLite in-memory by default; set `E2E_DATABASE_URL` env var to run against PostgreSQL (via Docker Compose or testcontainers). Covers all 21 endpoints with the full commerce cycle from `docs/seed-data.md` plus additional edge cases.
+
+### 16a. Test harness
+
+- [ ] 16a.1 Create `tests/e2e/mod.rs` — `setup_e2e_app(database_url)` function that creates DB pool, runs migrations, seeds data, binds to `127.0.0.1:0` (random port), starts `axum::serve` in background `tokio::spawn`, returns base URL + `reqwest::Client` + DB pool for assertions. Detects `E2E_DATABASE_URL` env var for PostgreSQL; falls back to SQLite in-memory.
+- [ ] 16a.2 Add `testcontainers` dependency to `Cargo.toml` `[dev-dependencies]` with `postgres` feature. Add helper to start PG container programmatically when `E2E_DATABASE_URL=testcontainers://` is set.
+- [ ] 16a.3 Update `docker-compose.yml` — add `toko_test` database init or use separate `docker-compose.test.yml` with ephemeral PG container.
+- [ ] 16a.4 Add Makefile targets: `test-e2e` (SQLite cycle), `test-e2e-pg` (both SQLite + PG cycles via Docker Compose), `test-e2e-tc` (both cycles via testcontainers).
+
+### 16b. Full commerce cycle test (happy path, 17 steps)
+
+- [ ] 16b.1 Implement `test_e2e_guest_checkout_flow` — covers steps 1-9 from seed-data.md: health check → browse products → product detail → create cart → add item → add second item (merge qty) → update quantity → verify totals → complete cart → verify order.
+- [ ] 16b.2 Implement `test_e2e_customer_lifecycle` — covers steps 10-17: register customer → get profile → update profile → create cart with customer_id → add item → complete → list orders → view order detail. Tests `X-Customer-Id` header auth.
+
+### 16c. Admin product CRUD tests
+
+- [ ] 16c.1 Implement `test_e2e_admin_product_crud` — create draft product → list all products (includes drafts) → get single product → publish → partial update → add variant → verify variant + options → soft-delete → verify 404 on store GET.
+- [ ] 16c.2 Implement `test_e2e_admin_product_with_variants` — create product with options + variants in one request → verify option coverage validation → verify calculated_price on variant → verify unique option combo constraint.
+
+### 16d. Cart manipulation tests
+
+- [ ] 16d.1 Implement `test_e2e_cart_update_and_delete` — create cart → add item → update cart email → delete line item → add same variant again (verify merge) → verify empty cart completion returns 400.
+- [ ] 16d.2 Implement `test_e2e_cart_completed_guards` — create cart → add item → complete → attempt update → 409 → attempt add item → 409 → attempt update line item → 409 → attempt delete line item → 409.
+
+### 16e. Error and validation tests
+
+- [ ] 16e.1 Implement `test_e2e_error_responses` — verify 422 for duplicate email, 404 for nonexistent cart/order/customer, 400 for invalid quantity, 401 for missing X-Customer-Id on protected endpoints, 422 for unknown fields, 422 for invalid product status, 422 for string metadata.
+- [ ] 16e.2 Implement `test_e2e_response_shapes` — verify contract shapes for product (images, is_giftcard, discountable, calculated_price), cart (22 total fields), order (22 total fields, payment_status, fulfillment_status, fulfillments, shipping_methods), customer (addresses array, default address IDs), line items (requires_shipping, is_discountable, is_tax_inclusive).
+
+### 16f. Verification
+
+- [ ] 16f.1 Run `test-e2e` (SQLite) — all E2E tests pass.
+- [ ] 16f.2 Run `test-e2e-pg` or `test-e2e-tc` (PostgreSQL) — same tests pass against real PostgreSQL.
+- [ ] 16f.3 Run `cargo test` — all existing 117 tests still pass (no regressions).
+- [ ] 16f.4 Run `cargo clippy -- -D warnings` — zero warnings.
+- [ ] 16f.5 Update `docs/audit-correction.md` with Task 16 changes.

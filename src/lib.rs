@@ -98,9 +98,14 @@ mod tests {
     use super::*;
     use tower::ServiceExt;
 
+    fn test_db_url() -> String {
+        std::env::var("DATABASE_URL")
+            .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/toko_test".to_string())
+    }
+
     #[tokio::test]
     async fn test_health_check_connected() {
-        let (state, _) = build_app_state("sqlite::memory:", "idr").await.unwrap();
+        let (state, _) = build_app_state(&test_db_url(), "idr").await.unwrap();
         let app = app_router(state);
         let req = axum::http::Request::builder()
             .uri("/health")
@@ -119,9 +124,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_app_state() {
-        let (state, db) = build_app_state("sqlite::memory:", "idr").await.unwrap();
+        let (state, db) = build_app_state(&test_db_url(), "idr").await.unwrap();
         assert!(db::ping(&db).await);
-        assert!(matches!(db, db::AppDb::Sqlite(_)));
+        assert!(matches!(db, db::AppDb::Postgres(_)));
         let _ = &state;
     }
 }

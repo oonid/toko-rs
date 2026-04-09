@@ -2,15 +2,15 @@ use super::models::{Customer, CustomerAddress};
 use super::types::*;
 use crate::error::AppError;
 use crate::types::{generate_entity_id, metadata_to_json};
-use sqlx::SqlitePool;
+use sqlx::PgPool;
 
 #[derive(Clone)]
 pub struct CustomerRepository {
-    pool: SqlitePool,
+    pool: PgPool,
 }
 
 impl CustomerRepository {
-    pub fn new(pool: SqlitePool) -> Self {
+    pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
 
@@ -22,7 +22,7 @@ impl CustomerRepository {
         let customer = sqlx::query_as::<_, Customer>(
             r#"
             INSERT INTO customers (id, first_name, last_name, email, phone, has_account, metadata)
-            VALUES (?, ?, ?, ?, ?, TRUE, ?)
+            VALUES ($1, $2, $3, $4, $5, TRUE, $6)
             RETURNING *
             "#,
         )
@@ -36,7 +36,7 @@ impl CustomerRepository {
         .await
         .map_err(|e| {
             if let sqlx::Error::Database(ref db_err) = e {
-                if db_err.message().contains("UNIQUE") {
+                if db_err.code().as_deref() == Some("23505") {
                     return AppError::DuplicateError(format!(
                         "Customer with email '{}' already exists",
                         input.email
@@ -51,7 +51,7 @@ impl CustomerRepository {
 
     pub async fn find_by_id(&self, id: &str) -> Result<CustomerWithAddresses, AppError> {
         let customer = sqlx::query_as::<_, Customer>(
-            "SELECT * FROM customers WHERE id = ? AND deleted_at IS NULL",
+            "SELECT * FROM customers WHERE id = $1 AND deleted_at IS NULL",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -71,12 +71,12 @@ impl CustomerRepository {
         sqlx::query(
             r#"
             UPDATE customers SET
-                first_name = COALESCE(?, first_name),
-                last_name = COALESCE(?, last_name),
-                phone = COALESCE(?, phone),
-                metadata = COALESCE(?, metadata),
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = ? AND deleted_at IS NULL
+                first_name = COALESCE($1, first_name),
+                last_name = COALESCE($2, last_name),
+                phone = COALESCE($3, phone),
+                metadata = COALESCE($4, metadata),
+                updated_at = now()
+            WHERE id = $5 AND deleted_at IS NULL
             "#,
         )
         .bind(&input.first_name)
@@ -95,7 +95,7 @@ impl CustomerRepository {
         customer_id: &str,
     ) -> Result<Vec<CustomerAddress>, AppError> {
         let addresses = sqlx::query_as::<_, CustomerAddress>(
-            "SELECT * FROM customer_addresses WHERE customer_id = ? AND deleted_at IS NULL ORDER BY created_at DESC",
+            "SELECT * FROM customer_addresses WHERE customer_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC",
         )
         .bind(customer_id)
         .fetch_all(&self.pool)

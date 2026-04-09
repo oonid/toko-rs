@@ -4,12 +4,12 @@ use crate::error::AppError;
 use crate::order::repository::OrderRepository;
 use crate::payment::repository::PaymentRepository;
 use crate::product::repository::ProductRepository;
-use sqlx::sqlite::SqlitePoolOptions;
-use sqlx::SqlitePool;
+use sqlx::postgres::PgPoolOptions;
+use sqlx::PgPool;
 
 #[derive(Clone)]
 pub enum AppDb {
-    Sqlite(SqlitePool),
+    Postgres(PgPool),
 }
 
 #[derive(Clone)]
@@ -25,8 +25,8 @@ pub async fn create_db(
     database_url: &str,
     default_currency_code: &str,
 ) -> Result<(AppDb, Repositories), AppError> {
-    let pool = SqlitePoolOptions::new()
-        .max_connections(1)
+    let pool = PgPoolOptions::new()
+        .max_connections(10)
         .connect(database_url)
         .await?;
 
@@ -38,13 +38,13 @@ pub async fn create_db(
         payment: PaymentRepository::new(pool.clone()),
     };
 
-    Ok((AppDb::Sqlite(pool), repos))
+    Ok((AppDb::Postgres(pool), repos))
 }
 
 pub async fn run_migrations(db: &AppDb) -> Result<(), AppError> {
     match db {
-        AppDb::Sqlite(pool) => {
-            sqlx::migrate!("./migrations/sqlite").run(pool).await?;
+        AppDb::Postgres(pool) => {
+            sqlx::migrate!("./migrations").run(pool).await?;
         }
     }
     Ok(())
@@ -52,7 +52,7 @@ pub async fn run_migrations(db: &AppDb) -> Result<(), AppError> {
 
 pub async fn ping(db: &AppDb) -> bool {
     match db {
-        AppDb::Sqlite(pool) => sqlx::query("SELECT 1").execute(pool).await.is_ok(),
+        AppDb::Postgres(pool) => sqlx::query("SELECT 1").execute(pool).await.is_ok(),
     }
 }
 
@@ -60,29 +60,37 @@ pub async fn ping(db: &AppDb) -> bool {
 mod tests {
     use super::*;
 
-    #[tokio::test]
-    async fn test_create_sqlite_db() {
-        let (app_db, _repos) = create_db("sqlite::memory:", "idr").await.unwrap();
-        assert!(matches!(app_db, AppDb::Sqlite(_)));
+    fn test_db_url() -> String {
+        std::env::var("DATABASE_URL")
+            .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/toko_test".to_string())
     }
 
     #[tokio::test]
-    async fn test_run_migrations_sqlite() {
-        let (app_db, _) = create_db("sqlite::memory:", "idr").await.unwrap();
+    async fn test_create_pg_db() {
+        let url = test_db_url();
+        let (app_db, _repos) = create_db(&url, "idr").await.unwrap();
+        assert!(matches!(app_db, AppDb::Postgres(_)));
+    }
+
+    #[tokio::test]
+    async fn test_run_migrations_pg() {
+        let url = test_db_url();
+        let (app_db, _) = create_db(&url, "idr").await.unwrap();
         run_migrations(&app_db).await.unwrap();
     }
 
     #[tokio::test]
-    async fn test_ping_sqlite() {
-        let (app_db, _) = create_db("sqlite::memory:", "idr").await.unwrap();
+    async fn test_ping_pg() {
+        let url = test_db_url();
+        let (app_db, _) = create_db(&url, "idr").await.unwrap();
         run_migrations(&app_db).await.unwrap();
         assert!(ping(&app_db).await);
     }
 
     #[tokio::test]
     async fn test_ping_after_pool_close() {
-        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-        let app_db = AppDb::Sqlite(pool);
+        let pool = PgPool::connect(&test_db_url()).await.unwrap();
+        let app_db = AppDb::Postgres(pool);
         assert!(ping(&app_db).await);
     }
 }

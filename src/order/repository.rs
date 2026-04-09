@@ -3,15 +3,15 @@ use super::types::*;
 use crate::error::AppError;
 use crate::payment::repository::PaymentRepository;
 use crate::types::generate_entity_id;
-use sqlx::SqlitePool;
+use sqlx::PgPool;
 
 #[derive(Clone)]
 pub struct OrderRepository {
-    pool: SqlitePool,
+    pool: PgPool,
 }
 
 impl OrderRepository {
-    pub fn new(pool: SqlitePool) -> Self {
+    pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
 
@@ -19,7 +19,7 @@ impl OrderRepository {
         let mut tx = self.pool.begin().await?;
 
         let cart = sqlx::query_as::<_, crate::cart::models::Cart>(
-            "SELECT * FROM carts WHERE id = ? AND deleted_at IS NULL",
+            "SELECT * FROM carts WHERE id = $1 AND deleted_at IS NULL",
         )
         .bind(cart_id)
         .fetch_optional(&mut *tx)
@@ -31,7 +31,7 @@ impl OrderRepository {
         }
 
         let cart_items = sqlx::query_as::<_, crate::cart::models::CartLineItem>(
-            "SELECT * FROM cart_line_items WHERE cart_id = ? AND deleted_at IS NULL",
+            "SELECT * FROM cart_line_items WHERE cart_id = $1 AND deleted_at IS NULL",
         )
         .bind(cart_id)
         .fetch_all(&mut *tx)
@@ -53,7 +53,7 @@ impl OrderRepository {
         let order = sqlx::query_as::<_, Order>(
             r#"
             INSERT INTO orders (id, display_id, customer_id, email, currency_code, status)
-            VALUES (?, ?, ?, ?, ?, 'pending')
+            VALUES ($1, $2, $3, $4, $5, 'pending')
             RETURNING *
             "#,
         )
@@ -72,7 +72,7 @@ impl OrderRepository {
             let item = sqlx::query_as::<_, OrderLineItem>(
                 r#"
                 INSERT INTO order_line_items (id, order_id, title, quantity, unit_price, variant_id, product_id, snapshot)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                 RETURNING *
                 "#,
             )
@@ -95,12 +95,10 @@ impl OrderRepository {
             PaymentRepository::create_with_tx(&mut tx, &order_id, item_total, &cart.currency_code)
                 .await?;
 
-        sqlx::query(
-            "UPDATE carts SET completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-        )
-        .bind(cart_id)
-        .execute(&mut *tx)
-        .await?;
+        sqlx::query("UPDATE carts SET completed_at = now(), updated_at = now() WHERE id = $1")
+            .bind(cart_id)
+            .execute(&mut *tx)
+            .await?;
 
         tx.commit().await?;
 
@@ -111,7 +109,7 @@ impl OrderRepository {
 
     fn map_display_id_conflict(e: sqlx::Error) -> AppError {
         if let sqlx::Error::Database(db_err) = &e {
-            if db_err.code().as_deref() == Some("2067") {
+            if db_err.code().as_deref() == Some("23505") {
                 return AppError::Conflict(
                     "Order creation failed due to concurrent request. Please retry.".into(),
                 );
@@ -122,7 +120,7 @@ impl OrderRepository {
 
     pub async fn find_by_id(&self, id: &str) -> Result<OrderWithItems, AppError> {
         let order =
-            sqlx::query_as::<_, Order>("SELECT * FROM orders WHERE id = ? AND deleted_at IS NULL")
+            sqlx::query_as::<_, Order>("SELECT * FROM orders WHERE id = $1 AND deleted_at IS NULL")
                 .bind(id)
                 .fetch_optional(&self.pool)
                 .await?
@@ -137,14 +135,14 @@ impl OrderRepository {
         params: &ListOrdersParams,
     ) -> Result<(Vec<OrderWithItems>, i64), AppError> {
         let count: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM orders WHERE customer_id = ? AND deleted_at IS NULL",
+            "SELECT COUNT(*) FROM orders WHERE customer_id = $1 AND deleted_at IS NULL",
         )
         .bind(customer_id)
         .fetch_one(&self.pool)
         .await?;
 
         let orders = sqlx::query_as::<_, Order>(
-            "SELECT * FROM orders WHERE customer_id = ? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            "SELECT * FROM orders WHERE customer_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT $2 OFFSET $3",
         )
         .bind(customer_id)
         .bind(params.capped_limit())
@@ -162,7 +160,7 @@ impl OrderRepository {
 
     async fn load_items(&self, order: Order) -> Result<OrderWithItems, AppError> {
         let items = sqlx::query_as::<_, OrderLineItem>(
-            "SELECT * FROM order_line_items WHERE order_id = ? AND deleted_at IS NULL",
+            "SELECT * FROM order_line_items WHERE order_id = $1 AND deleted_at IS NULL",
         )
         .bind(&order.id)
         .fetch_all(&self.pool)
