@@ -85,10 +85,17 @@ async fn test_complete_cart_creates_order() {
     assert_eq!(body["order"]["items"][0]["unit_price"], 1000);
     assert_eq!(body["order"]["item_total"], 2000);
     assert_eq!(body["order"]["total"], 2000);
-    assert_eq!(body["payment"]["status"], "pending");
-    assert_eq!(body["payment"]["amount"], 2000);
-    assert_eq!(body["payment"]["currency_code"], "idr");
-    assert!(body["payment"]["id"].as_str().unwrap().starts_with("pay_"));
+
+    let payment_count: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM payment_records WHERE order_id = ?")
+            .bind(body["order"]["id"].as_str().unwrap())
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        payment_count.0, 1,
+        "payment record must exist in database after order creation"
+    );
 }
 
 #[tokio::test]
@@ -117,9 +124,9 @@ async fn test_complete_empty_cart_rejected() {
         ))
         .await
         .unwrap();
-    assert_eq!(res.status(), StatusCode::CONFLICT);
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
     let body = body_json(res).await;
-    assert_eq!(body["type"], "unexpected_state");
+    assert_eq!(body["type"], "invalid_data");
 }
 
 #[tokio::test]
@@ -208,7 +215,6 @@ async fn test_get_order_by_id() {
     assert_eq!(body["order"]["id"], order_id);
     assert_eq!(body["order"]["items"].as_array().unwrap().len(), 1);
     assert_eq!(body["order"]["item_total"], 2000);
-    assert_eq!(body["payment"]["status"], "pending");
 }
 
 #[tokio::test]
@@ -355,7 +361,7 @@ async fn test_order_and_payment_are_atomic() {
 }
 
 #[tokio::test]
-async fn test_complete_cart_returns_conflict_error_format() {
+async fn test_complete_empty_cart_returns_bad_request_format() {
     let (app, _) = common::setup_test_app().await;
 
     let res = app
@@ -380,9 +386,9 @@ async fn test_complete_cart_returns_conflict_error_format() {
         ))
         .await
         .unwrap();
-    assert_eq!(res.status(), StatusCode::CONFLICT);
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
     let body = body_json(res).await;
-    assert_eq!(body["code"], "invalid_state_error");
-    assert_eq!(body["type"], "unexpected_state");
+    assert_eq!(body["code"], "invalid_request_error");
+    assert_eq!(body["type"], "invalid_data");
     assert!(body["message"].as_str().unwrap().contains("empty"));
 }

@@ -175,9 +175,12 @@ async fn test_cart_full_flow() {
         .await
         .unwrap();
     assert_eq!(res.status(), StatusCode::OK);
-    let cart_resp = body_json(res).await;
-    assert_eq!(cart_resp["cart"]["items"].as_array().unwrap().len(), 0);
-    assert_eq!(cart_resp["cart"]["item_total"], 0);
+    let del_resp = body_json(res).await;
+    assert_eq!(del_resp["id"], line_id);
+    assert_eq!(del_resp["object"], "line-item");
+    assert_eq!(del_resp["deleted"], true);
+    assert_eq!(del_resp["parent"]["items"].as_array().unwrap().len(), 0);
+    assert_eq!(del_resp["parent"]["item_total"], 0);
 
     // 6. GET cart still works
     let res = app
@@ -316,7 +319,6 @@ async fn test_cart_full_flow() {
     let complete_resp = body_json(res).await;
     assert_eq!(complete_resp["type"], "order");
     assert_eq!(complete_resp["order"]["display_id"], 1);
-    assert_eq!(complete_resp["payment"]["status"], "pending");
 }
 
 #[tokio::test]
@@ -436,7 +438,7 @@ async fn test_cart_update_completed_cart_rejected() {
         .unwrap();
     assert_eq!(res.status(), StatusCode::CONFLICT);
     let body = body_json(res).await;
-    assert_eq!(body["type"], "unexpected_state");
+    assert_eq!(body["type"], "conflict");
 }
 
 #[tokio::test]

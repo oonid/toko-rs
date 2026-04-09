@@ -15,10 +15,7 @@ impl OrderRepository {
         Self { pool }
     }
 
-    pub async fn create_from_cart(
-        &self,
-        cart_id: &str,
-    ) -> Result<(OrderWithItems, crate::payment::models::PaymentRecord), AppError> {
+    pub async fn create_from_cart(&self, cart_id: &str) -> Result<OrderWithItems, AppError> {
         let mut tx = self.pool.begin().await?;
 
         let cart = sqlx::query_as::<_, crate::cart::models::Cart>(
@@ -41,13 +38,16 @@ impl OrderRepository {
         .await?;
 
         if cart_items.is_empty() {
-            return Err(AppError::Conflict("Cannot complete an empty cart".into()));
+            return Err(AppError::InvalidData(
+                "Cannot complete an empty cart".into(),
+            ));
         }
 
-        let display_id: (i64,) =
-            sqlx::query_as("SELECT COALESCE(MAX(display_id), 0) + 1 FROM orders")
-                .fetch_one(&mut *tx)
-                .await?;
+        let display_id: (i64,) = sqlx::query_as(
+            "UPDATE _sequences SET value = value + 1 WHERE name = 'order_display_id' RETURNING value",
+        )
+        .fetch_one(&mut *tx)
+        .await?;
 
         let order_id = generate_entity_id("order");
         let order = sqlx::query_as::<_, Order>(
@@ -91,7 +91,7 @@ impl OrderRepository {
 
         let item_total: i64 = order_items.iter().map(|i| i.quantity * i.unit_price).sum();
 
-        let payment =
+        let _payment =
             PaymentRepository::create_with_tx(&mut tx, &order_id, item_total, &cart.currency_code)
                 .await?;
 
@@ -111,7 +111,7 @@ impl OrderRepository {
             total: item_total,
         };
 
-        Ok((order_with_items, payment))
+        Ok(order_with_items)
     }
 
     fn map_display_id_conflict(e: sqlx::Error) -> AppError {

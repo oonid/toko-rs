@@ -74,9 +74,14 @@ async fn store_add_line_item(
 async fn store_delete_line_item(
     State(state): State<AppState>,
     Path((id, line_id)): Path<(String, String)>,
-) -> Result<Json<CartResponse>, AppError> {
+) -> Result<Json<LineItemDeleteResponse>, AppError> {
     let cart = state.repos.cart.delete_line_item(&id, &line_id).await?;
-    Ok(Json(CartResponse { cart }))
+    Ok(Json(LineItemDeleteResponse {
+        id: line_id,
+        object: "line-item".to_string(),
+        deleted: true,
+        parent: cart,
+    }))
 }
 
 #[tracing::instrument(skip_all, fields(cart_id = %id, line_id = %line_id))]

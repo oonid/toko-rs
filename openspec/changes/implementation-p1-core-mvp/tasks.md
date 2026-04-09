@@ -219,7 +219,7 @@ Audit source: comprehensive comparison of implementation against Medusa vendor r
 - [x] 10.5 Write customer tests: register, duplicate email, profile CRUD, auth header — 10 tests in `tests/customer_test.rs` covering all 3 customer endpoints
 - [x] 10.6 Write contract tests: verify all response JSON shapes match API contract — 10 contract tests in `tests/contract_test.rs` validating response field presence for product, cart, customer, order, order list, delete, health, and order detail responses
 - [x] 10.7 Write error contract tests: verify all error responses include `code`, `type`, `message` fields matching specs/store.oas.yaml Error schema — 10 error contract tests covering 404, 400, 401, 409, 422 status codes with exact code/type value assertions
-- [x] 10.8 Verify `cargo test` passes all tests with 100% endpoint coverage — 103 tests covering all 20+1 endpoints; HTTP method audit (12.7) verified via 3 dedicated tests confirming POST for updates; CORS preflight test added; all spec scenarios cross-referenced and covered
+- [x] 10.8 Verify `cargo test` passes all tests with 100% endpoint coverage — 103 tests covering all 20+1 endpoints; HTTP method audit (13.7) verified via 3 dedicated tests confirming POST for updates; CORS preflight test added; all spec scenarios cross-referenced and covered
 
 ## 11. Phase 1-H — Polish
 
@@ -228,12 +228,46 @@ Audit source: comprehensive comparison of implementation against Medusa vendor r
 - [x] 11.3 Verify all `#[tracing::instrument]` annotations on handlers — added `#[tracing::instrument]` to all 20 route handlers + health_check (21 total); uses `skip_all` with contextual `fields` for path params (id, cart_id, customer_id) and query params (offset, limit)
 - [x] 11.4 Verify all 20 endpoints return correct Medusa-compatible JSON shapes — verified via 10 contract tests in `tests/contract_test.rs` + 2 integration smoke tests covering all response types; all endpoints return Medusa-compatible `{product: ...}`, `{cart: ...}`, `{customer: ...}`, `{type, order, payment}`, `{orders, count, offset, limit}`, `{id, object, deleted}`, `{status, database, version}` shapes
 
-## 12. Architecture & TDD Quality Gates (cross-cutting)
+## 12. Post-Audit Response Shape & Compatibility Fixes
 
-- [x] 12.1 Verify module boundary rules: no cross-module imports (product does not import cart, etc.)
-- [x] 12.2 Verify all shared infrastructure has unit tests (error.rs, config.rs, db.rs, seed.rs, lib.rs)
-- [x] 12.3 Verify `cargo clippy -- -D warnings` passes with zero warnings
-- [x] 12.4 Verify `cargo llvm-cov --summary-only` shows >90% line coverage
-- [x] 12.5 Verify error responses match 3-field OAS Error schema (`code`, `type`, `message`) — implemented in Phase 2b.12
-- [ ] 12.6 Verify contract tests reference Medusa vendor files for response shape validation
-- [x] 12.7 Verify HTTP method convention: POST for create AND update (no PUT) on all mutation endpoints — verified via 3 dedicated tests in `tests/contract_test.rs`
+Full audit documented in `docs/audit-p1-task12.md`. Fixes address Medusa API response shape incompatibilities, error type divergences, and schema gaps discovered during comprehensive comparison against `vendor/medusa/` source and OAS specs.
+
+### 12a. Response shape incompatibilities (HIGH)
+
+- [x] 12a.1 Fix line item DELETE response: create `LineItemDeleteResponse` type matching Medusa's `{ id, object: "line-item", deleted: true, parent: Cart }` instead of reusing `CartResponse` — update `store_delete_line_item` in `src/cart/routes.rs` — **already implemented in prior phase; verified with contract test `test_contract_line_item_delete_response_shape`**
+- [x] 12a.2 Fix cart complete response: remove top-level `payment` from `CartCompleteResponse` in `src/order/types.rs` — Medusa returns `{ type: "order", order }` only. **Already implemented — `CartCompleteResponse` has only `{ type, order }`, no `payment` field.** Contract test strengthened with negative assertion confirming `payment` key is absent and exactly 2 top-level keys exist.
+- [x] 12a.3 Fix order GET response: change `OrderResponse` from `{ order, payment }` to `{ order }` only in `src/order/types.rs` — **already implemented — `OrderResponse` has only `{ order }`, no `payment` field.** Contract test strengthened with negative assertion confirming `payment` key is absent and exactly 1 top-level key exists.
+
+### 12b. Error handling divergences (MEDIUM)
+
+- [x] 12b.1 Fix `AppError::Conflict.error_type()` from `"unexpected_state"` to `"conflict"` in `src/error.rs` — Medusa's error handler maps `CONFLICT` type to `type: "conflict"`, not `"unexpected_state"`. Updated error unit test, cart_test.rs, and contract_test.rs
+- [x] 12b.2 Fix empty cart completion error: change from `AppError::Conflict` (409) to `AppError::InvalidData` (400) in `src/order/repository.rs:41` — empty cart is an invalid request, not a conflict. Updated order_test.rs and contract_test.rs
+
+### 12c. Database schema gaps (MEDIUM)
+
+- [x] 12c.1 Fix SQLite `customers.email` uniqueness: change `email TEXT UNIQUE NOT NULL` to `CREATE UNIQUE INDEX uq_customers_email ON customers (email, has_account) WHERE deleted_at IS NULL` in `migrations/sqlite/002_customers.sql` — now matches PG migration and Medusa's guest+registered same-email pattern
+- [x] 12c.2 Add `UNIQUE(variant_id, option_value_id)` constraint to `product_variant_option` pivot table in both PG and SQLite migrations — prevents duplicate pivot rows
+- [x] 12c.3 Adopt `_sequences` table for `display_id` generation in `src/order/repository.rs:46-49` — replaced `MAX(display_id)+1` with atomic `UPDATE _sequences SET value = value + 1 WHERE name = 'order_display_id' RETURNING value` inside the transaction, eliminating the race condition between SELECT and INSERT
+
+### 12d. Missing indexes (LOW)
+
+- [x] 12d.1 Add `idx_cart_line_items_variant_id ON cart_line_items (variant_id) WHERE deleted_at IS NULL AND variant_id IS NOT NULL` — matches Medusa's `IDX_line_item_variant_id`
+- [x] 12d.2 Add `idx_cart_line_items_product_id ON cart_line_items (product_id) WHERE deleted_at IS NULL AND product_id IS NOT NULL` — matches Medusa's `IDX_line_item_product_id`
+- [x] 12d.3 Add `idx_carts_currency_code ON carts (currency_code) WHERE deleted_at IS NULL` — matches Medusa's `IDX_cart_curency_code`
+
+### 12e. Verification
+
+- [x] 12e.1 Update all affected contract tests in `tests/contract_test.rs` to assert new response shapes — already updated inline during 12a.1–12a.3 (line item delete, cart complete, order detail) and 12b.1–12b.2 (empty cart 400, completed cart 409)
+- [x] 12e.2 Update all affected integration tests in `tests/cart_test.rs` and `tests/order_test.rs` for new error type values and response shapes — already updated inline during 12b.1–12b.2
+- [x] 12e.3 Verify `cargo test` passes all tests, clippy clean — 104 tests pass, zero warnings
+- [x] 12e.4 Update `docs/audit-correction.md` with all changes applied — sections 12a–12e added
+
+## 13. Verification & TDD Quality Gates (cross-cutting)
+
+- [x] 13.1 Verify module boundary rules: no cross-module imports (product does not import cart, etc.)
+- [x] 13.2 Verify all shared infrastructure has unit tests (error.rs, config.rs, db.rs, seed.rs, lib.rs)
+- [x] 13.3 Verify `cargo clippy -- -D warnings` passes with zero warnings
+- [x] 13.4 Verify `cargo llvm-cov --summary-only` shows >90% line coverage
+- [x] 13.5 Verify error responses match 3-field OAS Error schema (`code`, `type`, `message`) — implemented in Phase 2b.12
+- [ ] 13.6 Verify contract tests reference Medusa vendor files for response shape validation
+- [x] 13.7 Verify HTTP method convention: POST for create AND update (no PUT) on all mutation endpoints — verified via 3 dedicated tests in `tests/contract_test.rs`

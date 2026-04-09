@@ -123,9 +123,6 @@ async fn test_full_browse_cart_checkout_flow() {
     assert_eq!(body["order"]["items"][0]["unit_price"], 75000);
     assert_eq!(body["order"]["item_total"], 150000);
     assert_eq!(body["order"]["total"], 150000);
-    assert_eq!(body["payment"]["status"], "pending");
-    assert_eq!(body["payment"]["amount"], 150000);
-    assert_eq!(body["payment"]["currency_code"], "idr");
 }
 
 #[tokio::test]
@@ -225,5 +222,4 @@ async fn test_customer_browse_order_history_flow() {
     let body = body_json(res).await;
     assert_eq!(body["order"]["id"], order_id);
     assert_eq!(body["order"]["items"][0]["unit_price"], 450000);
-    assert_eq!(body["payment"]["amount"], 450000);
 }

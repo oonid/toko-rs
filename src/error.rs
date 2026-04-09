@@ -55,7 +55,7 @@ impl AppError {
             AppError::DuplicateError(_) => "duplicate_error",
             AppError::Unauthorized(_) => "unauthorized",
             AppError::UnexpectedState(_) => "unexpected_state",
-            AppError::Conflict(_) => "unexpected_state",
+            AppError::Conflict(_) => "conflict",
             AppError::DatabaseError(_) => "database_error",
             AppError::MigrationError(_) => "database_error",
         }
@@ -167,7 +167,7 @@ mod tests {
         let body = into_body(resp).await;
         assert_eq!(body["_status"], 409);
         assert_eq!(body["code"], "invalid_state_error");
-        assert_eq!(body["type"], "unexpected_state");
+        assert_eq!(body["type"], "conflict");
         assert_eq!(body["message"], "Conflict: cart already completed");
     }
 

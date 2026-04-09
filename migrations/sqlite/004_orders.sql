@@ -1,10 +1,9 @@
--- Sequence table matching Medusa's DD-1 auto_increment ID 
 CREATE TABLE _sequences (
-  name TEXT PRIMARY KEY,
-  value INTEGER NOT NULL DEFAULT 0
+    name TEXT PRIMARY KEY,
+    value INTEGER NOT NULL DEFAULT 0
 );
-INSERT INTO _sequences (name, value) VALUES ('order_display_id', 0);
 
+INSERT INTO _sequences (name, value) VALUES ('order_display_id', 0);
 
 CREATE TABLE orders (
     id TEXT PRIMARY KEY,

@@ -38,3 +38,11 @@ pub struct UpdateLineItemInput {
 pub struct CartResponse {
     pub cart: super::models::CartWithItems,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LineItemDeleteResponse {
+    pub id: String,
+    pub object: String,
+    pub deleted: bool,
+    pub parent: super::models::CartWithItems,
+}

@@ -29,3 +29,6 @@ CREATE TABLE cart_line_items (
 
 CREATE INDEX idx_carts_customer_id ON carts (customer_id) WHERE deleted_at IS NULL;
 CREATE INDEX idx_cart_line_items_cart_id ON cart_line_items (cart_id) WHERE deleted_at IS NULL;
+CREATE INDEX idx_cart_line_items_variant_id ON cart_line_items (variant_id) WHERE deleted_at IS NULL AND variant_id IS NOT NULL;
+CREATE INDEX idx_cart_line_items_product_id ON cart_line_items (product_id) WHERE deleted_at IS NULL AND product_id IS NOT NULL;
+CREATE INDEX idx_carts_currency_code ON carts (currency_code) WHERE deleted_at IS NULL;

@@ -2,7 +2,7 @@ CREATE TABLE customers (
     id TEXT PRIMARY KEY,
     first_name TEXT,
     last_name TEXT,
-    email TEXT UNIQUE NOT NULL,
+    email TEXT NOT NULL,
     phone TEXT,
     has_account BOOLEAN NOT NULL DEFAULT FALSE,
     metadata JSON,
@@ -10,6 +10,8 @@ CREATE TABLE customers (
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted_at DATETIME
 );
+
+CREATE UNIQUE INDEX uq_customers_email ON customers (email, has_account) WHERE deleted_at IS NULL;
 
 CREATE TABLE customer_addresses (
     id TEXT PRIMARY KEY,

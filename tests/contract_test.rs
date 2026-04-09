@@ -160,6 +160,62 @@ async fn test_contract_delete_response_shape() {
 }
 
 #[tokio::test]
+async fn test_contract_line_item_delete_response_shape() {
+    let (app, db) = common::setup_test_app().await;
+    let toko_rs::db::AppDb::Sqlite(pool) = db;
+    sqlx::query(
+        "INSERT INTO products (id, title, handle, status) VALUES ('p1', 'T', 't', 'published')",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO product_variants (id, product_id, title, price) VALUES ('v1', 'p1', 'V', 500)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let cart = body_json(
+        app.clone()
+            .oneshot(request(Method::POST, "/store/carts", &json!({})))
+            .await
+            .unwrap(),
+    )
+    .await;
+    let cart_id = cart["cart"]["id"].as_str().unwrap();
+
+    let add_res = body_json(
+        app.clone()
+            .oneshot(request(
+                Method::POST,
+                &format!("/store/carts/{}/line-items", cart_id),
+                &json!({"variant_id": "v1", "quantity": 1}),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    let line_id = add_res["cart"]["items"][0]["id"].as_str().unwrap();
+
+    let res = app
+        .oneshot(request(
+            Method::DELETE,
+            &format!("/store/carts/{}/line-items/{}", cart_id, line_id),
+            &json!(null),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = body_json(res).await;
+    assert_has_fields(&body, &["id", "object", "deleted", "parent"]);
+    assert_eq!(body["object"], "line-item");
+    assert_eq!(body["deleted"], true);
+    assert_eq!(body["id"], line_id);
+    assert_has_fields(&body["parent"], &["id", "items", "item_total", "total"]);
+}
+
+#[tokio::test]
 async fn test_contract_cart_response_shape() {
     let (app, _) = common::setup_test_app().await;
     let res = app
@@ -254,7 +310,17 @@ async fn test_contract_order_complete_response_shape() {
         .unwrap();
     assert_eq!(res.status(), StatusCode::OK);
     let body = body_json(res).await;
-    assert_has_fields(&body, &["type", "order", "payment"]);
+    assert_has_fields(&body, &["type", "order"]);
+    let obj = body.as_object().unwrap();
+    assert_eq!(
+        obj.keys().count(),
+        2,
+        "cart complete response must have exactly 2 top-level fields: type, order"
+    );
+    assert!(
+        !obj.contains_key("payment"),
+        "cart complete response must NOT contain 'payment' (Medusa returns {{ type, order }} only)"
+    );
     assert_has_fields(
         &body["order"],
         &[
@@ -267,10 +333,6 @@ async fn test_contract_order_complete_response_shape() {
             "currency_code",
             "created_at",
         ],
-    );
-    assert_has_fields(
-        &body["payment"],
-        &["id", "amount", "currency_code", "status"],
     );
 }
 
@@ -334,7 +396,17 @@ async fn test_contract_order_detail_response_shape() {
         .unwrap();
     assert_eq!(res.status(), StatusCode::OK);
     let body = body_json(res).await;
-    assert_has_fields(&body, &["order", "payment"]);
+    assert_has_fields(&body, &["order"]);
+    let obj = body.as_object().unwrap();
+    assert_eq!(
+        obj.keys().count(),
+        1,
+        "order detail response must have exactly 1 top-level field: order"
+    );
+    assert!(
+        !obj.contains_key("payment"),
+        "order detail response must NOT contain 'payment' (Medusa StoreOrderResponse is {{ order }} only)"
+    );
     assert_has_fields(
         &body["order"],
         &["id", "display_id", "status", "items", "item_total", "total"],
@@ -563,7 +635,7 @@ async fn test_error_422_duplicate_customer_email() {
 }
 
 #[tokio::test]
-async fn test_error_409_empty_cart_completion() {
+async fn test_error_400_empty_cart_completion() {
     let (app, _) = common::setup_test_app().await;
     let cart = body_json(
         app.clone()
@@ -581,11 +653,11 @@ async fn test_error_409_empty_cart_completion() {
         ))
         .await
         .unwrap();
-    assert_eq!(res.status(), StatusCode::CONFLICT);
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
     assert_oas_error(
         &body_json(res).await,
-        "unexpected_state",
-        "invalid_state_error",
+        "invalid_data",
+        "invalid_request_error",
     );
 }
 
@@ -615,11 +687,7 @@ async fn test_error_409_completed_cart_update() {
         .await
         .unwrap();
     assert_eq!(res.status(), StatusCode::CONFLICT);
-    assert_oas_error(
-        &body_json(res).await,
-        "unexpected_state",
-        "invalid_state_error",
-    );
+    assert_oas_error(&body_json(res).await, "conflict", "invalid_state_error");
 }
 
 #[tokio::test]

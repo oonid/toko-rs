@@ -24,14 +24,13 @@ async fn store_complete_cart(
     State(state): State<AppState>,
     Path(cart_id): Path<String>,
 ) -> Result<(StatusCode, Json<CartCompleteResponse>), AppError> {
-    let (order_with_items, payment) = state.repos.order.create_from_cart(&cart_id).await?;
+    let order_with_items = state.repos.order.create_from_cart(&cart_id).await?;
 
     Ok((
         StatusCode::OK,
         Json(CartCompleteResponse {
             response_type: "order".to_string(),
             order: order_with_items,
-            payment,
         }),
     ))
 }
@@ -62,7 +61,6 @@ async fn store_get_order(
     Path(id): Path<String>,
 ) -> Result<Json<OrderResponse>, AppError> {
     let order = state.repos.order.find_by_id(&id).await?;
-    let payment = state.repos.payment.find_by_order_id(&id).await?;
 
-    Ok(Json(OrderResponse { order, payment }))
+    Ok(Json(OrderResponse { order }))
 }
