@@ -19,6 +19,7 @@ pub fn protected_router() -> Router<AppState> {
         .route("/store/orders/{id}", get(store_get_order))
 }
 
+#[tracing::instrument(skip_all, fields(cart_id = %cart_id))]
 async fn store_complete_cart(
     State(state): State<AppState>,
     Path(cart_id): Path<String>,
@@ -35,6 +36,7 @@ async fn store_complete_cart(
     ))
 }
 
+#[tracing::instrument(skip_all, fields(customer_id = %customer.id, offset = params.offset, limit = params.limit))]
 async fn store_list_orders(
     State(state): State<AppState>,
     axum::Extension(customer): axum::Extension<CustomerId>,
@@ -54,6 +56,7 @@ async fn store_list_orders(
     }))
 }
 
+#[tracing::instrument(skip_all, fields(id = %id))]
 async fn store_get_order(
     State(state): State<AppState>,
     Path(id): Path<String>,

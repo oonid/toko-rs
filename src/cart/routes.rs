@@ -21,6 +21,7 @@ pub fn router() -> Router<AppState> {
         )
 }
 
+#[tracing::instrument(skip_all)]
 async fn store_create_cart(
     State(state): State<AppState>,
     Json(payload): Json<CreateCartInput>,
@@ -34,6 +35,7 @@ async fn store_create_cart(
     }))
 }
 
+#[tracing::instrument(skip_all, fields(id = %id))]
 async fn store_get_cart(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -42,6 +44,7 @@ async fn store_get_cart(
     Ok(Json(CartResponse { cart }))
 }
 
+#[tracing::instrument(skip_all, fields(id = %id))]
 async fn store_update_cart(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -54,6 +57,7 @@ async fn store_update_cart(
     Ok(Json(CartResponse { cart }))
 }
 
+#[tracing::instrument(skip_all, fields(cart_id = %id))]
 async fn store_add_line_item(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -66,6 +70,7 @@ async fn store_add_line_item(
     Ok(Json(CartResponse { cart }))
 }
 
+#[tracing::instrument(skip_all, fields(cart_id = %id, line_id = %line_id))]
 async fn store_delete_line_item(
     State(state): State<AppState>,
     Path((id, line_id)): Path<(String, String)>,
@@ -74,6 +79,7 @@ async fn store_delete_line_item(
     Ok(Json(CartResponse { cart }))
 }
 
+#[tracing::instrument(skip_all, fields(cart_id = %id, line_id = %line_id))]
 async fn store_update_line_item(
     State(state): State<AppState>,
     Path((id, line_id)): Path<(String, String)>,

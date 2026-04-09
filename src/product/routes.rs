@@ -24,6 +24,7 @@ pub fn router() -> Router<AppState> {
         .route("/store/products/{id}", get(store_get_product))
 }
 
+#[tracing::instrument(skip_all)]
 async fn admin_create_product(
     State(state): State<AppState>,
     Json(payload): Json<CreateProductInput>,
@@ -37,6 +38,7 @@ async fn admin_create_product(
     Ok(Json(ProductResponse { product }))
 }
 
+#[tracing::instrument(skip_all, fields(offset = params.offset, limit = params.limit))]
 async fn admin_list_products(
     State(state): State<AppState>,
     Query(params): Query<FindParams>,
@@ -51,6 +53,7 @@ async fn admin_list_products(
     }))
 }
 
+#[tracing::instrument(skip_all, fields(id = %id))]
 async fn admin_get_product(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -59,6 +62,7 @@ async fn admin_get_product(
     Ok(Json(ProductResponse { product }))
 }
 
+#[tracing::instrument(skip_all, fields(id = %id))]
 async fn admin_update_product(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -68,6 +72,7 @@ async fn admin_update_product(
     Ok(Json(ProductResponse { product }))
 }
 
+#[tracing::instrument(skip_all, fields(id = %id))]
 async fn admin_delete_product(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -81,6 +86,7 @@ async fn admin_delete_product(
     }))
 }
 
+#[tracing::instrument(skip_all, fields(product_id = %id))]
 async fn admin_add_variant(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -94,6 +100,7 @@ async fn admin_add_variant(
     Ok(Json(ProductResponse { product }))
 }
 
+#[tracing::instrument(skip_all, fields(offset = params.offset, limit = params.limit))]
 async fn store_list_products(
     State(state): State<AppState>,
     Query(params): Query<FindParams>,
@@ -108,6 +115,7 @@ async fn store_list_products(
     }))
 }
 
+#[tracing::instrument(skip_all, fields(id = %id))]
 async fn store_get_product(
     State(state): State<AppState>,
     Path(id): Path<String>,

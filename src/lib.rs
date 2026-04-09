@@ -51,6 +51,7 @@ pub async fn build_app_state(
     Ok((state, app_db))
 }
 
+#[tracing::instrument(skip_all)]
 async fn health_check(
     axum::extract::State(state): axum::extract::State<AppState>,
 ) -> axum::Json<serde_json::Value> {

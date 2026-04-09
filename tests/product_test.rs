@@ -472,3 +472,23 @@ async fn test_admin_create_product_reuse_handle_after_soft_delete() {
     let body = body_json(resp).await;
     assert!(body["product"]["id"].as_str().unwrap().starts_with("prod_"));
 }
+
+#[tokio::test]
+async fn test_admin_add_variant_duplicate_sku() {
+    let (app, _) = common::setup_test_app().await;
+    let created = create_sample_product(&app).await;
+    let id = created["product"]["id"].as_str().unwrap();
+    let payload = json!({"title": "Dupe SKU", "sku": "TS-S", "price": 2500});
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(&format!("/admin/products/{}/variants", id))
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let body = body_json(resp).await;
+    assert_eq!(body["type"], "duplicate_error");
+    assert_eq!(body["code"], "invalid_request_error");
+    assert!(body["message"].as_str().unwrap().contains("TS-S"));
+}

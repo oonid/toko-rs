@@ -43,6 +43,7 @@ pub async fn auth_customer_id(
     Ok(next.run(req).await)
 }
 
+#[tracing::instrument(skip_all)]
 async fn store_register(
     State(state): State<AppState>,
     Json(payload): Json<CreateCustomerInput>,
@@ -55,6 +56,7 @@ async fn store_register(
     Ok((StatusCode::OK, Json(CustomerResponse { customer })))
 }
 
+#[tracing::instrument(skip_all, fields(customer_id = %cid.id))]
 async fn store_get_me(
     State(state): State<AppState>,
     axum::extract::Extension(cid): axum::extract::Extension<CustomerId>,
@@ -63,6 +65,7 @@ async fn store_get_me(
     Ok(Json(CustomerResponse { customer }))
 }
 
+#[tracing::instrument(skip_all, fields(customer_id = %cid.id))]
 async fn store_update_me(
     State(state): State<AppState>,
     axum::extract::Extension(cid): axum::extract::Extension<CustomerId>,
