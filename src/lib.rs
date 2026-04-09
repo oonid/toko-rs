@@ -1,6 +1,8 @@
+use axum::http::header::{AUTHORIZATION, CONTENT_TYPE};
+use axum::http::Method;
 use axum::Router;
 use std::sync::Arc;
-use tower_http::cors::CorsLayer;
+use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::trace::TraceLayer;
 
 pub mod cart;
@@ -21,7 +23,28 @@ pub struct AppState {
     pub repos: Arc<db::Repositories>,
 }
 
+fn build_cors_layer(origins: &str) -> CorsLayer {
+    let allow_origin = if origins == "*" {
+        AllowOrigin::any()
+    } else {
+        let parsed: Vec<_> = origins
+            .split(',')
+            .filter_map(|s| s.trim().parse().ok())
+            .collect();
+        AllowOrigin::list(parsed)
+    };
+
+    CorsLayer::new()
+        .allow_origin(allow_origin)
+        .allow_methods([Method::GET, Method::POST, Method::DELETE, Method::OPTIONS])
+        .allow_headers([CONTENT_TYPE, AUTHORIZATION])
+}
+
 pub fn app_router(state: AppState) -> Router {
+    app_router_with_cors(state, "*")
+}
+
+pub fn app_router_with_cors(state: AppState, cors_origins: &str) -> Router {
     let order_protected = order::routes::protected_router().layer(axum::middleware::from_fn(
         customer::routes::auth_customer_id,
     ));
@@ -34,7 +57,7 @@ pub fn app_router(state: AppState) -> Router {
         .merge(order_protected)
         .route("/health", axum::routing::get(health_check))
         .layer(TraceLayer::new_for_http())
-        .layer(CorsLayer::permissive())
+        .layer(build_cors_layer(cors_origins))
         .with_state(state)
 }
 

@@ -104,12 +104,7 @@ impl OrderRepository {
 
         tx.commit().await?;
 
-        let order_with_items = OrderWithItems {
-            order,
-            items: order_items,
-            item_total,
-            total: item_total,
-        };
+        let order_with_items = OrderWithItems::from_items(order, order_items);
 
         Ok(order_with_items)
     }
@@ -152,7 +147,7 @@ impl OrderRepository {
             "SELECT * FROM orders WHERE customer_id = ? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT ? OFFSET ?",
         )
         .bind(customer_id)
-        .bind(params.limit)
+        .bind(params.capped_limit())
         .bind(params.offset)
         .fetch_all(&self.pool)
         .await?;
@@ -173,13 +168,6 @@ impl OrderRepository {
         .fetch_all(&self.pool)
         .await?;
 
-        let item_total: i64 = items.iter().map(|i| i.quantity * i.unit_price).sum();
-
-        Ok(OrderWithItems {
-            order,
-            items,
-            item_total,
-            total: item_total,
-        })
+        Ok(OrderWithItems::from_items(order, items))
     }
 }

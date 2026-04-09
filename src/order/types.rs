@@ -24,9 +24,16 @@ pub struct CartCompleteResponse {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ListOrdersParams {
     #[serde(default)]
     pub offset: i64,
     #[serde(default = "types::default_limit")]
     pub limit: i64,
+}
+
+impl ListOrdersParams {
+    pub fn capped_limit(&self) -> i64 {
+        self.limit.min(100)
+    }
 }

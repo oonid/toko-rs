@@ -4,17 +4,39 @@ use validator::Validate;
 
 use super::models::ProductWithRelations;
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProductStatus {
+    #[default]
+    Draft,
+    Proposed,
+    Published,
+    Rejected,
+}
+
+impl ProductStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Draft => "draft",
+            Self::Proposed => "proposed",
+            Self::Published => "published",
+            Self::Rejected => "rejected",
+        }
+    }
+}
+
 // --- API Request Inputs ---
 
 #[derive(Debug, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
 pub struct CreateProductInput {
     #[validate(length(min = 1, message = "Title cannot be empty"))]
     pub title: String,
     pub handle: Option<String>,
     pub description: Option<String>,
-    pub status: Option<String>, // 'draft' by default
+    pub status: Option<ProductStatus>,
     pub thumbnail: Option<String>,
-    pub metadata: Option<serde_json::Value>,
+    pub metadata: Option<HashMap<String, serde_json::Value>>,
     #[validate(nested)]
     pub options: Option<Vec<CreateProductOptionInput>>,
     #[validate(nested)]
@@ -22,6 +44,7 @@ pub struct CreateProductInput {
 }
 
 #[derive(Debug, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
 pub struct CreateProductOptionInput {
     #[validate(length(min = 1, message = "Option title cannot be empty"))]
     pub title: String,
@@ -29,25 +52,26 @@ pub struct CreateProductOptionInput {
 }
 
 #[derive(Debug, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
 pub struct CreateProductVariantInput {
     #[validate(length(min = 1, message = "Variant title cannot be empty"))]
     pub title: String,
     pub sku: Option<String>,
     #[validate(range(min = 0, message = "Price cannot be negative"))]
     pub price: i64,
-    // Maps Option Title -> Option Value (e.g. "Size" -> "S")
     pub options: Option<HashMap<String, String>>,
-    pub metadata: Option<serde_json::Value>,
+    pub metadata: Option<HashMap<String, serde_json::Value>>,
 }
 
 #[derive(Debug, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
 pub struct UpdateProductInput {
     pub title: Option<String>,
     pub handle: Option<String>,
     pub description: Option<String>,
-    pub status: Option<String>,
+    pub status: Option<ProductStatus>,
     pub thumbnail: Option<String>,
-    pub metadata: Option<serde_json::Value>,
+    pub metadata: Option<HashMap<String, serde_json::Value>>,
 }
 
 // --- API Responses ---

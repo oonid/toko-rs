@@ -51,7 +51,7 @@ async fn store_list_orders(
         orders,
         count,
         offset: params.offset,
-        limit: params.limit,
+        limit: params.capped_limit(),
     }))
 }
 

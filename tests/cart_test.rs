@@ -480,6 +480,106 @@ async fn test_cart_add_item_to_completed_cart_rejected() {
 }
 
 #[tokio::test]
+async fn test_cart_update_line_item_on_completed_cart_rejected() {
+    let (app, db) = common::setup_test_app().await;
+    let toko_rs::db::AppDb::Sqlite(pool) = db;
+    seed_in_pool(&pool).await;
+
+    let cart = body_json(
+        app.clone()
+            .oneshot(request(
+                Method::POST,
+                "/store/carts",
+                &json!({"currency_code": "usd"}),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    let cart_id = cart["cart"]["id"].as_str().unwrap();
+
+    let add_res = body_json(
+        app.clone()
+            .oneshot(request(
+                Method::POST,
+                &format!("/store/carts/{}/line-items", cart_id),
+                &json!({"variant_id": "var_1", "quantity": 2}),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    let line_id = add_res["cart"]["items"][0]["id"].as_str().unwrap();
+
+    sqlx::query("UPDATE carts SET completed_at = CURRENT_TIMESTAMP WHERE id = ?")
+        .bind(cart_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let res = app
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/line-items/{}", cart_id, line_id),
+            &json!({"quantity": 5}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::CONFLICT);
+    assert_eq!(body_json(res).await["type"], "conflict");
+}
+
+#[tokio::test]
+async fn test_cart_delete_line_item_on_completed_cart_rejected() {
+    let (app, db) = common::setup_test_app().await;
+    let toko_rs::db::AppDb::Sqlite(pool) = db;
+    seed_in_pool(&pool).await;
+
+    let cart = body_json(
+        app.clone()
+            .oneshot(request(
+                Method::POST,
+                "/store/carts",
+                &json!({"currency_code": "usd"}),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    let cart_id = cart["cart"]["id"].as_str().unwrap();
+
+    let add_res = body_json(
+        app.clone()
+            .oneshot(request(
+                Method::POST,
+                &format!("/store/carts/{}/line-items", cart_id),
+                &json!({"variant_id": "var_1", "quantity": 1}),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    let line_id = add_res["cart"]["items"][0]["id"].as_str().unwrap();
+
+    sqlx::query("UPDATE carts SET completed_at = CURRENT_TIMESTAMP WHERE id = ?")
+        .bind(cart_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let res = app
+        .oneshot(request(
+            Method::DELETE,
+            &format!("/store/carts/{}/line-items/{}", cart_id, line_id),
+            &json!(null),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::CONFLICT);
+    assert_eq!(body_json(res).await["type"], "conflict");
+}
+
+#[tokio::test]
 async fn test_cart_get_response_format() {
     let (app, db) = common::setup_test_app().await;
     let toko_rs::db::AppDb::Sqlite(pool) = db;

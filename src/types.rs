@@ -1,16 +1,20 @@
 use serde::Deserialize;
+use std::collections::HashMap;
 use ulid::Ulid;
 
-/// Generates an entity ID using ULID and an optional prefix.
-/// Example: `prod_01ARZ3NDEKTSV4RRFFQ69G5FAV`
 pub fn generate_entity_id(prefix: &str) -> String {
     let id = Ulid::new().to_string();
     format!("{}_{}", prefix, id)
 }
 
-/// Generates a URL-safe handle from a title.
 pub fn generate_handle(title: &str) -> String {
     slug::slugify(title)
+}
+
+pub fn metadata_to_json(
+    m: Option<HashMap<String, serde_json::Value>>,
+) -> Option<sqlx::types::Json<serde_json::Value>> {
+    m.map(|map| sqlx::types::Json(serde_json::to_value(map).unwrap()))
 }
 
 #[derive(Debug, Deserialize)]
@@ -22,6 +26,12 @@ pub struct FindParams {
     pub order: Option<String>,
     pub fields: Option<String>,
     pub with_deleted: Option<bool>,
+}
+
+impl FindParams {
+    pub fn capped_limit(&self) -> i64 {
+        self.limit.min(100)
+    }
 }
 
 pub fn default_limit() -> i64 {

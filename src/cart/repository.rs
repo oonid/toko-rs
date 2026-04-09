@@ -1,7 +1,7 @@
 use super::models::*;
 use super::types::*;
 use crate::error::AppError;
-use crate::types::generate_entity_id;
+use crate::types::{generate_entity_id, metadata_to_json};
 use sqlx::SqlitePool;
 
 #[derive(Clone)]
@@ -36,16 +36,11 @@ impl CartRepository {
         .bind(&input.customer_id)
         .bind(&input.email)
         .bind(&currency)
-        .bind(input.metadata.clone().map(sqlx::types::Json))
+        .bind(metadata_to_json(input.metadata))
         .fetch_one(&self.pool)
         .await?;
 
-        Ok(CartWithItems {
-            cart,
-            items: vec![],
-            item_total: 0,
-            total: 0,
-        })
+        Ok(CartWithItems::from_items(cart, vec![]))
     }
 
     pub async fn get_cart(&self, cart_id: &str) -> Result<CartWithItems, AppError> {
@@ -63,15 +58,7 @@ impl CartRepository {
         .fetch_all(&self.pool)
         .await?;
 
-        let item_total = items.iter().map(|i| i.quantity * i.unit_price).sum();
-        let total = item_total;
-
-        Ok(CartWithItems {
-            cart,
-            items,
-            item_total,
-            total,
-        })
+        Ok(CartWithItems::from_items(cart, items))
     }
 
     pub async fn update_cart(
@@ -103,7 +90,7 @@ impl CartRepository {
         )
         .bind(&input.email)
         .bind(&input.customer_id)
-        .bind(input.metadata.map(sqlx::types::Json))
+        .bind(metadata_to_json(input.metadata))
         .bind(cart_id)
         .execute(&self.pool)
         .await?;
@@ -187,7 +174,7 @@ impl CartRepository {
             .bind(&variant_id)
             .bind(&product_id)
             .bind(sqlx::types::Json(snapshot))
-            .bind(input.metadata.map(sqlx::types::Json))
+            .bind(metadata_to_json(input.metadata))
             .execute(&mut *tx)
             .await?;
         }
@@ -206,6 +193,19 @@ impl CartRepository {
             return self.delete_line_item(cart_id, line_id).await;
         }
 
+        let cart =
+            sqlx::query_as::<_, Cart>("SELECT * FROM carts WHERE id = ? AND deleted_at IS NULL")
+                .bind(cart_id)
+                .fetch_optional(&self.pool)
+                .await?
+                .ok_or_else(|| AppError::NotFound("Cart not found".into()))?;
+
+        if cart.completed_at.is_some() {
+            return Err(AppError::Conflict(
+                "Cannot update items in a completed cart".into(),
+            ));
+        }
+
         sqlx::query(
             r#"
             UPDATE cart_line_items 
@@ -216,7 +216,7 @@ impl CartRepository {
             "#,
         )
         .bind(input.quantity)
-        .bind(input.metadata.map(sqlx::types::Json))
+        .bind(metadata_to_json(input.metadata))
         .bind(line_id)
         .bind(cart_id)
         .execute(&self.pool)
@@ -230,6 +230,19 @@ impl CartRepository {
         cart_id: &str,
         line_id: &str,
     ) -> Result<CartWithItems, AppError> {
+        let cart =
+            sqlx::query_as::<_, Cart>("SELECT * FROM carts WHERE id = ? AND deleted_at IS NULL")
+                .bind(cart_id)
+                .fetch_optional(&self.pool)
+                .await?
+                .ok_or_else(|| AppError::NotFound("Cart not found".into()))?;
+
+        if cart.completed_at.is_some() {
+            return Err(AppError::Conflict(
+                "Cannot delete items from a completed cart".into(),
+            ));
+        }
+
         sqlx::query(
             "UPDATE cart_line_items SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND cart_id = ? AND deleted_at IS NULL"
         )

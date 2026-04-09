@@ -1,7 +1,7 @@
 use super::models::*;
 use super::types::*;
 use crate::error::AppError;
-use crate::types::{generate_entity_id, generate_handle, FindParams};
+use crate::types::{generate_entity_id, generate_handle, metadata_to_json, FindParams};
 use sqlx::SqlitePool;
 
 #[derive(Clone)]
@@ -36,15 +36,17 @@ impl ProductRepository {
         .bind(&input.title)
         .bind(&handle)
         .bind(&input.description)
-        .bind(input.status.as_deref().unwrap_or("draft"))
+        .bind(input.status.as_ref().map(|s| s.as_str()).unwrap_or("draft"))
         .bind(&input.thumbnail)
-        .bind(input.metadata.clone().map(sqlx::types::Json))
+        .bind(metadata_to_json(input.metadata.clone()))
         .fetch_one(&mut *tx)
         .await
         .map_err(|e| Self::map_unique_violation(e, "Product", &handle))?;
 
+        let mut option_titles: Vec<String> = Vec::new();
         if let Some(opts) = input.options {
             for opt_input in opts {
+                option_titles.push(opt_input.title.clone());
                 let opt_id = generate_entity_id("opt");
                 sqlx::query_as::<_, ProductOption>(
                     "INSERT INTO product_options (id, product_id, title) VALUES (?, ?, ?) RETURNING *",
@@ -70,12 +72,44 @@ impl ProductRepository {
         }
 
         if let Some(vars) = input.variants {
+            if !option_titles.is_empty() {
+                let mut seen_combos: std::collections::HashSet<Vec<(String, String)>> =
+                    std::collections::HashSet::new();
+                for var_input in &vars {
+                    if let Some(ref opts) = var_input.options {
+                        let mut combo: Vec<(String, String)> =
+                            opts.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+                        combo.sort_by(|a, b| a.0.cmp(&b.0));
+                        if !seen_combos.insert(combo.clone()) {
+                            return Err(AppError::InvalidData(format!(
+                                "Duplicate option combination for variant '{}'",
+                                var_input.title
+                            )));
+                        }
+                    }
+                }
+            }
+
             for (rank, var_input) in vars.into_iter().enumerate() {
-                Self::insert_variant_tx(&mut tx, &product_id, &var_input, rank as i64).await?;
+                if !option_titles.is_empty() {
+                    if let Some(ref opts) = var_input.options {
+                        for opt_title in &option_titles {
+                            if !opts.contains_key(opt_title) {
+                                return Err(AppError::InvalidData(format!(
+                                    "Variant '{}' is missing option '{}'",
+                                    var_input.title, opt_title
+                                )));
+                            }
+                        }
+                    }
+                }
+
+                let variant =
+                    Self::insert_variant_tx(&mut tx, &product_id, &var_input, rank as i64).await?;
                 Self::resolve_variant_options_tx(
                     &mut tx,
                     &product_id,
-                    &var_input,
+                    &variant.id,
                     &var_input.options,
                 )
                 .await?;
@@ -140,7 +174,7 @@ impl ProductRepository {
             where_clause, order
         );
         let products = sqlx::query_as::<_, Product>(&query_sql)
-            .bind(params.limit)
+            .bind(params.capped_limit())
             .bind(params.offset)
             .fetch_all(&self.pool)
             .await?;
@@ -169,7 +203,7 @@ impl ProductRepository {
             order
         );
         let products = sqlx::query_as::<_, Product>(&query_sql)
-            .bind(params.limit)
+            .bind(params.capped_limit())
             .bind(params.offset)
             .fetch_all(&self.pool)
             .await?;
@@ -212,9 +246,9 @@ impl ProductRepository {
         .bind(&input.title)
         .bind(handle)
         .bind(&input.description)
-        .bind(&input.status)
+        .bind(input.status.as_ref().map(|s| s.as_str()))
         .bind(&input.thumbnail)
-        .bind(input.metadata.clone().map(sqlx::types::Json))
+        .bind(metadata_to_json(input.metadata.clone()))
         .bind(id)
         .execute(&self.pool)
         .await
@@ -265,8 +299,8 @@ impl ProductRepository {
         .fetch_one(&mut *tx)
         .await?;
 
-        Self::insert_variant_tx(&mut tx, product_id, input, rank.0).await?;
-        Self::resolve_variant_options_tx(&mut tx, product_id, input, &input.options).await?;
+        let variant = Self::insert_variant_tx(&mut tx, product_id, input, rank.0).await?;
+        Self::resolve_variant_options_tx(&mut tx, product_id, &variant.id, &input.options).await?;
 
         tx.commit().await?;
         self.find_by_id_any(product_id).await
@@ -292,7 +326,7 @@ impl ProductRepository {
         .bind(&input.sku)
         .bind(input.price)
         .bind(rank)
-        .bind(input.metadata.clone().map(sqlx::types::Json))
+        .bind(metadata_to_json(input.metadata.clone()))
         .fetch_one(&mut **tx)
         .await
         .map_err(|e| {
@@ -311,21 +345,12 @@ impl ProductRepository {
     async fn resolve_variant_options_tx(
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         product_id: &str,
-        input: &CreateProductVariantInput,
+        variant_id: &str,
         options_map: &Option<std::collections::HashMap<String, String>>,
     ) -> Result<(), AppError> {
         let Some(map) = options_map else {
             return Ok(());
         };
-
-        let variant_id: (String,) = sqlx::query_as(
-            "SELECT id FROM product_variants WHERE product_id = ? AND title = ? ORDER BY created_at DESC LIMIT 1",
-        )
-        .bind(product_id)
-        .bind(&input.title)
-        .fetch_one(&mut **tx)
-        .await
-        .map_err(|_| AppError::NotFound(format!("Variant '{}' not found", input.title)))?;
 
         for (opt_title, val_str) in map {
             let val = sqlx::query_as::<_, ProductOptionValue>(
@@ -341,16 +366,21 @@ impl ProductRepository {
             .fetch_optional(&mut **tx)
             .await?;
 
-            if let Some(val) = val {
-                sqlx::query(
-                    "INSERT INTO product_variant_option (id, variant_id, option_value_id) VALUES (?, ?, ?)",
-                )
-                .bind(generate_entity_id("pvo"))
-                .bind(&variant_id.0)
-                .bind(&val.id)
-                .execute(&mut **tx)
-                .await?;
-            }
+            let val = val.ok_or_else(|| {
+                AppError::NotFound(format!(
+                    "Option value '{}' not found for option '{}'",
+                    val_str, opt_title
+                ))
+            })?;
+
+            sqlx::query(
+                "INSERT INTO product_variant_option (id, variant_id, option_value_id) VALUES (?, ?, ?)",
+            )
+            .bind(generate_entity_id("pvo"))
+            .bind(variant_id)
+            .bind(&val.id)
+            .execute(&mut **tx)
+            .await?;
         }
 
         Ok(())
@@ -401,6 +431,11 @@ impl ProductRepository {
             variants_with_options.push(ProductVariantWithOptions {
                 variant: v.clone(),
                 options: opts,
+                calculated_price: super::models::CalculatedPrice {
+                    calculated_amount: v.price,
+                    original_amount: v.price,
+                    is_calculated_price_tax_inclusive: false,
+                },
             });
         }
 
@@ -408,6 +443,9 @@ impl ProductRepository {
             product,
             options: options_with_values,
             variants: variants_with_options,
+            images: vec![],
+            is_giftcard: false,
+            discountable: true,
         })
     }
 

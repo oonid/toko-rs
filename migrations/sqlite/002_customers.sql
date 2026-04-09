@@ -20,13 +20,15 @@ CREATE TABLE customer_addresses (
     first_name TEXT,
     last_name TEXT,
     company TEXT,
-    address_1 TEXT NOT NULL,
+    address_1 TEXT,
     address_2 TEXT,
     city TEXT,
-    state_province TEXT,
+    province TEXT,
     postal_code TEXT,
-    country_code TEXT NOT NULL,
+    country_code TEXT,
     phone TEXT,
+    is_default_shipping BOOLEAN NOT NULL DEFAULT FALSE,
+    is_default_billing BOOLEAN NOT NULL DEFAULT FALSE,
     metadata JSON,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -34,3 +36,5 @@ CREATE TABLE customer_addresses (
 );
 
 CREATE INDEX idx_customer_addresses_customer_id ON customer_addresses (customer_id);
+CREATE UNIQUE INDEX uq_customer_default_shipping ON customer_addresses (customer_id) WHERE is_default_shipping = TRUE AND deleted_at IS NULL;
+CREATE UNIQUE INDEX uq_customer_default_billing ON customer_addresses (customer_id) WHERE is_default_billing = TRUE AND deleted_at IS NULL;

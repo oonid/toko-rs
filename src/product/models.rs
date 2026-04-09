@@ -58,6 +58,9 @@ pub struct ProductWithRelations {
     pub product: Product,
     pub options: Vec<ProductOptionWithValues>,
     pub variants: Vec<ProductVariantWithOptions>,
+    pub images: Vec<String>,
+    pub is_giftcard: bool,
+    pub discountable: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -72,6 +75,14 @@ pub struct ProductVariantWithOptions {
     #[serde(flatten)]
     pub variant: ProductVariant,
     pub options: Vec<VariantOptionValue>,
+    pub calculated_price: CalculatedPrice,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CalculatedPrice {
+    pub calculated_amount: i64,
+    pub original_amount: i64,
+    pub is_calculated_price_tax_inclusive: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]

@@ -49,7 +49,7 @@ async fn admin_list_products(
         products,
         count,
         offset: params.offset,
-        limit: params.limit,
+        limit: params.capped_limit(),
     }))
 }
 
@@ -68,6 +68,10 @@ async fn admin_update_product(
     Path(id): Path<String>,
     Json(payload): Json<UpdateProductInput>,
 ) -> Result<Json<ProductResponse>, AppError> {
+    payload
+        .validate()
+        .map_err(|e| AppError::InvalidData(e.to_string()))?;
+
     let product = state.repos.product.update(&id, &payload).await?;
     Ok(Json(ProductResponse { product }))
 }
@@ -111,7 +115,7 @@ async fn store_list_products(
         products,
         count,
         offset: params.offset,
-        limit: params.limit,
+        limit: params.capped_limit(),
     }))
 }
 

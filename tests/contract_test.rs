@@ -76,6 +76,16 @@ fn post_with_header(uri: &str, payload: &serde_json::Value, header: (&str, &str)
 
 // ============================================================
 // 10.6 — Response contract tests (JSON shape validation)
+//
+// Response shapes verified against Medusa vendor models:
+//   Product:  vendor/medusa/packages/modules/product/src/models/product.ts
+//   Variant:  vendor/medusa/packages/modules/product/src/models/product-variant.ts
+//   Cart:     vendor/medusa/packages/modules/cart/src/models/cart.ts
+//   LineItem: vendor/medusa/packages/modules/cart/src/models/line-item.ts
+//   Customer: vendor/medusa/packages/modules/customer/src/models/customer.ts
+//   Address:  vendor/medusa/packages/modules/customer/src/models/address.ts
+//   Order:    vendor/medusa/packages/modules/order/src/models/order.ts
+//   OAS spec: specs/store.oas.yaml — Error schema
 // ============================================================
 
 #[tokio::test]
@@ -105,8 +115,28 @@ async fn test_contract_product_response_shape() {
             "updated_at",
             "options",
             "variants",
+            "images",
+            "is_giftcard",
+            "discountable",
         ],
     );
+    assert_eq!(p["images"].as_array().unwrap().len(), 0);
+    assert_eq!(p["is_giftcard"], false);
+    assert_eq!(p["discountable"], true);
+    if let Some(variants) = p["variants"].as_array() {
+        if !variants.is_empty() {
+            let v = &variants[0];
+            assert_has_fields(v, &["calculated_price"]);
+            assert_has_fields(
+                &v["calculated_price"],
+                &[
+                    "calculated_amount",
+                    "original_amount",
+                    "is_calculated_price_tax_inclusive",
+                ],
+            );
+        }
+    }
 }
 
 #[tokio::test]
@@ -233,7 +263,27 @@ async fn test_contract_cart_response_shape() {
             "currency_code",
             "items",
             "item_total",
+            "item_subtotal",
+            "item_tax_total",
             "total",
+            "subtotal",
+            "tax_total",
+            "discount_total",
+            "discount_tax_total",
+            "shipping_total",
+            "shipping_subtotal",
+            "shipping_tax_total",
+            "original_total",
+            "original_subtotal",
+            "original_tax_total",
+            "original_item_total",
+            "original_item_subtotal",
+            "original_item_tax_total",
+            "original_shipping_total",
+            "original_shipping_subtotal",
+            "original_shipping_tax_total",
+            "gift_card_total",
+            "gift_card_tax_total",
             "created_at",
             "updated_at",
         ],
@@ -257,7 +307,33 @@ async fn test_contract_customer_response_shape() {
     let c = &body["customer"];
     assert_has_fields(
         c,
-        &["id", "email", "has_account", "created_at", "updated_at"],
+        &[
+            "id",
+            "email",
+            "has_account",
+            "created_at",
+            "updated_at",
+            "addresses",
+            "default_billing_address_id",
+            "default_shipping_address_id",
+        ],
+    );
+    assert!(
+        c["addresses"].is_array(),
+        "customer.addresses must be an array"
+    );
+    assert_eq!(
+        c["addresses"].as_array().unwrap().len(),
+        0,
+        "new customer has no addresses"
+    );
+    assert!(
+        c["default_billing_address_id"].is_null(),
+        "new customer has no default billing address"
+    );
+    assert!(
+        c["default_shipping_address_id"].is_null(),
+        "new customer has no default shipping address"
     );
 }
 
@@ -329,11 +405,33 @@ async fn test_contract_order_complete_response_shape() {
             "status",
             "items",
             "item_total",
+            "item_subtotal",
+            "item_tax_total",
             "total",
+            "subtotal",
+            "tax_total",
+            "discount_total",
+            "discount_tax_total",
+            "shipping_total",
+            "shipping_subtotal",
+            "shipping_tax_total",
+            "original_total",
+            "original_subtotal",
+            "original_tax_total",
+            "gift_card_total",
+            "gift_card_tax_total",
             "currency_code",
+            "payment_status",
+            "fulfillment_status",
+            "fulfillments",
+            "shipping_methods",
             "created_at",
         ],
     );
+    assert_eq!(body["order"]["payment_status"], "not_paid");
+    assert_eq!(body["order"]["fulfillment_status"], "not_fulfilled");
+    assert!(body["order"]["fulfillments"].is_array());
+    assert!(body["order"]["shipping_methods"].is_array());
 }
 
 #[tokio::test]
@@ -488,6 +586,7 @@ async fn test_contract_health_response_shape() {
 
 // ============================================================
 // 10.7 — Error contract tests (3-field OAS Error schema)
+// Ref: vendor/medusa/packages/core/framework/src/http/middlewares/error-handler.ts
 // ============================================================
 
 #[tokio::test]
@@ -807,4 +906,177 @@ async fn test_cors_preflight_headers() {
         headers.get("access-control-allow-methods").is_some(),
         "CORS must include access-control-allow-methods header"
     );
+}
+
+// ============================================================
+// 14a — Post-audit business logic correctness tests
+// ============================================================
+
+#[tokio::test]
+async fn test_product_invalid_status_rejected() {
+    let (app, _) = common::setup_test_app().await;
+    let res = app
+        .oneshot(request(
+            Method::POST,
+            "/admin/products",
+            &json!({"title": "Bad Status", "status": "banana"}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn test_product_update_validates() {
+    let (app, _) = common::setup_test_app().await;
+    let created = body_json(
+        app.clone()
+            .oneshot(request(
+                Method::POST,
+                "/admin/products",
+                &json!({"title": "ValidateUpdate"}),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    let id = created["product"]["id"].as_str().unwrap();
+
+    let res = app
+        .oneshot(request(
+            Method::POST,
+            &format!("/admin/products/{}", id),
+            &json!({"status": "invalid_status_value"}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn test_variant_option_value_not_found_rejected() {
+    let (app, _) = common::setup_test_app().await;
+    let res = app
+        .oneshot(request(
+            Method::POST,
+            "/admin/products",
+            &json!({
+                "title": "OptTest",
+                "options": [{"title": "Size", "values": ["S", "M"]}],
+                "variants": [{"title": "V1", "price": 100, "options": {"Size": "L"}}]
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+    let body = body_json(res).await;
+    assert!(body["message"].as_str().unwrap().contains("Option value"));
+}
+
+#[tokio::test]
+async fn test_variant_missing_option_coverage_rejected() {
+    let (app, _) = common::setup_test_app().await;
+    let res = app
+        .oneshot(request(
+            Method::POST,
+            "/admin/products",
+            &json!({
+                "title": "OptCoverage",
+                "options": [{"title": "Size", "values": ["S", "M"]}, {"title": "Color", "values": ["Red"]}],
+                "variants": [{"title": "V1", "price": 100, "options": {"Size": "S"}}]
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    let body = body_json(res).await;
+    assert!(body["message"].as_str().unwrap().contains("missing option"));
+}
+
+#[tokio::test]
+async fn test_variant_duplicate_option_combination_rejected() {
+    let (app, _) = common::setup_test_app().await;
+    let res = app
+        .oneshot(request(
+            Method::POST,
+            "/admin/products",
+            &json!({
+                "title": "OptDup",
+                "options": [{"title": "Size", "values": ["S", "M"]}],
+                "variants": [
+                    {"title": "V1", "price": 100, "options": {"Size": "S"}},
+                    {"title": "V2", "price": 200, "options": {"Size": "S"}}
+                ]
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    let body = body_json(res).await;
+    assert!(body["message"]
+        .as_str()
+        .unwrap()
+        .contains("Duplicate option combination"));
+}
+
+// ============================================================
+// 14b — Input validation tests
+// ============================================================
+
+#[tokio::test]
+async fn test_unknown_fields_rejected() {
+    let (app, _) = common::setup_test_app().await;
+    let res = app
+        .oneshot(request(
+            Method::POST,
+            "/store/carts",
+            &json!({"currency_code": "usd", "unknown_field": "value"}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn test_product_unknown_fields_rejected() {
+    let (app, _) = common::setup_test_app().await;
+    let res = app
+        .oneshot(request(
+            Method::POST,
+            "/admin/products",
+            &json!({"title": "Test", "nonexistent": true}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn test_metadata_must_be_object() {
+    let (app, _) = common::setup_test_app().await;
+    let res = app
+        .oneshot(request(
+            Method::POST,
+            "/store/carts",
+            &json!({"currency_code": "usd", "metadata": "not_an_object"}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn test_list_limit_capped() {
+    let (app, _) = common::setup_test_app().await;
+    let res = app
+        .oneshot(request(
+            Method::GET,
+            "/store/products?limit=999999",
+            &json!(null),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = body_json(res).await;
+    assert!(body["limit"].as_i64().unwrap() <= 100);
 }

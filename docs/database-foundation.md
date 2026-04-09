@@ -71,7 +71,7 @@ Referenced by `design.md` (P1 divergences table) and `proposal.md` (schema scope
 | Medusa Table | Medusa Columns (key) | toko-rs Status | toko-rs Table/Column | Simplification |
 |---|---|---|---|---|
 | `customer` | company_name, first_name, last_name, email, phone, has_account, metadata, created_by + groups M2M + addresses hasMany | **Implemented** | `customers` | Dropped: company_name, created_by. Dropped relationships: groups. Unique constraint simplified (SQLite: plain email unique; PG: partial composite) |
-| `customer_address` | address_name, is_default_shipping, is_default_billing, company, first_name, last_name, address_1/2, city, country_code, province, postal_code, phone, metadata + customer FK | **Implemented (dormant)** | `customer_addresses` | Table exists but no endpoints write to it. Dropped: is_default_shipping, is_default_billing (deferred to P2) |
+| `customer_address` | address_name, is_default_shipping, is_default_billing, company, first_name, last_name, address_1/2, city, country_code, province, postal_code, phone, metadata + customer FK | **Active (read)** | `customer_addresses` | Table is read during customer queries — addresses array + default address IDs returned in response. No P1 endpoints write to it (CRUD deferred to P2). Partial unique indexes enforce one default shipping/billing per customer. Column: `province` (was `state_province`, renamed for Medusa compatibility) |
 | `customer_group` | name, metadata, created_by + customers M2M | **Deferred P2+** | — | No customer groups in P1 |
 | `customer_group_customer` (pivot) | created_by, metadata + customer/group FKs | **Deferred P2+** | — | Depends on customer_group |
 

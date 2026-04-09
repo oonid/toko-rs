@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use toko_rs::{app_router, build_app_state, config, seed};
+use toko_rs::{app_router_with_cors, build_app_state, config, seed};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -29,7 +29,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    let app = app_router(state);
+    let app = app_router_with_cors(state, &config.cors_origins);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
     tracing::info!("Listening on {}", addr);

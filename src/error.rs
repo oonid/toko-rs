@@ -26,6 +26,9 @@ pub enum AppError {
     #[error("Conflict: {0}")]
     Conflict(String),
 
+    #[error("Forbidden: {0}")]
+    Forbidden(String),
+
     #[error("Database Error: {0}")]
     DatabaseError(#[from] sqlx::Error),
 
@@ -41,6 +44,7 @@ impl AppError {
             AppError::DuplicateError(_) => StatusCode::UNPROCESSABLE_ENTITY,
             AppError::UnexpectedState(_) => StatusCode::INTERNAL_SERVER_ERROR,
             AppError::Conflict(_) => StatusCode::CONFLICT,
+            AppError::Forbidden(_) => StatusCode::FORBIDDEN,
             AppError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
             AppError::DatabaseError(_) | AppError::MigrationError(_) => {
                 StatusCode::INTERNAL_SERVER_ERROR
@@ -56,6 +60,7 @@ impl AppError {
             AppError::Unauthorized(_) => "unauthorized",
             AppError::UnexpectedState(_) => "unexpected_state",
             AppError::Conflict(_) => "conflict",
+            AppError::Forbidden(_) => "forbidden",
             AppError::DatabaseError(_) => "database_error",
             AppError::MigrationError(_) => "database_error",
         }
@@ -69,9 +74,26 @@ impl AppError {
             AppError::Unauthorized(_) => "unknown_error",
             AppError::UnexpectedState(_) => "invalid_state_error",
             AppError::Conflict(_) => "invalid_state_error",
+            AppError::Forbidden(_) => "invalid_state_error",
             AppError::DatabaseError(_) => "api_error",
             AppError::MigrationError(_) => "api_error",
         }
+    }
+}
+
+pub fn map_sqlite_constraint(e: sqlx::Error) -> AppError {
+    if let sqlx::Error::Database(ref db_err) = e {
+        let code = db_err.code().and_then(|c| c.parse::<i32>().ok());
+        match code {
+            Some(2067) => {
+                AppError::DuplicateError("A record with this value already exists".into())
+            }
+            Some(787) => AppError::NotFound("Referenced record not found".into()),
+            Some(1299) => AppError::InvalidData("A required field is missing".into()),
+            _ => AppError::DatabaseError(e),
+        }
+    } else {
+        AppError::DatabaseError(e)
     }
 }
 
@@ -172,6 +194,16 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_forbidden() {
+        let resp = AppError::Forbidden("not allowed".into()).into_response();
+        let body = into_body(resp).await;
+        assert_eq!(body["_status"], 403);
+        assert_eq!(body["code"], "invalid_state_error");
+        assert_eq!(body["type"], "forbidden");
+        assert_eq!(body["message"], "Forbidden: not allowed");
+    }
+
+    #[tokio::test]
     async fn test_database_error() {
         let db_err = sqlx::Error::Configuration("cfg fail".into());
         let resp = AppError::DatabaseError(db_err).into_response();
@@ -216,6 +248,10 @@ mod tests {
             StatusCode::CONFLICT
         );
         assert_eq!(
+            AppError::Forbidden("".into()).status_code(),
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
             AppError::Unauthorized("".into()).status_code(),
             StatusCode::UNAUTHORIZED
         );
@@ -229,5 +265,12 @@ mod tests {
             AppError::MigrationError(mig_err).status_code(),
             StatusCode::INTERNAL_SERVER_ERROR
         );
+    }
+
+    #[tokio::test]
+    async fn test_map_sqlite_constraint_non_db_error() {
+        let e = sqlx::Error::Configuration("cfg fail".into());
+        let result = map_sqlite_constraint(e);
+        assert!(matches!(result, AppError::DatabaseError(_)));
     }
 }

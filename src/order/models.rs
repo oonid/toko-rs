@@ -38,6 +38,12 @@ pub struct OrderLineItem {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub deleted_at: Option<DateTime<Utc>>,
+    #[sqlx(skip)]
+    pub requires_shipping: bool,
+    #[sqlx(skip)]
+    pub is_discountable: bool,
+    #[sqlx(skip)]
+    pub is_tax_inclusive: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -46,5 +52,70 @@ pub struct OrderWithItems {
     pub order: Order,
     pub items: Vec<OrderLineItem>,
     pub item_total: i64,
+    pub item_subtotal: i64,
+    pub item_tax_total: i64,
     pub total: i64,
+    pub subtotal: i64,
+    pub tax_total: i64,
+    pub discount_total: i64,
+    pub discount_tax_total: i64,
+    pub shipping_total: i64,
+    pub shipping_subtotal: i64,
+    pub shipping_tax_total: i64,
+    pub original_total: i64,
+    pub original_subtotal: i64,
+    pub original_tax_total: i64,
+    pub original_item_total: i64,
+    pub original_item_subtotal: i64,
+    pub original_item_tax_total: i64,
+    pub original_shipping_total: i64,
+    pub original_shipping_subtotal: i64,
+    pub original_shipping_tax_total: i64,
+    pub gift_card_total: i64,
+    pub gift_card_tax_total: i64,
+    pub payment_status: String,
+    pub fulfillment_status: String,
+    pub fulfillments: Vec<serde_json::Value>,
+    pub shipping_methods: Vec<serde_json::Value>,
+}
+
+impl OrderWithItems {
+    pub fn from_items(order: Order, mut items: Vec<OrderLineItem>) -> Self {
+        for item in &mut items {
+            item.requires_shipping = true;
+            item.is_discountable = true;
+            item.is_tax_inclusive = false;
+        }
+        let item_total = items.iter().map(|i| i.quantity * i.unit_price).sum();
+        Self {
+            order,
+            item_total,
+            item_subtotal: item_total,
+            item_tax_total: 0,
+            total: item_total,
+            subtotal: item_total,
+            tax_total: 0,
+            discount_total: 0,
+            discount_tax_total: 0,
+            shipping_total: 0,
+            shipping_subtotal: 0,
+            shipping_tax_total: 0,
+            original_total: item_total,
+            original_subtotal: item_total,
+            original_tax_total: 0,
+            original_item_total: item_total,
+            original_item_subtotal: item_total,
+            original_item_tax_total: 0,
+            original_shipping_total: 0,
+            original_shipping_subtotal: 0,
+            original_shipping_tax_total: 0,
+            gift_card_total: 0,
+            gift_card_tax_total: 0,
+            items,
+            payment_status: "not_paid".to_string(),
+            fulfillment_status: "not_fulfilled".to_string(),
+            fulfillments: vec![],
+            shipping_methods: vec![],
+        }
+    }
 }

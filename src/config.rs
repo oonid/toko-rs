@@ -16,6 +16,10 @@ fn default_currency_code() -> String {
     "idr".to_string()
 }
 
+fn default_cors_origins() -> String {
+    "*".to_string()
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct AppConfig {
     pub database_url: String,
@@ -27,6 +31,8 @@ pub struct AppConfig {
     pub rust_log: String,
     #[serde(default = "default_currency_code")]
     pub default_currency_code: String,
+    #[serde(default = "default_cors_origins")]
+    pub cors_origins: String,
 }
 
 impl AppConfig {

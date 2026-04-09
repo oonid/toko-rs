@@ -269,5 +269,56 @@ Full audit documented in `docs/audit-p1-task12.md`. Fixes address Medusa API res
 - [x] 13.3 Verify `cargo clippy -- -D warnings` passes with zero warnings
 - [x] 13.4 Verify `cargo llvm-cov --summary-only` shows >90% line coverage
 - [x] 13.5 Verify error responses match 3-field OAS Error schema (`code`, `type`, `message`) — implemented in Phase 2b.12
-- [ ] 13.6 Verify contract tests reference Medusa vendor files for response shape validation
+- [x] 13.6 Verify contract tests reference Medusa vendor files for response shape validation
 - [x] 13.7 Verify HTTP method convention: POST for create AND update (no PUT) on all mutation endpoints — verified via 3 dedicated tests in `tests/contract_test.rs`
+
+## 14. Second Audit: P1 Compatibility Fixes (cross-cutting)
+
+**Audit source**: `docs/audit-p1-task14.md`
+
+### 14a. P1 Bugs (business logic correctness)
+
+- [x] 14a.1 Add `completed_at` guard to `update_line_item` and `delete_line_item` in `src/cart/repository.rs` — completed carts reject item mutations with 409 Conflict. Tests: `test_cart_update_line_item_on_completed_cart_rejected`, `test_cart_delete_line_item_on_completed_cart_rejected`
+- [x] 14a.2 Fix `resolve_variant_options_tx` in `src/product/repository.rs` — now accepts `variant_id: &str` parameter directly from `insert_variant_tx` return value instead of fragile title-based lookup
+- [x] 14a.3 Fix `resolve_variant_options_tx` in `src/product/repository.rs` — returns `AppError::NotFound` when option value not found instead of silently swallowing. Test: `test_variant_option_value_not_found_rejected`
+- [x] 14a.4 Add validation that variant options cover ALL product options during product creation in `src/product/repository.rs`. Test: `test_variant_missing_option_coverage_rejected`
+- [x] 14a.5 Add validation that variant option combinations are unique per product in `src/product/repository.rs`. Test: `test_variant_duplicate_option_combination_rejected`
+- [x] 14a.6 Validate product `status` as `ProductStatus` enum (`draft`, `published`, `proposed`, `rejected`) in `src/product/types.rs` — invalid strings rejected at deserialization (422). Tests: `test_product_invalid_status_rejected`, `test_product_update_validates`
+- [x] 14a.7 Add `.validate()` call to `admin_update_product` handler in `src/product/routes.rs` — no longer bypassed
+
+### 14b. P1 Input Validation (request shape correctness)
+
+- [x] 14b.1 Add `#[serde(deny_unknown_fields)]` to all input types in `src/*/types.rs` — match Medusa's `.strict()` behavior so misspelled fields return 422. Tests: `test_unknown_fields_rejected`, `test_product_unknown_fields_rejected`
+- [x] 14b.2 Tighten `metadata` type from `Option<serde_json::Value>` to `Option<HashMap<String, serde_json::Value>>` on all input types — match Medusa's `Record<string, unknown>`. Added `metadata_to_json` helper in `src/types.rs`. Test: `test_metadata_must_be_object`
+- [x] 14b.3 Add upper bound to `FindParams.limit` (max 100) via `capped_limit()` in `src/types.rs` and `src/order/types.rs` — prevent unbounded queries. Responses reflect capped value. Test: `test_list_limit_capped`
+- [x] 14b.4 Add `Forbidden` (403) error variant to `src/error.rs` — 403, type `forbidden`, code `invalid_state_error`. Unit test: `test_forbidden`
+
+### 14c. P1 Response Shape Stubs (Medusa frontend compatibility)
+
+- [x] 14c.1 Add `images: Vec<String>`, `is_giftcard: bool`, `discountable: bool` stubs to `ProductWithRelations` — return empty/default values so Medusa frontend conditionals don't throw TypeError. Contract test strengthened
+- [x] 14c.2 Add variant `calculated_price: { calculated_amount, original_amount, is_calculated_price_tax_inclusive }` to `ProductVariantWithOptions` — mirrors raw `price` value since P1 has no pricing module. Contract test asserts nested fields
+- [x] 14c.3 Add 22 computed total stub fields to `CartWithItems` and `OrderWithItems` via `from_items()` helpers — `subtotal`, `tax_total`, `discount_total`, `shipping_total`, `gift_card_total`, and all `original_*` variants default to 0 (tax/shipping/discount/gift_card) or mirror `item_total` (subtotal/total). Contract tests strengthened
+- [x] 14c.4 Add `addresses: []` empty array to customer response — prevents `.map()` / `.length` TypeError on Medusa frontends. Already completed in 14f
+- [x] 14c.5 Add `payment_status: "not_paid"`, `fulfillment_status: "not_fulfilled"` enum stubs to `OrderWithItems`. Contract test asserts values
+- [x] 14c.6 Add `fulfillments: []`, `shipping_methods: []` empty arrays to `OrderWithItems`. Contract test asserts arrays
+- [x] 14c.7 Add `requires_shipping: true`, `is_discountable: true`, `is_tax_inclusive: false` defaults to `CartLineItem` and `OrderLineItem` via `#[sqlx(skip)]` + `from_items()` helper
+
+### 14d. P1 Middleware / Security
+
+- [x] 14d.1 Replace `CorsLayer::permissive()` with configured CORS in `src/lib.rs` — read allowed origins from `AppConfig.cors_origins` (comma-separated, default `"*"`); `build_cors_layer()` constructs proper AllowOrigin/AllowMethods/AllowHeaders; `app_router_with_cors()` for production, `app_router()` for tests
+- [x] 14d.2 Add SQLite error code mapping to structured `AppError` variants in `src/error.rs` — `map_sqlite_constraint()` function: code 2067 → `DuplicateError`, 787 → `NotFound`, 1299 → `InvalidData`; unit test for non-DB error passthrough
+
+### 14e. Verification
+
+- [x] 14e.1 Run `cargo test`, verify all existing + new tests pass
+- [x] 14e.2 Run `cargo clippy -- -D warnings`, verify zero warnings
+- [x] 14e.3 Update `docs/audit-correction.md` with all 14a–14f changes
+
+### 14f. Customer Address Schema + Response Stubs
+
+- [x] 14f.1 Add `is_default_shipping` / `is_default_billing` BOOLEAN columns + partial unique indexes to `customer_addresses` in both PG and SQLite migrations
+- [x] 14f.2 Rename `state_province` → `province` in `customer_addresses` to match Medusa's field name
+- [x] 14f.3 Add `CustomerAddress` model in `src/customer/models.rs` + `CustomerWithAddresses` wrapper with `addresses: Vec<CustomerAddress>`, `default_billing_address_id: Option<String>`, `default_shipping_address_id: Option<String>`
+- [x] 14f.4 Add `list_addresses` query + `wrap_with_addresses` helper in `src/customer/repository.rs` — reads from `customer_addresses` table, derives default address IDs
+- [x] 14f.5 Update all customer routes to return `CustomerWithAddresses` instead of bare `Customer`
+- [x] 14f.6 Strengthen contract test `test_contract_customer_response_shape` — asserts `addresses` array, `default_*_address_id` null
