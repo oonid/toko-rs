@@ -65,7 +65,7 @@
 1. Extra `payment` field breaks clients expecting strict `{ type, order }` shape
 2. `payment` is `PaymentRecord` (required), not `Option` — cannot represent the error case
 
-**Why we can't fully match Medusa here**: Medusa nests `payment_collections` (a separate table) inside the order via `query.graph()`. The order detail workflow forcibly adds `payment_collections.*` to query fields. However, toko-rs P1 does not implement `payment_collections` or `payment_session` tables — the payment module is collapsed to a single `payment_records` table (see schema mapping in `docs/database-foundation.md`). The `{ type: "cart", cart, error }` error case requires payment session logic which also depends on deferred tables.
+**Why we can't fully match Medusa here**: Medusa nests `payment_collections` (a separate table) inside the order via `query.graph()`. The order detail workflow forcibly adds `payment_collections.*` to query fields. However, toko-rs P1 does not implement `payment_collections` or `payment_session` tables — the payment module is collapsed to a single `payment_records` table (see schema mapping in `docs/database.md`). The `{ type: "cart", cart, error }` error case requires payment session logic which also depends on deferred tables.
 
 **P1 fix**: Remove top-level `payment`, return `{ type: "order", order }` only. `payment_collections` is optional (`?`) in Medusa's `StoreOrder` TypeScript type, so omitting it is valid. The error case is deferred to P2.
 
@@ -83,7 +83,7 @@
 
 **Impact**: Extra `payment` key at top level. Medusa clients looking for `payment_collections` inside the order won't find it; clients not expecting `payment` at the root will see unexpected data.
 
-**Why we can't nest `payment_collections`**: Medusa's `StoreOrder` has `payment_collections?: StorePaymentCollection[]` (optional). Medusa's order detail workflow forcibly injects `"payment_collections.*"` into query fields and its aggregate status functions iterate over it without null checks. However, toko-rs P1 does not implement the `payment_collections` / `payment_session` / `payment` tables (collapsed to `payment_records` — see schema mapping in `docs/database-foundation.md`). The order object will be a valid subset of `StoreOrder`.
+**Why we can't nest `payment_collections`**: Medusa's `StoreOrder` has `payment_collections?: StorePaymentCollection[]` (optional). Medusa's order detail workflow forcibly injects `"payment_collections.*"` into query fields and its aggregate status functions iterate over it without null checks. However, toko-rs P1 does not implement the `payment_collections` / `payment_session` / `payment` tables (collapsed to `payment_records` — see schema mapping in `docs/database.md`). The order object will be a valid subset of `StoreOrder`.
 
 **P1 fix**: Remove top-level `payment`, return `{ order }` only.
 

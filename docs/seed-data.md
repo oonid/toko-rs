@@ -68,28 +68,6 @@ Each product has:
 - `has_account = true`
 - Can be used with `X-Customer-Id: cus_seed_budi` header for order history endpoints
 
-## Test Coverage
-
-### Unit tests (`src/seed.rs` — 7 tests)
-
-| Test | What it verifies |
-|---|---|
-| `test_seed_creates_products_and_customer` | Correct counts: 3 products, 13 variants, 1 customer |
-| `test_seed_is_idempotent` | Running seed twice produces same counts for products, variants, options, bindings, and customer |
-| `test_seed_products_are_published` | No seed product has status other than `published` |
-| `test_seed_variants_have_option_bindings` | All 13 variants have corresponding `product_variant_option` rows |
-| `test_seed_customer_has_account` | Seed customer has `has_account = true` |
-| `test_seed_variant_ranks_are_ordered` | Variant ranks within a product are 0, 1, 2, 3 (not all zero) |
-
-### Integration smoke tests (`tests/seed_flow_test.rs` — 2 tests)
-
-| Test | Flow exercised |
-|---|---|
-| `test_full_browse_cart_checkout_flow` | `GET /store/products` → `GET /store/products/:id` → `POST /store/carts` → `POST /store/carts/:id/line-items` → `POST /store/carts/:id/complete` → verify order + payment |
-| `test_customer_browse_order_history_flow` | Browse → `POST /store/carts` with `customer_id` → complete → `GET /store/orders` with auth header → `GET /store/orders/:id` with auth header |
-
-Both tests call `run_seed()` against an in-memory SQLite database before exercising the endpoints, verifying that seeded data works correctly through the entire API stack.
-
 ## Full Commerce Cycle (curl walkthrough)
 
 This section provides a complete, copy-paste-ready curl simulation of every step in a commerce lifecycle using the seed data. Start the server with seed data first:

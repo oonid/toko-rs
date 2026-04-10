@@ -1299,7 +1299,7 @@ All customer routes now return `CustomerWithAddresses` instead of bare `Customer
 | 14f.6 | `tests/contract_test.rs` | Strengthened customer shape assertions |
 | — | `openspec/changes/implementation-p1-core-mvp/tasks.md` | Marked 14f.1–14f.6 as `[x]` |
 | — | `docs/audit-correction.md` | Added section 14f |
-| — | `docs/database-foundation.md` | Updated `customer_addresses` status from **dormant** to **active (read)** |
+| — | `docs/database.md` | Updated `customer_addresses` status from **dormant** to **active (read)** |
 
 ### TDD Record (14f)
 
@@ -1538,3 +1538,15 @@ Above 90% threshold. Low-coverage files:
 - `main.rs` (0%) — binary entry point, not testable
 - `payment/repository.rs` (43%) — `create()` standalone and `find_by_order_id()` are unused infrastructure for P2
 - `config.rs` (77%) — env var loading paths not exercised in unit tests
+
+## Documentation Consolidation (2026-04-10)
+
+Consolidated 5 docs into 3, eliminating duplicated content and superseded planned designs:
+
+| Before | After | Change |
+|---|---|---|
+| `database-foundation.md` (533 lines) + `database-test.md` (152 lines) | `database.md` (~240 lines) | Merged schema mapping + architecture + migrations + error format + Docker. Deleted 284 lines of superseded Task 15/16 "planned" designs. |
+| `test-suite.md` (157 lines) + `test-e2e.md` (113 lines) | `testing.md` (~180 lines) | Merged test catalogs + endpoint matrix + E2E deep-dive. Deduplicated E2E test table and running instructions. |
+| `seed-data.md` (1107 lines) | `seed-data.md` (~1085 lines) | Removed `## Test Coverage` section (now in `testing.md`). |
+
+All cross-references updated in: `design.md`, `proposal.md`, `tasks.md`, `audit-correction.md`, `audit-p1-task12.md`.

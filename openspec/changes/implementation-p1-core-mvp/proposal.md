@@ -9,7 +9,7 @@ toko-rs is a Rust single-binary headless e-commerce backend inspired by MedusaJS
 ## What Changes
 
 - **Project scaffold**: Single Rust crate with axum + sqlx + SQLite, tracing, migrations, config
-- **11-table database schema**: products, product_options, product_option_values, product_variants, product_variant_options (pivot), carts, cart_line_items, orders, order_line_items, customers, customer_addresses, payment_records. This is a simplification of Medusa's 40+ table schema — see `docs/database-foundation.md` for the full Medusa-to-toko-rs table mapping (which tables are implemented, collapsed into columns, or deferred to P2+).
+- **11-table database schema**: products, product_options, product_option_values, product_variants, product_variant_options (pivot), carts, cart_line_items, orders, order_line_items, customers, customer_addresses, payment_records. This is a simplification of Medusa's 40+ table schema — see `docs/database.md` for the full Medusa-to-toko-rs table mapping (which tables are implemented, collapsed into columns, or deferred to P2+).
 - **6 Admin API endpoints**: Product CRUD + variant management
 - **14 Store API endpoints**: Product browsing, cart management, cart-to-order completion, order viewing, customer registration/profile
 - **Medusa-compatible error format**: `{"code": "...", "type": "...", "message": "..."}` per the Error schema in `specs/store.oas.yaml` and `specs/admin.oas.yaml` (copied from `vendor/medusa/`)

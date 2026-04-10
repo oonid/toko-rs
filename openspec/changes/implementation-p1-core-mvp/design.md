@@ -20,7 +20,7 @@ toko-rs is a Rust single-binary headless e-commerce backend inspired by MedusaJS
 
 **Known P1 divergences from Medusa** (by design, not bugs):
 
-For a complete table-by-table mapping of every Medusa table to its toko-rs equivalent (implemented, collapsed into a column, or deferred), see `docs/database-foundation.md` → "Medusa-to-toko-rs Schema Mapping".
+For a complete table-by-table mapping of every Medusa table to its toko-rs equivalent (implemented, collapsed into a column, or deferred), see `docs/database.md` → "Medusa-to-toko-rs Schema Mapping".
 
 | Area | Medusa | toko-rs P1 | Rationale |
 |---|---|---|---|

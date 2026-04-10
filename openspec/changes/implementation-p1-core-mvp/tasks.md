@@ -394,3 +394,42 @@ Full HTTP integration tests using `reqwest` against a live `axum::serve` instanc
 - [x] 16f.3 Run `cargo test` — all existing 117 tests still pass (no regressions).
 - [x] 16f.4 Run `cargo clippy -- -D warnings` — zero warnings.
 - [x] 16f.5 Update `docs/audit-correction.md` with Task 16 changes.
+
+## Task 17: SQLite Feature Flag Support
+
+PostgreSQL remains default and primary. SQLite is an optional compile-time backend via `cargo build --features sqlite --no-default-features`. No AnyPool, no code duplication, no method-level cfg guards.
+
+### 17a. Infrastructure setup
+
+- [ ] 17a.1 Add `[features]` section to `Cargo.toml`: `default = ["postgres"]`, `postgres = ["sqlx/postgres"]`, `sqlite = ["sqlx/sqlite"]`. Remove unused `"any"` feature from sqlx deps.
+- [ ] 17a.2 Add type aliases in `src/db.rs`: `DbPool`, `DbPoolOptions`, `DbTransaction` — conditionally resolving to PgPool/SqlitePool via `#[cfg]`.
+- [ ] 17a.3 Update `AppDb` enum: single variant using `DbPool` type alias instead of raw `PgPool`.
+- [ ] 17a.4 Update `create_db()` to use `DbPoolOptions`, `run_migrations()` to select `./migrations/` (PG) or `./migrations/sqlite/` (SQLite) via cfg, `ping()` to use `DbPool`.
+
+### 17b. SQL portability (search-and-replace)
+
+- [ ] 17b.1 Replace `now()` with `CURRENT_TIMESTAMP` in all 9 occurrences: `src/product/repository.rs` (2), `src/cart/repository.rs` (5), `src/customer/repository.rs` (1), `src/order/repository.rs` (1).
+- [ ] 17b.2 Update all 5 repo files to use `DbPool` type alias and `DbTransaction` instead of `PgPool` / `Transaction<'_, Postgres>`.
+- [ ] 17b.3 Update `src/seed.rs` to use `DbPool` type alias and extract pool from `AppDb` without assuming `Postgres` variant.
+
+### 17c. Error code handling
+
+- [ ] 17c.1 Update `src/error.rs` `map_db_constraint()` — cfg-gate error code matching: PG codes (`23505`, `23503`, `23502`) vs SQLite codes (`2067`, `787`, `1299`).
+- [ ] 17c.2 Update inline error code checks in `src/product/repository.rs` (2), `src/customer/repository.rs` (1), `src/order/repository.rs` (1) — cfg-gate or helper function.
+
+### 17d. Tests and verification
+
+- [ ] 17d.1 Run full test suite with default features (PG) — all 129 tests pass, clippy clean.
+- [ ] 17d.2 Build with `--features sqlite --no-default-features` — compiles without errors.
+- [ ] 17d.3 Run tests with SQLite feature against `sqlite::memory:` — basic smoke test (create product, cart, order).
+- [ ] 17d.4 Run `cargo clippy -- -D warnings` with both feature sets — zero warnings.
+
+### 17e. Documentation and config
+
+- [ ] 17e.1 Update `Cargo.toml` `.env` to PG default, `.env.example` to show both options.
+- [ ] 17e.2 Add `test-sqlite` and `test-all` targets to `Makefile`.
+- [ ] 17e.3 Update `docs/database.md` — SQLite feature flag section, how to run SQLite tests.
+- [ ] 17e.4 Amend `design.md` Decision 2 — clarify feature-flag type aliases vs rejected method-level cfg. Add new Decision 11 for SQLite feature flag rationale.
+- [ ] 17e.5 Update `docs/testing.md` — SQLite test section, updated Makefile commands.
+- [ ] 17e.6 Update `docs/audit-correction.md` — add Task 17 section.
+- [ ] 17e.7 Create `docs/database-ext-sqlite.md` — document SQLite extension: feature flag usage, DDL differences, how to run, limitations.
