@@ -129,4 +129,30 @@ mod tests {
         assert!(matches!(db, db::AppDb::Postgres(_)));
         let _ = &state;
     }
+
+    #[tokio::test]
+    async fn test_cors_with_specific_origins() {
+        let (state, _) = build_app_state(&test_db_url(), "idr").await.unwrap();
+        let app = app_router_with_cors(state, "http://localhost:3000,http://example.com");
+
+        let req = axum::http::Request::builder()
+            .uri("/health")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn test_cors_wildcard() {
+        let (state, _) = build_app_state(&test_db_url(), "idr").await.unwrap();
+        let app = app_router_with_cors(state, "*");
+
+        let req = axum::http::Request::builder()
+            .uri("/health")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), 200);
+    }
 }

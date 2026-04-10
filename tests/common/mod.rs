@@ -12,9 +12,8 @@ pub async fn setup_test_app() -> (axum::Router, toko_rs::db::AppDb) {
         .await
         .expect("Failed to run migrations");
 
-    if let toko_rs::db::AppDb::Postgres(ref pool) = app_db {
-        clean_all_tables(pool).await;
-    }
+    let toko_rs::db::AppDb::Postgres(ref pool) = app_db;
+    clean_all_tables(pool).await;
 
     let state = AppState {
         db: app_db.clone(),

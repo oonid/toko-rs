@@ -99,18 +99,21 @@ mod tests {
         let orig_host = std::env::var("HOST").ok();
         let orig_port = std::env::var("PORT").ok();
         let orig_log = std::env::var("RUST_LOG").ok();
+        let orig_cors = std::env::var("CORS_ORIGINS").ok();
 
         std::env::set_var("DATABASE_URL", "sqlite::memory:");
         std::env::remove_var("HOST");
         std::env::remove_var("PORT");
-        std::env::remove_var("RUST_LOG");
+        std::env::set_var("RUST_LOG", "toko_rs=debug,tower_http=debug");
         std::env::remove_var("DEFAULT_CURRENCY_CODE");
-        dotenvy::dotenv().ok();
+        std::env::remove_var("CORS_ORIGINS");
 
         let config = AppConfig::load().unwrap();
         assert_eq!(config.host, "0.0.0.0");
         assert_eq!(config.port, 3000);
         assert_eq!(config.default_currency_code, "idr");
+        assert_eq!(config.rust_log, "toko_rs=debug,tower_http=debug");
+        assert_eq!(config.cors_origins, "*");
 
         match orig_db {
             Some(v) => std::env::set_var("DATABASE_URL", v),
@@ -127,6 +130,32 @@ mod tests {
         match orig_log {
             Some(v) => std::env::set_var("RUST_LOG", v),
             None => std::env::remove_var("RUST_LOG"),
+        }
+        match orig_cors {
+            Some(v) => std::env::set_var("CORS_ORIGINS", v),
+            None => std::env::remove_var("CORS_ORIGINS"),
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn test_cors_origins_from_env() {
+        let orig_db = std::env::var("DATABASE_URL").ok();
+        let orig_cors = std::env::var("CORS_ORIGINS").ok();
+
+        std::env::set_var("DATABASE_URL", "sqlite::memory:");
+        std::env::set_var("CORS_ORIGINS", "http://localhost:3000");
+
+        let config = AppConfig::load().unwrap();
+        assert_eq!(config.cors_origins, "http://localhost:3000");
+
+        match orig_db {
+            Some(v) => std::env::set_var("DATABASE_URL", v),
+            None => std::env::remove_var("DATABASE_URL"),
+        }
+        match orig_cors {
+            Some(v) => std::env::set_var("CORS_ORIGINS", v),
+            None => std::env::remove_var("CORS_ORIGINS"),
         }
     }
 }

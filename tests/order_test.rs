@@ -392,3 +392,49 @@ async fn test_complete_empty_cart_returns_bad_request_format() {
     assert_eq!(body["type"], "invalid_data");
     assert!(body["message"].as_str().unwrap().contains("empty"));
 }
+
+#[tokio::test]
+async fn test_payment_repo_create_and_find() {
+    let (_, db) = common::setup_test_app().await;
+    let toko_rs::db::AppDb::Postgres(pool) = db;
+
+    let repo = toko_rs::payment::repository::PaymentRepository::new(pool.clone());
+
+    sqlx::query("INSERT INTO products (id, title, handle, status) VALUES ('prod_pay', 'P', 'p', 'published') ON CONFLICT (id) DO NOTHING")
+        .execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO product_variants (id, product_id, title, price) VALUES ('var_pay', 'prod_pay', 'V', 500) ON CONFLICT (id) DO NOTHING")
+        .execute(&pool).await.unwrap();
+
+    let cart_repo = toko_rs::cart::repository::CartRepository::new(pool.clone(), "idr".to_string());
+    let input = toko_rs::cart::types::CreateCartInput {
+        customer_id: None,
+        email: None,
+        currency_code: Some("idr".to_string()),
+        metadata: None,
+    };
+    let cart = cart_repo.create_cart(input).await.unwrap();
+
+    sqlx::query("INSERT INTO cart_line_items (id, cart_id, title, quantity, unit_price, variant_id, product_id) VALUES ('cli_pay', $1, 'V', 1, 500, 'var_pay', 'prod_pay')")
+        .bind(&cart.cart.id)
+        .execute(&pool).await.unwrap();
+
+    let order_repo = toko_rs::order::repository::OrderRepository::new(pool.clone());
+    let order = order_repo.create_from_cart(&cart.cart.id).await.unwrap();
+
+    let found = repo.find_by_order_id(&order.order.id).await.unwrap();
+    assert!(found.is_some(), "payment should exist from order creation");
+    let tx_payment = found.unwrap();
+    assert!(tx_payment.id.starts_with("pay_"));
+    assert_eq!(tx_payment.order_id, order.order.id);
+    assert_eq!(tx_payment.amount, 500);
+    assert_eq!(tx_payment.status, "pending");
+    assert_eq!(tx_payment.provider, "manual");
+
+    let payment = repo.create(&order.order.id, 1000, "usd").await.unwrap();
+    assert!(payment.id.starts_with("pay_"));
+    assert_eq!(payment.amount, 1000);
+    assert_eq!(payment.currency_code, "usd");
+
+    let not_found = repo.find_by_order_id("order_nonexistent").await.unwrap();
+    assert!(not_found.is_none());
+}
