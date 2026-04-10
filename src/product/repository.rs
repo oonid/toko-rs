@@ -267,6 +267,14 @@ impl ProductRepository {
         .await?;
 
         if result.rows_affected() == 0 {
+            let exists: Option<(i32,)> =
+                sqlx::query_as("SELECT 1 FROM products WHERE id = $1 AND deleted_at IS NOT NULL")
+                    .bind(id)
+                    .fetch_optional(&self.pool)
+                    .await?;
+            if exists.is_some() {
+                return Ok(id.to_string());
+            }
             return Err(AppError::NotFound(format!(
                 "Product with id {} was not found",
                 id
@@ -294,7 +302,7 @@ impl ProductRepository {
         })?;
 
         let rank: (i64,) = sqlx::query_as(
-            "SELECT COALESCE(MAX(variant_rank), -1) + 1 FROM product_variants WHERE product_id = $1",
+            "SELECT COALESCE(MAX(variant_rank), -1) + 1 FROM product_variants WHERE product_id = $1 AND deleted_at IS NULL",
         )
         .bind(product_id)
         .fetch_one(&mut *tx)
@@ -387,7 +395,7 @@ impl ProductRepository {
 
     async fn load_relations(&self, product: Product) -> Result<ProductWithRelations, AppError> {
         let options = sqlx::query_as::<_, ProductOption>(
-            "SELECT * FROM product_options WHERE product_id = $1",
+            "SELECT * FROM product_options WHERE product_id = $1 AND deleted_at IS NULL",
         )
         .bind(&product.id)
         .fetch_all(&self.pool)
@@ -396,7 +404,7 @@ impl ProductRepository {
         let mut options_with_values = Vec::with_capacity(options.len());
         for opt in &options {
             let values = sqlx::query_as::<_, ProductOptionValue>(
-                "SELECT * FROM product_option_values WHERE option_id = $1",
+                "SELECT * FROM product_option_values WHERE option_id = $1 AND deleted_at IS NULL",
             )
             .bind(&opt.id)
             .fetch_all(&self.pool)
@@ -408,7 +416,7 @@ impl ProductRepository {
         }
 
         let variants = sqlx::query_as::<_, ProductVariant>(
-            "SELECT * FROM product_variants WHERE product_id = $1",
+            "SELECT * FROM product_variants WHERE product_id = $1 AND deleted_at IS NULL",
         )
         .bind(&product.id)
         .fetch_all(&self.pool)
@@ -422,6 +430,7 @@ impl ProductRepository {
                 FROM product_variant_option pvo
                 JOIN product_option_values pov ON pvo.option_value_id = pov.id
                 WHERE pvo.variant_id = $1
+                  AND pov.deleted_at IS NULL
                 "#,
             )
             .bind(&v.id)

@@ -630,3 +630,111 @@ async fn test_cart_get_response_format() {
     assert!(cart["completed_at"].is_null());
     assert!(cart["deleted_at"].is_null());
 }
+
+#[tokio::test]
+async fn test_same_variant_different_metadata_creates_separate_items() {
+    let (app, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+    seed_in_pool(&pool).await;
+
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            "/store/carts",
+            &json!({"currency_code": "usd"}),
+        ))
+        .await
+        .unwrap();
+    let cart_id = body_json(res).await["cart"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let add_a = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/line-items", cart_id),
+            &json!({"variant_id": "var_1", "quantity": 2, "metadata": {"source": "a"}}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(add_a.status(), StatusCode::OK);
+    let body_a = body_json(add_a).await;
+    assert_eq!(body_a["cart"]["items"].as_array().unwrap().len(), 1);
+
+    let add_b = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/line-items", cart_id),
+            &json!({"variant_id": "var_1", "quantity": 3, "metadata": {"source": "b"}}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(add_b.status(), StatusCode::OK);
+    let items = body_json(add_b).await["cart"]["items"]
+        .as_array()
+        .unwrap()
+        .clone();
+    assert_eq!(
+        items.len(),
+        2,
+        "different metadata should create separate line items"
+    );
+    assert_eq!(items[0]["quantity"], 2);
+    assert_eq!(items[1]["quantity"], 3);
+}
+
+#[tokio::test]
+async fn test_same_variant_same_metadata_merges_quantity() {
+    let (app, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+    seed_in_pool(&pool).await;
+
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            "/store/carts",
+            &json!({"currency_code": "usd"}),
+        ))
+        .await
+        .unwrap();
+    let cart_id = body_json(res).await["cart"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let _ = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/line-items", cart_id),
+            &json!({"variant_id": "var_1", "quantity": 2, "metadata": {"source": "x"}}),
+        ))
+        .await
+        .unwrap();
+
+    let add2 = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/line-items", cart_id),
+            &json!({"variant_id": "var_1", "quantity": 3, "metadata": {"source": "x"}}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(add2.status(), StatusCode::OK);
+    let items = body_json(add2).await["cart"]["items"]
+        .as_array()
+        .unwrap()
+        .clone();
+    assert_eq!(
+        items.len(),
+        1,
+        "same metadata should merge into existing item"
+    );
+    assert_eq!(items[0]["quantity"], 5);
+}

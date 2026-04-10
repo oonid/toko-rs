@@ -53,12 +53,17 @@ pub struct ProductVariant {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ImageStub {
+    pub url: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ProductWithRelations {
     #[serde(flatten)]
     pub product: Product,
     pub options: Vec<ProductOptionWithValues>,
     pub variants: Vec<ProductVariantWithOptions>,
-    pub images: Vec<String>,
+    pub images: Vec<ImageStub>,
     pub is_giftcard: bool,
     pub discountable: bool,
 }

@@ -433,3 +433,65 @@ PostgreSQL remains default and primary. SQLite is an optional compile-time backe
 - [x] 17e.5 Update `docs/testing.md` — SQLite test section, updated Makefile commands.
 - [x] 17e.6 Update `docs/audit-correction.md` — add Task 17 section.
 - [x] 17e.7 Create `docs/database-ext-sqlite.md` — document SQLite extension: feature flag usage, DDL differences, how to run, limitations.
+
+## Task 18: Third Audit — P1 Compatibility Deep-Dive
+
+Source: `docs/audit-p1-task18.md`. Behavioral comparison against Medusa route handlers, validators, workflows, models, and helpers. 19 findings: 3 HIGH, 6 MEDIUM, 4 LOW/known, 6 confirmed matches.
+
+### 18a. Fix `load_relations` soft-delete filter (S1 — HIGH)
+
+- [x] 18a.1 Add `AND deleted_at IS NULL` to `product_options` query in `src/product/repository.rs:389-391`.
+- [x] 18a.2 Add `AND deleted_at IS NULL` to `product_option_values` query in `src/product/repository.rs:398-400`.
+- [x] 18a.3 Add `AND deleted_at IS NULL` to `product_variants` query in `src/product/repository.rs:410-412`.
+- [x] 18a.4 Add `AND pov.deleted_at IS NULL` to `product_variant_option` join query in `src/product/repository.rs:419-426`. (pivot table has no `deleted_at` column.)
+- [x] 18a.5 Add test: soft-deleted variant should not appear in product response.
+- [x] 18a.6 Add test: soft-deleted option should not appear in product response.
+
+### 18b. Make DELETE idempotent (S3 — HIGH)
+
+- [x] 18b.1 Update `src/product/repository.rs` `soft_delete` — if `rows_affected() == 0`, check if product exists with `deleted_at IS NOT NULL` and return success `{ id, object, deleted: true }` instead of 404.
+- [x] 18b.2 Add test: double-delete returns 200 with `{ id, object, deleted: true }`.
+- [x] 18b.3 Add test: delete nonexistent product still returns 404.
+
+### 18c. Fix line item dedup to include metadata (S4 — MEDIUM)
+
+- [x] 18c.1 Update existing-item lookup in `src/cart/repository.rs:150` to compare metadata: fetch metadata from existing item, compare with input metadata via `serde_json::Value` equality.
+- [x] 18c.2 When metadata differs, create a new line item instead of merging quantity.
+- [x] 18c.3 Add test: adding same variant with different metadata creates separate line items.
+- [x] 18c.4 Add test: adding same variant with same metadata merges quantity (existing behavior preserved).
+
+### 18d. Add custom JSON rejection handler (S6 — MEDIUM)
+
+- [x] 18d.1 Add `src/extract.rs` with custom `Json<T>` extractor wrapping axum rejections into `AppError`. Update `src/product/routes.rs`, `src/cart/routes.rs`, `src/customer/routes.rs` to use `crate::extract::Json` for input extraction.
+- [x] 18d.2 Add test: malformed JSON body returns `{ code, type, message }` with `type: "invalid_data"`.
+- [x] 18d.3 Add test: wrong JSON type (e.g., string where number expected) returns consistent error shape.
+
+### 18e. Map PG serialization failure to Conflict (MEDIUM — error handler gap)
+
+- [x] 18e.1 Add `40001` (serialization failure) handling to `map_db_constraint()` in `src/error.rs` — map to `AppError::Conflict`.
+- [x] 18e.2 Add `is_serialization_failure()` helper to `src/db.rs` with cfg-gated code constants: PG `40001`, SQLite `""` (no equivalent).
+- [x] 18e.3 Verified via code review — unit test not feasible (requires actual PG serialization failure).
+
+### 18f. Fix `images` type to match Medusa shape (S7 — MEDIUM)
+
+- [x] 18f.1 Add `ImageStub` struct to `src/product/models.rs` with `{ url: String }` field.
+- [x] 18f.2 Change `ProductWithRelations.images` from `Vec<String>` to `Vec<ImageStub>`.
+- [x] 18f.3 Update `load_relations` to return `images: vec![]` with the new type.
+- [x] 18f.4 Update contract tests for the new image shape (no change needed — empty array serializes identically).
+- [x] 18f.5 Verify: no serialization change visible in API responses (empty array remains `[]`).
+
+### 18g. Document known P1 divergences (no code changes)
+
+- [x] 18g.1 Update `design.md` — add Decision 12: `deny_unknown_fields` as intentional strict validation (S2). Document that Medusa SDK clients must adapt to toko-rs's narrower input schemas.
+- [x] 18g.2 Update `design.md` — add Decision 13: variant flat `price` field as a toko-rs extension (S8). Not harmful, visible alongside `calculated_price`.
+- [x] 18g.3 Update `design.md` — add known divergence: order line item prefix `oli` vs Medusa's `ordli` (S9).
+- [x] 18g.4 Update `design.md` — add known divergence: validation errors include `code` field that Medusa Zod errors omit (S5).
+- [x] 18g.5 Update `design.md` — add known divergence: default pagination limit 20 vs Medusa's 50 (S10, already partially documented).
+
+### 18h. Verification pass
+
+- [x] 18h.1 Run full test suite on PG — 137 tests pass.
+- [x] 18h.2 Run full test suite on SQLite — 137 tests pass.
+- [x] 18h.3 Run `cargo clippy -- -D warnings` on both feature sets — zero warnings.
+- [x] 18h.4 Run `cargo fmt --check` — clean.
+- [x] 18h.5 Update `docs/audit-correction.md` with Task 18 section.

@@ -1,5 +1,6 @@
 use super::types::*;
 use crate::error::AppError;
+use crate::extract;
 use crate::AppState;
 use axum::{
     extract::{Request, State},
@@ -46,7 +47,7 @@ pub async fn auth_customer_id(
 #[tracing::instrument(skip_all)]
 async fn store_register(
     State(state): State<AppState>,
-    Json(payload): Json<CreateCustomerInput>,
+    extract::Json(payload): extract::Json<CreateCustomerInput>,
 ) -> Result<(StatusCode, Json<CustomerResponse>), AppError> {
     payload
         .validate()
@@ -69,7 +70,7 @@ async fn store_get_me(
 async fn store_update_me(
     State(state): State<AppState>,
     axum::extract::Extension(cid): axum::extract::Extension<CustomerId>,
-    Json(payload): Json<UpdateCustomerInput>,
+    extract::Json(payload): extract::Json<UpdateCustomerInput>,
 ) -> Result<Json<CustomerResponse>, AppError> {
     payload
         .validate()

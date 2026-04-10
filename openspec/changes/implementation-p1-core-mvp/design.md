@@ -208,3 +208,19 @@ SQLite is NOT a production backend — it is an optional compile-time alternativ
 - **No admin auth**: Admin endpoints are fully open. Acceptable for development/demo. Must add auth before production.
 - **Cart line item snapshot not updated on product change**: By design — snapshots freeze state at add-time. If product price changes, existing cart items keep old price. This matches Medusa behavior.
 - **Docker dependency for full PG testing**: Integration tests can run against SQLite in-memory without Docker, but full PostgreSQL compatibility requires `docker compose up`. Mitigation: CI pipeline runs both; local dev can use either.
+
+### 12. `deny_unknown_fields` as intentional strict validation
+
+All input types use `#[serde(deny_unknown_fields)]`. Any field accepted by Medusa's Zod schema but not present in toko-rs's struct causes a 422 error. This is intentional — it prevents silent data loss from misspelled fields and makes the API contract explicit. Medusa SDK clients must be adapted to toko-rs's narrower input schemas. Notable differences: `prices` (array) vs `price` (i64) on variants, and the absence of `subtitle`, `is_giftcard`, `discountable`, `images`, `tags`, `categories`, `collection_id`, dimensional fields, etc. on product inputs.
+
+### 13. Variant flat `price` field as toko-rs extension
+
+`ProductVariantWithOptions` exposes both a flat `price: i64` (from the DB column via `#[serde(flatten)]`) and `calculated_price` (matching Medusa's shape). Medusa's `BaseProductVariant` has no flat `price` field — pricing is only via `calculated_price` (store) or `prices` array (admin). The extra field is harmless (clients can ignore it) and avoids a breaking change if removed later.
+
+### Known divergences (P1)
+
+- **Order line item prefix**: toko-rs uses `oli`, Medusa uses `ordli`. Cosmetic, no functional impact.
+- **Validation error `code` field**: toko-rs always includes `code` in error responses. Medusa's Zod validation errors omit `code` and return only `{ type, message }`. Low impact — both include `type: "invalid_data"`.
+- **Default pagination limit**: toko-rs defaults to 20, Medusa to 50. Clients that don't specify `limit` get fewer results per page.
+- **`images` type**: toko-rs uses `ImageStub { url: String }` objects matching Medusa's `BaseProductImage` shape. Currently always empty in P1.
+- **DELETE idempotency**: DELETE on already-deleted product returns 200 (matches Medusa). Previously returned 404.

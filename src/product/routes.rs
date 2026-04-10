@@ -1,4 +1,5 @@
 use super::types::*;
+use crate::extract;
 use crate::{error::AppError, types::FindParams, AppState};
 use axum::{
     extract::{Path, Query, State},
@@ -27,7 +28,7 @@ pub fn router() -> Router<AppState> {
 #[tracing::instrument(skip_all)]
 async fn admin_create_product(
     State(state): State<AppState>,
-    Json(payload): Json<CreateProductInput>,
+    extract::Json(payload): extract::Json<CreateProductInput>,
 ) -> Result<Json<ProductResponse>, AppError> {
     payload
         .validate()
@@ -66,7 +67,7 @@ async fn admin_get_product(
 async fn admin_update_product(
     State(state): State<AppState>,
     Path(id): Path<String>,
-    Json(payload): Json<UpdateProductInput>,
+    extract::Json(payload): extract::Json<UpdateProductInput>,
 ) -> Result<Json<ProductResponse>, AppError> {
     payload
         .validate()
@@ -90,17 +91,21 @@ async fn admin_delete_product(
     }))
 }
 
-#[tracing::instrument(skip_all, fields(product_id = %id))]
+#[tracing::instrument(skip_all, fields(product_id = %product_id))]
 async fn admin_add_variant(
     State(state): State<AppState>,
-    Path(id): Path<String>,
-    Json(payload): Json<CreateProductVariantInput>,
+    Path(product_id): Path<String>,
+    extract::Json(payload): extract::Json<CreateProductVariantInput>,
 ) -> Result<Json<ProductResponse>, AppError> {
     payload
         .validate()
         .map_err(|e| AppError::InvalidData(e.to_string()))?;
 
-    let product = state.repos.product.add_variant(&id, &payload).await?;
+    let product = state
+        .repos
+        .product
+        .add_variant(&product_id, &payload)
+        .await?;
     Ok(Json(ProductResponse { product }))
 }
 

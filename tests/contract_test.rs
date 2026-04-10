@@ -1080,3 +1080,42 @@ async fn test_list_limit_capped() {
     let body = body_json(res).await;
     assert!(body["limit"].as_i64().unwrap() <= 100);
 }
+
+// ============================================================
+// 18d — JSON rejection handler tests
+// ============================================================
+
+#[tokio::test]
+async fn test_malformed_json_returns_consistent_error() {
+    let (app, _) = common::setup_test_app().await;
+    let req = axum::http::Request::builder()
+        .method(Method::POST)
+        .uri("/store/carts")
+        .header("content-type", "application/json")
+        .body(axum::body::Body::from("{invalid json".to_string()))
+        .unwrap();
+    let res = app.oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    let body = body_json(res).await;
+    assert_eq!(body["type"], "invalid_data");
+    assert!(body["code"].is_string());
+    assert!(body["message"].is_string());
+}
+
+#[tokio::test]
+async fn test_wrong_json_type_returns_consistent_error() {
+    let (app, _) = common::setup_test_app().await;
+    let req = axum::http::Request::builder()
+        .method(Method::POST)
+        .uri("/store/carts")
+        .header("content-type", "application/json")
+        .body(axum::body::Body::from(
+            json!({"currency_code": 123}).to_string(),
+        ))
+        .unwrap();
+    let res = app.oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let body = body_json(res).await;
+    assert!(body["code"].is_string());
+    assert!(body["message"].is_string());
+}

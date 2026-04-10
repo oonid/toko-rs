@@ -147,19 +147,53 @@ impl CartRepository {
             "variant_sku": variant_sku
         });
 
-        let existing = sqlx::query("SELECT id, quantity FROM cart_line_items WHERE cart_id = $1 AND variant_id = $2 AND deleted_at IS NULL")
+        let input_metadata = metadata_to_json(input.metadata.clone());
+
+        let existing = sqlx::query("SELECT id, quantity, metadata FROM cart_line_items WHERE cart_id = $1 AND variant_id = $2 AND deleted_at IS NULL")
             .bind(cart_id)
             .bind(&input.variant_id)
             .fetch_optional(&mut *tx)
             .await?;
 
+        let metadata_matches = if let Some(ref ext) = existing {
+            let ext_meta: Option<sqlx::types::Json<serde_json::Value>> =
+                sqlx::Row::get(ext, "metadata");
+            match (&ext_meta, &input_metadata) {
+                (None, None) => true,
+                (Some(a), Some(b)) => a.0 == b.0,
+                _ => false,
+            }
+        } else {
+            false
+        };
+
         if let Some(ext) = existing {
-            let ext_id: String = sqlx::Row::get(&ext, "id");
-            sqlx::query("UPDATE cart_line_items SET quantity = quantity + $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2")
+            if metadata_matches {
+                let ext_id: String = sqlx::Row::get(&ext, "id");
+                sqlx::query("UPDATE cart_line_items SET quantity = quantity + $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2")
+                    .bind(input.quantity)
+                    .bind(&ext_id)
+                    .execute(&mut *tx)
+                    .await?;
+            } else {
+                sqlx::query(
+                    r#"
+                    INSERT INTO cart_line_items (id, cart_id, title, quantity, unit_price, variant_id, product_id, snapshot, metadata)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                    "#
+                )
+                .bind(&line_id)
+                .bind(cart_id)
+                .bind(&product_title)
                 .bind(input.quantity)
-                .bind(&ext_id)
+                .bind(price)
+                .bind(&variant_id)
+                .bind(&product_id)
+                .bind(sqlx::types::Json(snapshot))
+                .bind(&input_metadata)
                 .execute(&mut *tx)
                 .await?;
+            }
         } else {
             sqlx::query(
                 r#"
@@ -175,7 +209,7 @@ impl CartRepository {
             .bind(&variant_id)
             .bind(&product_id)
             .bind(sqlx::types::Json(snapshot))
-            .bind(metadata_to_json(input.metadata))
+            .bind(&input_metadata)
             .execute(&mut *tx)
             .await?;
         }

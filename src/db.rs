@@ -118,6 +118,14 @@ pub fn is_not_null_violation(e: &sqlx::Error) -> bool {
     }
 }
 
+pub fn is_serialization_failure(e: &sqlx::Error) -> bool {
+    if let sqlx::Error::Database(ref db_err) = e {
+        db_err.code().as_deref() == Some(serialization_failure_code())
+    } else {
+        false
+    }
+}
+
 #[cfg(feature = "postgres")]
 fn unique_violation_code() -> &'static str {
     "23505"
@@ -146,6 +154,16 @@ fn fk_violation_code() -> &'static str {
 #[cfg(feature = "sqlite")]
 fn not_null_violation_code() -> &'static str {
     "1299"
+}
+
+#[cfg(feature = "postgres")]
+fn serialization_failure_code() -> &'static str {
+    "40001"
+}
+
+#[cfg(feature = "sqlite")]
+fn serialization_failure_code() -> &'static str {
+    ""
 }
 
 #[cfg(test)]

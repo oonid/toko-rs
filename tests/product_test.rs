@@ -22,10 +22,10 @@ async fn create_sample_product(app: &axum::Router) -> Value {
         .body(Body::from(payload.to_string()))
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
         .await
         .unwrap();
-    serde_json::from_slice(&body).unwrap()
+    serde_json::from_slice(&bytes).unwrap()
 }
 
 async fn body_json(resp: axum::http::Response<Body>) -> Value {
@@ -491,4 +491,106 @@ async fn test_admin_add_variant_duplicate_sku() {
     assert_eq!(body["type"], "duplicate_error");
     assert_eq!(body["code"], "invalid_request_error");
     assert!(body["message"].as_str().unwrap().contains("TS-S"));
+}
+
+#[tokio::test]
+async fn test_soft_deleted_variant_excluded_from_product() {
+    let (app, db) = common::setup_test_app().await;
+    let created = create_sample_product(&app).await;
+    let product_id = created["product"]["id"].as_str().unwrap();
+    let variant_id = created["product"]["variants"][0]["id"].as_str().unwrap();
+
+    sqlx::query("UPDATE product_variants SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1")
+        .bind(variant_id)
+        .execute(&db.pool)
+        .await
+        .unwrap();
+
+    let req = Request::builder()
+        .method(Method::GET)
+        .uri(&format!("/admin/products/{}", product_id))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    let variants = body["product"]["variants"].as_array().unwrap();
+    assert_eq!(variants.len(), 1, "soft-deleted variant should be excluded");
+    assert_ne!(variants[0]["id"], variant_id);
+}
+
+#[tokio::test]
+async fn test_soft_deleted_option_excluded_from_product() {
+    let (app, db) = common::setup_test_app().await;
+    let created = create_sample_product(&app).await;
+    let product_id = created["product"]["id"].as_str().unwrap();
+    let option_id = created["product"]["options"][0]["id"].as_str().unwrap();
+
+    sqlx::query("UPDATE product_options SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1")
+        .bind(option_id)
+        .execute(&db.pool)
+        .await
+        .unwrap();
+
+    let req = Request::builder()
+        .method(Method::GET)
+        .uri(&format!("/admin/products/{}", product_id))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    let options = body["product"]["options"].as_array().unwrap();
+    assert_eq!(options.len(), 0, "soft-deleted option should be excluded");
+}
+
+#[tokio::test]
+async fn test_double_delete_returns_ok() {
+    let (app, _) = common::setup_test_app().await;
+    let created = create_sample_product(&app).await;
+    let id = created["product"]["id"].as_str().unwrap();
+
+    let del_req = Request::builder()
+        .method(Method::DELETE)
+        .uri(&format!("/admin/products/{}", id))
+        .body(Body::empty())
+        .unwrap();
+    let resp1 = app.clone().oneshot(del_req).await.unwrap();
+    assert_eq!(
+        resp1.status(),
+        StatusCode::OK,
+        "first delete should succeed"
+    );
+
+    let del_req2 = Request::builder()
+        .method(Method::DELETE)
+        .uri(&format!("/admin/products/{}", id))
+        .body(Body::empty())
+        .unwrap();
+    let resp2 = app.clone().oneshot(del_req2).await.unwrap();
+    let status2 = resp2.status();
+    let body2 = body_json(resp2).await;
+    assert_eq!(
+        status2,
+        StatusCode::OK,
+        "second delete should return 200, got {}: {:?}",
+        status2,
+        body2
+    );
+    assert_eq!(body2["id"], id);
+    assert_eq!(body2["object"], "product");
+    assert_eq!(body2["deleted"], true);
+}
+
+#[tokio::test]
+async fn test_delete_nonexistent_returns_404() {
+    let (app, _) = common::setup_test_app().await;
+
+    let del_req = Request::builder()
+        .method(Method::DELETE)
+        .uri("/admin/products/prod_nonexistent")
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(del_req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }

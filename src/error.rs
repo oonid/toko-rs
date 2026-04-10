@@ -88,6 +88,8 @@ pub fn map_db_constraint(e: sqlx::Error) -> AppError {
         AppError::NotFound("Referenced record not found".into())
     } else if crate::db::is_not_null_violation(&e) {
         AppError::InvalidData("A required field is missing".into())
+    } else if crate::db::is_serialization_failure(&e) {
+        AppError::Conflict("Concurrent modification conflict. Please retry.".into())
     } else {
         AppError::DatabaseError(e)
     }

@@ -1,4 +1,5 @@
 use super::types::*;
+use crate::extract;
 use crate::{error::AppError, AppState};
 use axum::{
     extract::{Path, State},
@@ -24,7 +25,7 @@ pub fn router() -> Router<AppState> {
 #[tracing::instrument(skip_all)]
 async fn store_create_cart(
     State(state): State<AppState>,
-    Json(payload): Json<CreateCartInput>,
+    extract::Json(payload): extract::Json<CreateCartInput>,
 ) -> Result<Json<CartResponse>, AppError> {
     payload
         .validate()
@@ -48,7 +49,7 @@ async fn store_get_cart(
 async fn store_update_cart(
     State(state): State<AppState>,
     Path(id): Path<String>,
-    Json(payload): Json<UpdateCartInput>,
+    extract::Json(payload): extract::Json<UpdateCartInput>,
 ) -> Result<Json<CartResponse>, AppError> {
     payload
         .validate()
@@ -61,7 +62,7 @@ async fn store_update_cart(
 async fn store_add_line_item(
     State(state): State<AppState>,
     Path(id): Path<String>,
-    Json(payload): Json<AddLineItemInput>,
+    extract::Json(payload): extract::Json<AddLineItemInput>,
 ) -> Result<Json<CartResponse>, AppError> {
     payload
         .validate()
@@ -88,7 +89,7 @@ async fn store_delete_line_item(
 async fn store_update_line_item(
     State(state): State<AppState>,
     Path((id, line_id)): Path<(String, String)>,
-    Json(payload): Json<UpdateLineItemInput>,
+    extract::Json(payload): extract::Json<UpdateLineItemInput>,
 ) -> Result<Json<CartResponse>, AppError> {
     payload
         .validate()
