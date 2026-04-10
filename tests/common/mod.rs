@@ -3,17 +3,19 @@ pub async fn setup_test_app() -> (axum::Router, toko_rs::db::AppDb) {
     use toko_rs::db;
     use toko_rs::AppState;
 
-    let db_url = std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/toko_test".to_string());
+    #[cfg(feature = "postgres")]
+    let default_url = "postgres://postgres:postgres@localhost:5432/toko_test".to_string();
+    #[cfg(feature = "sqlite")]
+    let default_url = "sqlite:toko_test.db".to_string();
+    let db_url = std::env::var("DATABASE_URL").unwrap_or(default_url);
     let (app_db, repos) = db::create_db(&db_url, "idr")
         .await
-        .expect("Failed to create PG pool");
+        .expect("Failed to create pool");
     db::run_migrations(&app_db)
         .await
         .expect("Failed to run migrations");
 
-    let toko_rs::db::AppDb::Postgres(ref pool) = app_db;
-    clean_all_tables(pool).await;
+    clean_all_tables(&app_db.pool).await;
 
     let state = AppState {
         db: app_db.clone(),
@@ -22,7 +24,7 @@ pub async fn setup_test_app() -> (axum::Router, toko_rs::db::AppDb) {
     (app_router(state), app_db)
 }
 
-pub async fn clean_all_tables(pool: &sqlx::PgPool) {
+pub async fn clean_all_tables(pool: &toko_rs::db::DbPool) {
     sqlx::query("DELETE FROM payment_records")
         .execute(pool)
         .await

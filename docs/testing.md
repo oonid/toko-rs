@@ -168,6 +168,8 @@ Cross-referenced every `#### Scenario:` across all 5 module specs against the te
 ```bash
 make docker-up    # Start PG (auto-creates toko_test + toko_e2e)
 make test-pg      # Integration tests against PostgreSQL
+make test-sqlite  # Integration tests against SQLite in-memory
+make test-all     # Both PG and SQLite
 make test-e2e     # E2E tests only
 make test-e2e-pg  # All tests (integration + E2E)
 make lint         # cargo clippy -- -D warnings
@@ -175,6 +177,22 @@ make cov          # cargo llvm-cov --summary-only
 ```
 
 All tests require `--test-threads=1` for DB isolation. Makefile targets handle this automatically.
+
+### SQLite Tests
+
+The full test suite (129 tests) runs against SQLite in-memory with `--features sqlite --no-default-features`:
+
+```bash
+DATABASE_URL="sqlite::memory:" cargo test --features sqlite --no-default-features -- --test-threads=1
+```
+
+Or via Makefile:
+
+```bash
+make test-sqlite
+```
+
+SQLite tests use the same test infrastructure as PG tests — `tests/common/mod.rs` reads `DATABASE_URL` and routes to the appropriate backend. The `run_migrations()` call in `src/db.rs` selects `./migrations/sqlite/` when the `sqlite` feature is active.
 
 ### Testcontainers
 

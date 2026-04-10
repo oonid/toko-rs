@@ -5,7 +5,7 @@ use tokio::task::JoinHandle;
 pub struct E2eContext {
     pub base_url: String,
     pub client: reqwest::Client,
-    pub pool: sqlx::PgPool,
+    pub pool: toko_rs::db::DbPool,
     pub server: JoinHandle<Result<(), std::io::Error>>,
 }
 
@@ -82,9 +82,7 @@ pub async fn setup_e2e() -> E2eContext {
         .await
         .expect("Failed to run migrations");
 
-    let pool = match &app_db {
-        toko_rs::db::AppDb::Postgres(p) => p.clone(),
-    };
+    let pool = app_db.pool.clone();
 
     clean_all_tables(&pool).await;
     seed(&pool).await;
@@ -117,7 +115,13 @@ async fn resolve_db_url() -> String {
     match std::env::var("E2E_DATABASE_URL").as_deref() {
         Ok("testcontainers://") => start_testcontainers_pg().await,
         Ok(url) => url.to_string(),
-        Err(_) => "postgres://postgres:postgres@localhost:5432/toko_e2e".to_string(),
+        Err(_) => {
+            #[cfg(feature = "postgres")]
+            let default = "postgres://postgres:postgres@localhost:5432/toko_e2e".to_string();
+            #[cfg(feature = "sqlite")]
+            let default = "sqlite:toko_e2e.db".to_string();
+            default
+        }
     }
 }
 
@@ -141,7 +145,7 @@ async fn start_testcontainers_pg() -> String {
     format!("postgres://postgres:postgres@{host}:{port}/toko_e2e")
 }
 
-async fn clean_all_tables(pool: &sqlx::PgPool) {
+async fn clean_all_tables(pool: &toko_rs::db::DbPool) {
     sqlx::query("DELETE FROM payment_records")
         .execute(pool)
         .await
@@ -200,7 +204,7 @@ async fn clean_all_tables(pool: &sqlx::PgPool) {
         .unwrap();
 }
 
-async fn seed(pool: &sqlx::PgPool) {
-    let app_db = toko_rs::db::AppDb::Postgres(pool.clone());
+async fn seed(pool: &toko_rs::db::DbPool) {
+    let app_db = toko_rs::db::AppDb { pool: pool.clone() };
     toko_rs::seed::run_seed(&app_db).await.expect("Seed failed");
 }

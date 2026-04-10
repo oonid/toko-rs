@@ -1,15 +1,16 @@
 use super::models::PaymentRecord;
+use crate::db::DbPool;
+use crate::db::DbTransaction;
 use crate::error::AppError;
 use crate::types::generate_entity_id;
-use sqlx::PgPool;
 
 #[derive(Clone)]
 pub struct PaymentRepository {
-    pool: PgPool,
+    pool: DbPool,
 }
 
 impl PaymentRepository {
-    pub fn new(pool: PgPool) -> Self {
+    pub fn new(pool: DbPool) -> Self {
         Self { pool }
     }
 
@@ -37,7 +38,7 @@ impl PaymentRepository {
     }
 
     pub async fn create_with_tx(
-        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        tx: &mut DbTransaction<'_>,
         order_id: &str,
         amount: i64,
         currency_code: &str,

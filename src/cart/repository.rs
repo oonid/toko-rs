@@ -1,17 +1,17 @@
 use super::models::*;
 use super::types::*;
+use crate::db::DbPool;
 use crate::error::AppError;
 use crate::types::{generate_entity_id, metadata_to_json};
-use sqlx::PgPool;
 
 #[derive(Clone)]
 pub struct CartRepository {
-    pool: PgPool,
+    pool: DbPool,
     default_currency_code: String,
 }
 
 impl CartRepository {
-    pub fn new(pool: PgPool, default_currency_code: String) -> Self {
+    pub fn new(pool: DbPool, default_currency_code: String) -> Self {
         Self {
             pool,
             default_currency_code,
@@ -86,7 +86,7 @@ impl CartRepository {
                 email = COALESCE($1, email),
                 customer_id = COALESCE($2, customer_id),
                 metadata = COALESCE($3, metadata),
-                updated_at = now()
+                updated_at = CURRENT_TIMESTAMP
             WHERE id = $4 AND deleted_at IS NULL
             "#,
         )
@@ -155,7 +155,7 @@ impl CartRepository {
 
         if let Some(ext) = existing {
             let ext_id: String = sqlx::Row::get(&ext, "id");
-            sqlx::query("UPDATE cart_line_items SET quantity = quantity + $1, updated_at = now() WHERE id = $2")
+            sqlx::query("UPDATE cart_line_items SET quantity = quantity + $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2")
                 .bind(input.quantity)
                 .bind(&ext_id)
                 .execute(&mut *tx)
@@ -212,7 +212,7 @@ impl CartRepository {
             UPDATE cart_line_items 
             SET quantity = $1, 
                 metadata = COALESCE($2, metadata),
-                updated_at = now() 
+                updated_at = CURRENT_TIMESTAMP 
             WHERE id = $3 AND cart_id = $4 AND deleted_at IS NULL
             "#,
         )
@@ -245,7 +245,7 @@ impl CartRepository {
         }
 
         sqlx::query(
-            "UPDATE cart_line_items SET deleted_at = now() WHERE id = $1 AND cart_id = $2 AND deleted_at IS NULL"
+            "UPDATE cart_line_items SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1 AND cart_id = $2 AND deleted_at IS NULL"
         )
         .bind(line_id)
         .bind(cart_id)
@@ -257,7 +257,7 @@ impl CartRepository {
 
     pub async fn mark_completed(&self, cart_id: &str) -> Result<(), AppError> {
         let result = sqlx::query(
-            "UPDATE carts SET completed_at = now(), updated_at = now() WHERE id = $1 AND deleted_at IS NULL AND completed_at IS NULL",
+            "UPDATE carts SET completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND deleted_at IS NULL AND completed_at IS NULL",
         )
         .bind(cart_id)
         .execute(&self.pool)

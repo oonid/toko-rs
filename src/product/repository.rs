@@ -1,16 +1,17 @@
 use super::models::*;
 use super::types::*;
+use crate::db::DbPool;
+use crate::db::DbTransaction;
 use crate::error::AppError;
 use crate::types::{generate_entity_id, generate_handle, metadata_to_json, FindParams};
-use sqlx::PgPool;
 
 #[derive(Clone)]
 pub struct ProductRepository {
-    pool: PgPool,
+    pool: DbPool,
 }
 
 impl ProductRepository {
-    pub fn new(pool: PgPool) -> Self {
+    pub fn new(pool: DbPool) -> Self {
         Self { pool }
     }
 
@@ -239,7 +240,7 @@ impl ProductRepository {
                 status = COALESCE(NULLIF($4, ''), status),
                 thumbnail = COALESCE($5, thumbnail),
                 metadata = COALESCE($6, metadata),
-                updated_at = now()
+                updated_at = CURRENT_TIMESTAMP
             WHERE id = $7
             "#,
         )
@@ -259,7 +260,7 @@ impl ProductRepository {
 
     pub async fn soft_delete(&self, id: &str) -> Result<String, AppError> {
         let result = sqlx::query(
-            "UPDATE products SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL",
+            "UPDATE products SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1 AND deleted_at IS NULL",
         )
         .bind(id)
         .execute(&self.pool)
@@ -307,7 +308,7 @@ impl ProductRepository {
     }
 
     async fn insert_variant_tx(
-        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        tx: &mut DbTransaction<'_>,
         product_id: &str,
         input: &CreateProductVariantInput,
         rank: i64,
@@ -330,20 +331,18 @@ impl ProductRepository {
         .fetch_one(&mut **tx)
         .await
         .map_err(|e| {
-            if let sqlx::Error::Database(ref db_err) = e {
-                if db_err.code().as_deref() == Some("23505") {
-                    return AppError::DuplicateError(format!(
-                        "Variant with SKU '{}' already exists",
-                        input.sku.as_deref().unwrap_or("")
-                    ));
-                }
+            if crate::db::is_unique_violation(&e) {
+                return AppError::DuplicateError(format!(
+                    "Variant with SKU '{}' already exists",
+                    input.sku.as_deref().unwrap_or("")
+                ));
             }
             AppError::DatabaseError(e)
         })
     }
 
     async fn resolve_variant_options_tx(
-        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        tx: &mut DbTransaction<'_>,
         product_id: &str,
         variant_id: &str,
         options_map: &Option<std::collections::HashMap<String, String>>,
@@ -450,13 +449,11 @@ impl ProductRepository {
     }
 
     fn map_unique_violation(e: sqlx::Error, entity: &str, handle: &str) -> AppError {
-        if let sqlx::Error::Database(ref db_err) = e {
-            if db_err.code().as_deref() == Some("23505") {
-                return AppError::DuplicateError(format!(
-                    "{} with handle '{}' already exists",
-                    entity, handle
-                ));
-            }
+        if crate::db::is_unique_violation(&e) {
+            return AppError::DuplicateError(format!(
+                "{} with handle '{}' already exists",
+                entity, handle
+            ));
         }
         AppError::DatabaseError(e)
     }

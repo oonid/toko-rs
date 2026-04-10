@@ -82,15 +82,12 @@ impl AppError {
 }
 
 pub fn map_db_constraint(e: sqlx::Error) -> AppError {
-    if let sqlx::Error::Database(ref db_err) = e {
-        match db_err.code().as_deref() {
-            Some("23505") => {
-                AppError::DuplicateError("A record with this value already exists".into())
-            }
-            Some("23503") => AppError::NotFound("Referenced record not found".into()),
-            Some("23502") => AppError::InvalidData("A required field is missing".into()),
-            _ => AppError::DatabaseError(e),
-        }
+    if crate::db::is_unique_violation(&e) {
+        AppError::DuplicateError("A record with this value already exists".into())
+    } else if crate::db::is_fk_violation(&e) {
+        AppError::NotFound("Referenced record not found".into())
+    } else if crate::db::is_not_null_violation(&e) {
+        AppError::InvalidData("A required field is missing".into())
     } else {
         AppError::DatabaseError(e)
     }

@@ -1,17 +1,17 @@
 use super::models::*;
 use super::types::*;
+use crate::db::DbPool;
 use crate::error::AppError;
 use crate::payment::repository::PaymentRepository;
 use crate::types::generate_entity_id;
-use sqlx::PgPool;
 
 #[derive(Clone)]
 pub struct OrderRepository {
-    pool: PgPool,
+    pool: DbPool,
 }
 
 impl OrderRepository {
-    pub fn new(pool: PgPool) -> Self {
+    pub fn new(pool: DbPool) -> Self {
         Self { pool }
     }
 
@@ -95,7 +95,7 @@ impl OrderRepository {
             PaymentRepository::create_with_tx(&mut tx, &order_id, item_total, &cart.currency_code)
                 .await?;
 
-        sqlx::query("UPDATE carts SET completed_at = now(), updated_at = now() WHERE id = $1")
+        sqlx::query("UPDATE carts SET completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = $1")
             .bind(cart_id)
             .execute(&mut *tx)
             .await?;
@@ -108,12 +108,10 @@ impl OrderRepository {
     }
 
     fn map_display_id_conflict(e: sqlx::Error) -> AppError {
-        if let sqlx::Error::Database(db_err) = &e {
-            if db_err.code().as_deref() == Some("23505") {
-                return AppError::Conflict(
-                    "Order creation failed due to concurrent request. Please retry.".into(),
-                );
-            }
+        if crate::db::is_unique_violation(&e) {
+            return AppError::Conflict(
+                "Order creation failed due to concurrent request. Please retry.".into(),
+            );
         }
         AppError::DatabaseError(e)
     }

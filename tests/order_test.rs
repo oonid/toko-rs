@@ -25,7 +25,7 @@ fn request(method: Method, uri: &str, payload: &serde_json::Value) -> Request<Bo
     }
 }
 
-async fn create_cart_with_item(app: &axum::Router, pool: &sqlx::PgPool) -> String {
+async fn create_cart_with_item(app: &axum::Router, pool: &toko_rs::db::DbPool) -> String {
     sqlx::query("INSERT INTO products (id, title, handle, status) VALUES ('prod_1', 'Test Product', 'test', 'published') ON CONFLICT (id) DO NOTHING")
         .execute(pool).await.unwrap();
     sqlx::query("INSERT INTO product_variants (id, product_id, title, sku, price) VALUES ('var_1', 'prod_1', 'Small', 'TEST-S', 1000) ON CONFLICT (id) DO NOTHING")
@@ -62,7 +62,7 @@ async fn create_cart_with_item(app: &axum::Router, pool: &sqlx::PgPool) -> Strin
 #[tokio::test]
 async fn test_complete_cart_creates_order() {
     let (app, db) = common::setup_test_app().await;
-    let toko_rs::db::AppDb::Postgres(pool) = db;
+    let pool = db.pool.clone();
     let cart_id = create_cart_with_item(&app, &pool).await;
 
     let res = app
@@ -132,7 +132,7 @@ async fn test_complete_empty_cart_rejected() {
 #[tokio::test]
 async fn test_complete_already_completed_cart_rejected() {
     let (app, db) = common::setup_test_app().await;
-    let toko_rs::db::AppDb::Postgres(pool) = db;
+    let pool = db.pool.clone();
     let cart_id = create_cart_with_item(&app, &pool).await;
 
     let res = app
@@ -160,7 +160,7 @@ async fn test_complete_already_completed_cart_rejected() {
 #[tokio::test]
 async fn test_display_id_increments() {
     let (app, db) = common::setup_test_app().await;
-    let toko_rs::db::AppDb::Postgres(pool) = db;
+    let pool = db.pool.clone();
 
     for i in 1..=3u64 {
         let cart_id = create_cart_with_item(&app, &pool).await;
@@ -183,7 +183,7 @@ async fn test_display_id_increments() {
 #[tokio::test]
 async fn test_get_order_by_id() {
     let (app, db) = common::setup_test_app().await;
-    let toko_rs::db::AppDb::Postgres(pool) = db;
+    let pool = db.pool.clone();
     let cart_id = create_cart_with_item(&app, &pool).await;
 
     let res = app
@@ -237,7 +237,7 @@ async fn test_get_order_not_found() {
 #[tokio::test]
 async fn test_list_orders_by_customer() {
     let (app, db) = common::setup_test_app().await;
-    let toko_rs::db::AppDb::Postgres(pool) = db;
+    let pool = db.pool.clone();
 
     sqlx::query("INSERT INTO customers (id, first_name, email, has_account) VALUES ('cus_test1', 'Test', 'test@test.com', TRUE)")
         .execute(&pool).await.unwrap();
@@ -326,7 +326,7 @@ async fn test_complete_nonexistent_cart() {
 #[tokio::test]
 async fn test_order_and_payment_are_atomic() {
     let (app, db) = common::setup_test_app().await;
-    let toko_rs::db::AppDb::Postgres(pool) = db;
+    let pool = db.pool.clone();
     let cart_id = create_cart_with_item(&app, &pool).await;
 
     let res = app
@@ -396,7 +396,7 @@ async fn test_complete_empty_cart_returns_bad_request_format() {
 #[tokio::test]
 async fn test_payment_repo_create_and_find() {
     let (_, db) = common::setup_test_app().await;
-    let toko_rs::db::AppDb::Postgres(pool) = db;
+    let pool = db.pool.clone();
 
     let repo = toko_rs::payment::repository::PaymentRepository::new(pool.clone());
 

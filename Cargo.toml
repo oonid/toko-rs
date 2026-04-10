@@ -7,8 +7,13 @@ license = "MIT"
 description = "A modular, high-performance headless e-commerce backend inspired by MedusaJS"
 repository = "https://github.com/oonid/toko-rs"
 
+[features]
+default = ["postgres"]
+postgres = ["sqlx/postgres"]
+sqlite = ["sqlx/sqlite"]
+
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = [] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("postgres", "sqlite"))'] }
 
 [dependencies]
 # Web
@@ -21,9 +26,6 @@ tower-http = { version = "0.6", features = ["cors", "trace"] }
 sqlx = { version = "0.8", features = [
     "runtime-tokio",
     "tls-rustls",
-    "any",          # SQLite/PostgreSQL dual-driver support
-    "sqlite",
-    "postgres",
     "chrono",       # DateTime support
     "json",         # JSON field support
 ] }

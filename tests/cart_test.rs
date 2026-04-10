@@ -14,7 +14,7 @@ async fn body_json(resp: axum::http::Response<Body>) -> serde_json::Value {
     serde_json::from_slice(&bytes).unwrap()
 }
 
-async fn seed_in_pool(pool: &sqlx::PgPool) {
+async fn seed_in_pool(pool: &toko_rs::db::DbPool) {
     sqlx::query("INSERT INTO products (id, title, handle, status) VALUES ('prod_1', 'Test Product', 'test', 'published')")
         .execute(pool).await.unwrap();
     sqlx::query("INSERT INTO product_variants (id, product_id, title, sku, price) VALUES ('var_1', 'prod_1', 'Small', 'TEST-S', 1000)")
@@ -94,7 +94,7 @@ async fn test_store_create_cart_validation_failure() {
 #[tokio::test]
 async fn test_cart_full_flow() {
     let (app, db) = common::setup_test_app().await;
-    let toko_rs::db::AppDb::Postgres(pool) = db;
+    let pool = db.pool.clone();
     seed_in_pool(&pool).await;
 
     // 1. Create cart
@@ -334,7 +334,7 @@ async fn test_cart_full_flow() {
 #[tokio::test]
 async fn test_cart_add_same_variant_merges_quantity() {
     let (app, db) = common::setup_test_app().await;
-    let toko_rs::db::AppDb::Postgres(pool) = db;
+    let pool = db.pool.clone();
     seed_in_pool(&pool).await;
 
     let res = app
@@ -381,7 +381,7 @@ async fn test_cart_add_same_variant_merges_quantity() {
 #[tokio::test]
 async fn test_cart_item_total_computed() {
     let (app, db) = common::setup_test_app().await;
-    let toko_rs::db::AppDb::Postgres(pool) = db;
+    let pool = db.pool.clone();
     seed_in_pool(&pool).await;
 
     let res = app
@@ -416,7 +416,7 @@ async fn test_cart_item_total_computed() {
 #[tokio::test]
 async fn test_cart_update_completed_cart_rejected() {
     let (app, db) = common::setup_test_app().await;
-    let toko_rs::db::AppDb::Postgres(pool) = db;
+    let pool = db.pool.clone();
 
     let res = app
         .clone()
@@ -454,7 +454,7 @@ async fn test_cart_update_completed_cart_rejected() {
 #[tokio::test]
 async fn test_cart_add_item_to_completed_cart_rejected() {
     let (app, db) = common::setup_test_app().await;
-    let toko_rs::db::AppDb::Postgres(pool) = db;
+    let pool = db.pool.clone();
     seed_in_pool(&pool).await;
 
     let res = app
@@ -492,7 +492,7 @@ async fn test_cart_add_item_to_completed_cart_rejected() {
 #[tokio::test]
 async fn test_cart_update_line_item_on_completed_cart_rejected() {
     let (app, db) = common::setup_test_app().await;
-    let toko_rs::db::AppDb::Postgres(pool) = db;
+    let pool = db.pool.clone();
     seed_in_pool(&pool).await;
 
     let cart = body_json(
@@ -542,7 +542,7 @@ async fn test_cart_update_line_item_on_completed_cart_rejected() {
 #[tokio::test]
 async fn test_cart_delete_line_item_on_completed_cart_rejected() {
     let (app, db) = common::setup_test_app().await;
-    let toko_rs::db::AppDb::Postgres(pool) = db;
+    let pool = db.pool.clone();
     seed_in_pool(&pool).await;
 
     let cart = body_json(
@@ -592,7 +592,7 @@ async fn test_cart_delete_line_item_on_completed_cart_rejected() {
 #[tokio::test]
 async fn test_cart_get_response_format() {
     let (app, db) = common::setup_test_app().await;
-    let toko_rs::db::AppDb::Postgres(pool) = db;
+    let pool = db.pool.clone();
     seed_in_pool(&pool).await;
 
     let res = app

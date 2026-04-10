@@ -110,7 +110,7 @@ Routes access repos directly: `state.repos.product.find_by_id(&id)`. No delegati
 
 ### Module Boundaries
 
-Each module owns a single repository struct using `PgPool`:
+Each module owns a single repository struct using `DbPool` (type alias resolving to `PgPool` or `SqlitePool` at compile time):
 - `src/product/repository.rs` — `ProductRepository`
 - `src/cart/repository.rs` — `CartRepository`
 - `src/customer/repository.rs` — `CustomerRepository`
@@ -238,6 +238,36 @@ Credentials: `postgres:postgres@localhost:5432`
 
 ---
 
-## SQLite Status
+## SQLite Support
 
-SQLite migrations in `migrations/sqlite/` are preserved for Task 17 (feature flag support). See `docs/database-ext-sqlite.md` (to be created).
+SQLite is an optional compile-time backend via Cargo feature flag. See `docs/database-ext-sqlite.md` for full documentation.
+
+### Quick Start
+
+```bash
+# Build with SQLite backend
+cargo build --features sqlite --no-default-features
+
+# Run tests against SQLite in-memory
+make test-sqlite
+
+# Run all tests (PG + SQLite)
+make test-all
+```
+
+### Feature Flag Architecture
+
+| Cargo Feature | sqlx backend | `DbPool` resolves to | Migration path |
+|---|---|---|---|
+| `postgres` (default) | `sqlx/postgres` | `PgPool` | `./migrations/` |
+| `sqlite` | `sqlx/sqlite` | `SqlitePool` | `./migrations/sqlite/` |
+
+Type aliases (`DbPool`, `DbPoolOptions`, `DbDatabase`, `DbTransaction`) in `src/db.rs` resolve via `#[cfg]` to the appropriate backend types. No method-level cfg guards — all SQL is portable across both backends.
+
+### Error Code Mapping
+
+| Constraint | PG Code | SQLite Code | Helper function |
+|---|---|---|---|
+| Unique violation | `23505` | `2067` | `is_unique_violation()` |
+| FK violation | `23503` | `787` | `is_fk_violation()` |
+| Not-null violation | `23502` | `1299` | `is_not_null_violation()` |

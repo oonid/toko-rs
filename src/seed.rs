@@ -1,8 +1,8 @@
-use crate::db::AppDb;
+use crate::db::{AppDb, DbPool};
 use crate::error::AppError;
 
 pub async fn run_seed(db: &AppDb) -> Result<(), AppError> {
-    let AppDb::Postgres(pool) = db;
+    let pool = &db.pool;
 
     tracing::info!("Seeding sample data...");
 
@@ -13,7 +13,7 @@ pub async fn run_seed(db: &AppDb) -> Result<(), AppError> {
     Ok(())
 }
 
-async fn seed_products(pool: &sqlx::PgPool) -> Result<(), AppError> {
+async fn seed_products(pool: &DbPool) -> Result<(), AppError> {
     let products = [
         (
             "prod_seed_kaos_polos",
@@ -74,7 +74,7 @@ async fn seed_products(pool: &sqlx::PgPool) -> Result<(), AppError> {
     Ok(())
 }
 
-async fn seed_kaos_polos_variants(pool: &sqlx::PgPool) -> Result<(), AppError> {
+async fn seed_kaos_polos_variants(pool: &DbPool) -> Result<(), AppError> {
     let product_id = "prod_seed_kaos_polos";
 
     let options = [("opt_seed_kaos_size", "Ukuran", &["S", "M", "L", "XL"][..])];
@@ -168,7 +168,7 @@ async fn seed_kaos_polos_variants(pool: &sqlx::PgPool) -> Result<(), AppError> {
     Ok(())
 }
 
-async fn seed_jeans_slim_variants(pool: &sqlx::PgPool) -> Result<(), AppError> {
+async fn seed_jeans_slim_variants(pool: &DbPool) -> Result<(), AppError> {
     let product_id = "prod_seed_jeans_slim";
 
     sqlx::query("INSERT INTO product_options (id, product_id, title) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING")
@@ -257,7 +257,7 @@ async fn seed_jeans_slim_variants(pool: &sqlx::PgPool) -> Result<(), AppError> {
     Ok(())
 }
 
-async fn seed_sneakers_variants(pool: &sqlx::PgPool) -> Result<(), AppError> {
+async fn seed_sneakers_variants(pool: &DbPool) -> Result<(), AppError> {
     let product_id = "prod_seed_sneakers";
 
     sqlx::query("INSERT INTO product_options (id, product_id, title) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING")
@@ -353,7 +353,7 @@ async fn seed_sneakers_variants(pool: &sqlx::PgPool) -> Result<(), AppError> {
     Ok(())
 }
 
-async fn seed_customer(pool: &sqlx::PgPool) -> Result<(), AppError> {
+async fn seed_customer(pool: &DbPool) -> Result<(), AppError> {
     let id = "cus_seed_budi";
 
     sqlx::query(
@@ -380,17 +380,26 @@ mod tests {
     use super::*;
 
     fn test_db_url() -> String {
-        std::env::var("DATABASE_URL")
-            .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/toko_test".to_string())
+        #[cfg(feature = "postgres")]
+        let default = "postgres://postgres:postgres@localhost:5432/toko_test".to_string();
+        #[cfg(feature = "sqlite")]
+        let default = "sqlite:toko_test.db".to_string();
+        std::env::var("DATABASE_URL").unwrap_or_else(|_| default)
     }
 
-    async fn setup_seed_db() -> sqlx::PgPool {
-        let pool = sqlx::PgPool::connect(&test_db_url()).await.unwrap();
+    async fn setup_seed_db() -> DbPool {
+        let pool = DbPool::connect(&test_db_url()).await.unwrap();
+        #[cfg(feature = "postgres")]
         sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        #[cfg(feature = "sqlite")]
+        sqlx::migrate!("./migrations/sqlite")
+            .run(&pool)
+            .await
+            .unwrap();
         pool
     }
 
-    async fn clean_seed_data(pool: &sqlx::PgPool) {
+    async fn clean_seed_data(pool: &DbPool) {
         sqlx::query("DELETE FROM product_variant_option WHERE id LIKE 'pvo_seed_%'")
             .execute(pool)
             .await
@@ -421,7 +430,7 @@ mod tests {
     async fn test_seed_creates_products_and_customer() {
         let pool = setup_seed_db().await;
         clean_seed_data(&pool).await;
-        let app_db = AppDb::Postgres(pool.clone());
+        let app_db = AppDb { pool: pool.clone() };
         run_seed(&app_db).await.unwrap();
 
         let product_count: (i64,) =
@@ -450,7 +459,7 @@ mod tests {
     async fn test_seed_is_idempotent() {
         let pool = setup_seed_db().await;
         clean_seed_data(&pool).await;
-        let app_db = AppDb::Postgres(pool.clone());
+        let app_db = AppDb { pool: pool.clone() };
 
         run_seed(&app_db).await.unwrap();
         run_seed(&app_db).await.unwrap();
@@ -511,7 +520,7 @@ mod tests {
     async fn test_seed_products_are_published() {
         let pool = setup_seed_db().await;
         clean_seed_data(&pool).await;
-        let app_db = AppDb::Postgres(pool.clone());
+        let app_db = AppDb { pool: pool.clone() };
         run_seed(&app_db).await.unwrap();
 
         let draft_count: (i64,) = sqlx::query_as(
@@ -527,7 +536,7 @@ mod tests {
     async fn test_seed_variants_have_option_bindings() {
         let pool = setup_seed_db().await;
         clean_seed_data(&pool).await;
-        let app_db = AppDb::Postgres(pool.clone());
+        let app_db = AppDb { pool: pool.clone() };
         run_seed(&app_db).await.unwrap();
 
         let binding_count: (i64,) = sqlx::query_as(
@@ -546,7 +555,7 @@ mod tests {
     async fn test_seed_customer_has_account() {
         let pool = setup_seed_db().await;
         clean_seed_data(&pool).await;
-        let app_db = AppDb::Postgres(pool.clone());
+        let app_db = AppDb { pool: pool.clone() };
         run_seed(&app_db).await.unwrap();
 
         let has_account: (bool,) =
@@ -564,7 +573,7 @@ mod tests {
     async fn test_seed_variant_ranks_are_ordered() {
         let pool = setup_seed_db().await;
         clean_seed_data(&pool).await;
-        let app_db = AppDb::Postgres(pool.clone());
+        let app_db = AppDb { pool: pool.clone() };
         run_seed(&app_db).await.unwrap();
 
         let ranks: Vec<(String, i64)> = sqlx::query_as(

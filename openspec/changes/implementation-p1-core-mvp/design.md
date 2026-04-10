@@ -40,7 +40,7 @@ For a complete table-by-table mapping of every Medusa table to its toko-rs equiv
 
 **Constraints**:
 - Single binary, no microservices
-- **PostgreSQL-primary**: All SQL written for PostgreSQL (`$1, $2` placeholders, `timestamptz`, `jsonb`). SQLite used for local development via a thin placeholder adapter. Medusa uses PostgreSQL — toko-rs targets the same.
+- **PostgreSQL-primary**: Default and production backend. SQLite is an optional compile-time alternative. SQL is portable across both via feature-flag type aliases (see Decision 2, Decision 11).
 - Medusa-compatible JSON response shapes (not HTTP status codes alone)
 - Error responses MUST match the 3-field schema (`code`, `type`, `message`) from `specs/store.oas.yaml` — **`code` field not yet implemented** (tracked as task 2b.12)
 - HTTP methods MUST match Medusa: POST for both create and update (no PUT), DELETE for soft-delete — **currently compliant**
@@ -76,12 +76,31 @@ Each domain (product, cart, order, customer, payment) is a folder under `src/` w
 
 **Alternative considered**: Cargo workspace with separate crates. Rejected because 11 tables and 20 endpoints don't justify the compilation complexity. Module boundaries are sufficient, and if needed later, each folder can become its own crate with minimal structural change.
 
-### 2. Single repository per module (no dual SQLite/Postgres repos)
-Each module has exactly ONE repository struct using `PgPool`. No `SqlitePool`, no enum dispatch, no `#[cfg]` guards. PostgreSQL is the primary and only target for production queries.
+### 2. Single repository per module with compile-time backend selection
 
-**For local development and testing**, two options are supported:
-- **SQLite in-memory** (`sqlite::memory:`): Used by integration tests. A thin helper translates `$1, $2, $3` placeholders to `?` at query preparation time. This avoids duplicating every query.
-- **PostgreSQL via Docker**: Used for full compatibility testing. `docker-compose.yml` provides a PostgreSQL 16 container. `DATABASE_URL=postgres://...` runs against it directly.
+Each module has exactly ONE repository struct. The pool type is a compile-time alias (`DbPool`) that resolves to `PgPool` or `SqlitePool` based on the active Cargo feature flag. No enum dispatch, no `AnyPool`, no method-level `#[cfg]` guards on repository code.
+
+**Feature flags**:
+- `postgres` (default) — `DbPool = PgPool`, migrations from `./migrations/`
+- `sqlite` — `DbPool = SqlitePool`, migrations from `./migrations/sqlite/`
+
+**cfg scope**: Only ~5 type aliases and infrastructure functions in `src/db.rs` use `#[cfg]`:
+- `DbPool`, `DbPoolOptions`, `DbDatabase` type aliases
+- `create_db()` pool construction (SQLite enables `PRAGMA foreign_keys = ON`, uses `max_connections(1)`)
+- `run_migrations()` selects migration directory
+- Error code helpers (`is_unique_violation`, `is_fk_violation`, `is_not_null_violation`) return backend-specific codes
+
+**Zero code duplication**: All 5 repository files, all route handlers, and all test files use the generic `DbPool`/`DbTransaction` types. The same SQL works on both backends because:
+- sqlx normalizes `$N` placeholders to `?` for SQLite automatically
+- SQLite 3.35+ supports `RETURNING *` (bundled libsqlite3-sys ships 3.39+)
+- `CURRENT_TIMESTAMP` works on both (replaced PG-only `now()`)
+- `ON CONFLICT DO NOTHING` works on SQLite 3.24+
+
+**Build commands**:
+```bash
+cargo build                          # PostgreSQL (default)
+cargo build --features sqlite --no-default-features  # SQLite
+```
 
 **Previous approach (rejected)**: Enum dispatch with `DatabaseRepo { Sqlite { product, cart }, Postgres { product, cart } }` where every repo method was duplicated — once with `?` placeholders, once with `$N` placeholders. This doubled maintenance cost per module and left Postgres implementations as untested stubs. With 5 modules planned, this would produce ~60 duplicated method bodies and ~30 `#[cfg]` guards.
 
@@ -172,9 +191,19 @@ All implementation follows TDD: tests are written first as contracts, then imple
 
 **Coverage target**: >90% line coverage as measured by `cargo llvm-cov`. This is a hard gate before any phase is considered complete.
 
+### 11. SQLite as optional compile-time backend (not dual-backend)
+
+SQLite is NOT a production backend — it is an optional compile-time alternative for development, testing, and embedded scenarios. The binary is built for exactly one backend at a time via Cargo feature flags (`postgres` or `sqlite`).
+
+**Rationale**: This avoids the complexity of AnyPool/dynamic dispatch while still providing SQLite support. Since only one backend is compiled in, there is zero runtime overhead from backend selection.
+
+**What cfg guards touch**: Only `src/db.rs` — ~5 type aliases, pool construction, migration path selection, and error code constants. All 5 repositories, all routes, and all tests use the generic `DbPool`/`DbTransaction` types with no cfg guards.
+
+**Alternative considered**: Runtime backend selection via `sqlx::AnyPool`. Rejected because it requires the `sqlx/any` feature which adds overhead, limits type-specific features (no `RETURNING *` on some backends), and complicates error handling. Compile-time selection is simpler, faster, and produces a smaller binary.
+
 ## Risks / Trade-offs
 
-- **Placeholder adapter for SQLite tests**: Translating `$N` → `?` at runtime adds a thin layer of indirection for the in-memory SQLite test path. Mitigation: the adapter is a single function, and integration tests against PostgreSQL (via Docker) serve as the authoritative validation.
+- **SQLite feature flag adds compile-time branching**: `#[cfg]` guards in `src/db.rs` mean the SQLite code path is not tested when building with default (PG) features. Mitigation: `make test-all` runs the full test suite against both backends. The cfg scope is minimal (~30 lines in one file).
 - **Single price field**: Medusa uses a pricing module with multi-currency price sets. P1 collapses this to a single `price` integer (cents) on `product_variants`. Breaking change if multi-currency is needed later. Mitigation: price is an integer field that can be migrated to a foreign key. The default currency is IDR (Indonesian Rupiah, configured via `DEFAULT_CURRENCY_CODE` env var). Price values are stored as integers representing the smallest unit — for IDR this is whole Rupiah (IDR has no practical sub-unit, but fractional amounts like Rp1.5 may arise from percentage-based calculations). Display formatting uses comma for thousands (`Rp2,500`) and dot for fractions (`Rp1.5`).
 - **No admin auth**: Admin endpoints are fully open. Acceptable for development/demo. Must add auth before production.
 - **Cart line item snapshot not updated on product change**: By design — snapshots freeze state at add-time. If product price changes, existing cart items keep old price. This matches Medusa behavior.

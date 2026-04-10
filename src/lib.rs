@@ -126,7 +126,6 @@ mod tests {
     async fn test_build_app_state() {
         let (state, db) = build_app_state(&test_db_url(), "idr").await.unwrap();
         assert!(db::ping(&db).await);
-        assert!(matches!(db, db::AppDb::Postgres(_)));
         let _ = &state;
     }
 

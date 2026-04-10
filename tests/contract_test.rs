@@ -192,7 +192,7 @@ async fn test_contract_delete_response_shape() {
 #[tokio::test]
 async fn test_contract_line_item_delete_response_shape() {
     let (app, db) = common::setup_test_app().await;
-    let toko_rs::db::AppDb::Postgres(pool) = db;
+    let pool = db.pool.clone();
     sqlx::query(
         "INSERT INTO products (id, title, handle, status) VALUES ('p1', 'T', 't', 'published')",
     )
@@ -340,7 +340,7 @@ async fn test_contract_customer_response_shape() {
 #[tokio::test]
 async fn test_contract_order_complete_response_shape() {
     let (app, db) = common::setup_test_app().await;
-    let toko_rs::db::AppDb::Postgres(pool) = db;
+    let pool = db.pool.clone();
     sqlx::query(
         "INSERT INTO products (id, title, handle, status) VALUES ('p1', 'T', 't', 'published')",
     )
@@ -437,7 +437,7 @@ async fn test_contract_order_complete_response_shape() {
 #[tokio::test]
 async fn test_contract_order_detail_response_shape() {
     let (app, db) = common::setup_test_app().await;
-    let toko_rs::db::AppDb::Postgres(pool) = db;
+    let pool = db.pool.clone();
     sqlx::query(
         "INSERT INTO products (id, title, handle, status) VALUES ('p1', 'T', 't', 'published')",
     )
@@ -514,7 +514,7 @@ async fn test_contract_order_detail_response_shape() {
 #[tokio::test]
 async fn test_contract_order_list_response_shape() {
     let (app, db) = common::setup_test_app().await;
-    let toko_rs::db::AppDb::Postgres(pool) = db;
+    let pool = db.pool.clone();
     sqlx::query("INSERT INTO customers (id, first_name, email, has_account) VALUES ('c1', 'T', 't@t.com', TRUE)")
         .execute(&pool).await.unwrap();
     sqlx::query(
@@ -763,7 +763,7 @@ async fn test_error_400_empty_cart_completion() {
 #[tokio::test]
 async fn test_error_409_completed_cart_update() {
     let (app, db) = common::setup_test_app().await;
-    let toko_rs::db::AppDb::Postgres(pool) = db;
+    let pool = db.pool.clone();
     let cart = body_json(
         app.clone()
             .oneshot(request(Method::POST, "/store/carts", &json!({})))

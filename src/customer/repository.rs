@@ -1,16 +1,16 @@
 use super::models::{Customer, CustomerAddress};
 use super::types::*;
+use crate::db::DbPool;
 use crate::error::AppError;
 use crate::types::{generate_entity_id, metadata_to_json};
-use sqlx::PgPool;
 
 #[derive(Clone)]
 pub struct CustomerRepository {
-    pool: PgPool,
+    pool: DbPool,
 }
 
 impl CustomerRepository {
-    pub fn new(pool: PgPool) -> Self {
+    pub fn new(pool: DbPool) -> Self {
         Self { pool }
     }
 
@@ -35,13 +35,11 @@ impl CustomerRepository {
         .fetch_one(&self.pool)
         .await
         .map_err(|e| {
-            if let sqlx::Error::Database(ref db_err) = e {
-                if db_err.code().as_deref() == Some("23505") {
-                    return AppError::DuplicateError(format!(
-                        "Customer with email '{}' already exists",
-                        input.email
-                    ));
-                }
+            if crate::db::is_unique_violation(&e) {
+                return AppError::DuplicateError(format!(
+                    "Customer with email '{}' already exists",
+                    input.email
+                ));
             }
             AppError::DatabaseError(e)
         })?;
@@ -75,7 +73,7 @@ impl CustomerRepository {
                 last_name = COALESCE($2, last_name),
                 phone = COALESCE($3, phone),
                 metadata = COALESCE($4, metadata),
-                updated_at = now()
+                updated_at = CURRENT_TIMESTAMP
             WHERE id = $5 AND deleted_at IS NULL
             "#,
         )

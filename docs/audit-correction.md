@@ -1550,3 +1550,80 @@ Consolidated 5 docs into 3, eliminating duplicated content and superseded planne
 | `seed-data.md` (1107 lines) | `seed-data.md` (~1085 lines) | Removed `## Test Coverage` section (now in `testing.md`). |
 
 All cross-references updated in: `design.md`, `proposal.md`, `tasks.md`, `audit-correction.md`, `audit-p1-task12.md`.
+
+---
+
+## 17. SQLite Feature Flag Support
+
+Completed 2026-04-10.
+
+### Context
+
+Task 17 adds SQLite as an optional compile-time backend via Cargo feature flag. PostgreSQL remains the default and primary backend. SQLite is selected at compile time with `--features sqlite --no-default-features`. The implementation uses type aliases in `src/db.rs` to avoid code duplication — no method-level `#[cfg]` guards on repository code.
+
+### 17a. Infrastructure setup
+
+| # | File | Change |
+|---|---|---|
+| 17a.1 | `Cargo.toml` | Added `[features]` section: `default = ["postgres"]`, `postgres = ["sqlx/postgres"]`, `sqlite = ["sqlx/sqlite"]`. Removed unused `"any"` feature. |
+| 17a.2 | `src/db.rs` | Type aliases: `DbPool`, `DbPoolOptions`, `DbDatabase`, `DbTransaction` via `#[cfg]` |
+| 17a.3 | `src/db.rs` | `AppDb` changed from enum `AppDb::Postgres(PgPool)` to struct `AppDb { pool: DbPool }` — only one backend compiled at a time |
+| 17a.4 | `src/db.rs` | `create_db()` uses `DbPoolOptions`, cfg-gated pool construction (SQLite: `max_connections(1)`, `PRAGMA foreign_keys = ON`). `run_migrations()` cfg-gated migration path. |
+
+### 17b. SQL portability
+
+| # | File | Change |
+|---|---|---|
+| 17b.1 | `src/product/repository.rs`, `src/cart/repository.rs`, `src/customer/repository.rs`, `src/order/repository.rs` | `now()` → `CURRENT_TIMESTAMP` in 9 occurrences (both backends support it) |
+| 17b.2 | All 5 repo files | `PgPool` → `DbPool`, `Transaction<'_, Postgres>` → `DbTransaction<'_>` |
+| 17b.3 | `src/seed.rs` | `sqlx::PgPool` → `DbPool`, `AppDb::Postgres(pool.clone())` → `AppDb { pool: pool.clone() }` |
+
+### 17c. Error code handling
+
+| # | File | Change |
+|---|---|---|
+| 17c.1 | `src/db.rs` | Added `is_unique_violation()`, `is_fk_violation()`, `is_not_null_violation()` helpers with cfg-gated code constants (PG: 23505/23503/23502, SQLite: 2067/787/1299) |
+| 17c.2 | `src/error.rs`, `src/product/repository.rs`, `src/customer/repository.rs`, `src/order/repository.rs` | `map_db_constraint()` and inline checks use helper functions instead of hardcoded PG codes |
+
+### 17d. Tests and verification
+
+| # | Result |
+|---|---|
+| 17d.1 | 129 PG tests pass, clippy clean |
+| 17d.2 | `cargo check --features sqlite --no-default-features` compiles |
+| 17d.3 | **129 SQLite tests pass** (28 lib + 93 integration + 8 E2E) via `DATABASE_URL="sqlite::memory:"` |
+| 17d.4 | Clippy clean on both feature sets |
+
+**Fixes applied for SQLite test compatibility:**
+- `src/db.rs` tests: `test_db_url()` cfg-gated default URL (PG → SQLite)
+- `src/seed.rs` tests: `setup_seed_db()` cfg-gated `sqlx::migrate!()` call, `test_db_url()` cfg-gated default
+- `tests/common/mod.rs`: default `DATABASE_URL` cfg-gated
+- `tests/e2e/common/mod.rs`: default `E2E_DATABASE_URL` cfg-gated
+
+### 17e. Documentation and config
+
+| # | File | Change |
+|---|---|---|
+| 17e.1 | `.env` | Default changed from SQLite to PG URL |
+| 17e.1 | `.env.example` | Shows both PG and SQLite options with comments |
+| 17e.2 | `Makefile` | Added `test-sqlite` and `test-all` targets |
+| 17e.3 | `docs/database.md` | Added SQLite feature flag section with architecture, error codes, quick start |
+| 17e.4 | `design.md` | Decision 2 rewritten for compile-time backend selection. Added Decision 11. Risks section updated. |
+| 17e.5 | `docs/testing.md` | Added SQLite test section |
+| 17e.6 | `docs/audit-correction.md` | Added Task 17 section (this section) |
+| 17e.7 | `docs/database-ext-sqlite.md` | Created — full SQLite extension documentation |
+
+### Key discoveries during implementation
+
+- **sqlx normalizes `$N` placeholders for SQLite automatically** — zero SQL changes needed for parameter syntax
+- **SQLite 3.35+ supports `RETURNING *`** — all RETURNING usages work on both backends
+- **`ON CONFLICT DO NOTHING`** (14 uses in seed.rs) works on SQLite 3.24+
+- **`now()` is PG-only** — replaced with `CURRENT_TIMESTAMP` (9 occurrences across 4 files)
+- **`sqlx::migrate!()` macro is compile-time** — two separate invocations behind `#[cfg]` for different migration directories
+- **SQLite `:memory:` URL works for all tests** — each test gets its own isolated in-memory database
+
+### TDD Record (17)
+
+1. **RED**: N/A — code changes are infrastructure refactoring, not new features
+2. **GREEN**: Applied all cfg-gated type aliases, SQL portability fixes, error code helpers, test infrastructure fixes
+3. **Verify**: 129 tests pass on both PG and SQLite, clippy clean on both feature sets
