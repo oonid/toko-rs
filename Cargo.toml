@@ -52,3 +52,5 @@ reqwest = { version = "0.12", features = ["json"] }
 serial_test = "3"
 wiremock = "0.6"
 assert-json-diff = "2"
+testcontainers = "0.23"
+testcontainers-modules = { version = "0.11", features = ["postgres"] }

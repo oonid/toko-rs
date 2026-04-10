@@ -1,4 +1,4 @@
-.PHONY: dev test check lint fmt seed clean-db docker-up docker-down test-pg cov
+.PHONY: dev test check lint fmt seed clean-db docker-up docker-down test-pg test-e2e test-e2e-pg cov
 
 dev:
 	cargo run
@@ -28,7 +28,13 @@ docker-down:
 	docker compose down
 
 test-pg:
-	DATABASE_URL=postgres://postgres:postgres@localhost:5432/toko cargo test
+	DATABASE_URL=postgres://postgres:postgres@localhost:5432/toko_test cargo test -- --test-threads=1
+
+test-e2e:
+	E2E_DATABASE_URL=postgres://postgres:postgres@localhost:5432/toko_e2e cargo test --test e2e -- --test-threads=1
+
+test-e2e-pg:
+	DATABASE_URL=postgres://postgres:postgres@localhost:5432/toko_test E2E_DATABASE_URL=postgres://postgres:postgres@localhost:5432/toko_e2e cargo test -- --test-threads=1
 
 cov:
 	cargo llvm-cov --summary-only

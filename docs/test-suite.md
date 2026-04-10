@@ -4,28 +4,29 @@ Spec reference: All module specs in `openspec/changes/implementation-p1-core-mvp
 
 ## Summary
 
-103 tests across 7 integration test files + 5 unit test source files, covering all 20 API endpoints + health check with 100% endpoint coverage.
+125 tests across 7 integration test files + 8 E2E test files + 5 unit test source files, covering all 20 API endpoints + health check with 100% endpoint coverage and 92.12% line coverage.
 
 | Test file | Count | What it covers |
 |---|---|---|
 | `src/error.rs` (unit) | 9 | All AppError variants: status codes, type strings, code strings |
 | `src/config.rs` (unit) | 2 | Config loading, defaults |
-| `src/db.rs` (unit) | 4 | SQLite pool creation, migrations, ping |
+| `src/db.rs` (unit) | 4 | PG pool creation, migrations, ping |
 | `src/seed.rs` (unit) | 6 | Seed data counts, idempotency, published status, bindings, ranks |
 | `src/lib.rs` (unit) | 2 | Health check, app state build |
 | `tests/product_test.rs` | 23 | All 8 product endpoints: CRUD, variants, duplicate handle/SKU, filtering, pagination, soft delete |
-| `tests/cart_test.rs` | 9 | All 6 cart endpoints: create, get, update, add/update/remove items, completed guard |
+| `tests/cart_test.rs` | 11 | All 6 cart endpoints: create, get, update, add/update/remove items, completed guard |
 | `tests/customer_test.rs` | 10 | All 3 customer endpoints: register, get/update profile, auth header |
 | `tests/order_test.rs` | 11 | All 3 order endpoints: complete cart, get/list orders, error cases, atomicity |
 | `tests/seed_flow_test.rs` | 2 | E2E smoke: browse→cart→checkout, customer order history |
 | `tests/health_test.rs` | 1 | Health endpoint |
-| `tests/contract_test.rs` | 24 | Response shape validation (10), error contract (10), HTTP method audit (3), CORS preflight (1) |
+| `tests/contract_test.rs` | 34 | Response shape validation (10), error contract (10), HTTP method audit (3), validation (7), CORS preflight (1), pagination cap (1), metadata (1), deny unknown fields (1) |
+| `tests/e2e/` | 8 | Live HTTP E2E: guest checkout, customer lifecycle, admin CRUD, cart guards, errors, response shapes |
 
 ## Test Infrastructure
 
 ### `tests/common/mod.rs`
 
-Provides `setup_test_app()` — creates an in-memory SQLite database, runs migrations, builds AppState with all 5 repositories, and returns `(Router, AppDb)`. Every integration test uses this.
+Provides `setup_test_app()` — connects to `toko_test` PostgreSQL database via `DATABASE_URL`, runs migrations, cleans all tables, builds AppState with all 5 repositories, and returns `(Router, AppDb)`. Every integration test uses this.
 
 ### Per-file helpers
 
@@ -61,6 +62,21 @@ Each test file defines:
 | + | GET | `/health` | `test_health_check_ok` |
 
 **Coverage: 20/20 endpoints + health = 100%**
+
+## E2E Tests (Task 16)
+
+Located in `tests/e2e/`. Run against live `axum::serve` with `reqwest::Client`. See `docs/test-e2e.md` for full documentation.
+
+| Test | Steps | Endpoints covered |
+|------|-------|-------------------|
+| `test_e2e_guest_checkout_flow` | 9 | health, product list/detail, cart create/add-item/complete |
+| `test_e2e_customer_lifecycle` | 8 | customer register/get/update, cart create/add-item/complete, order list/detail |
+| `test_e2e_admin_product_crud` | 10 | admin product create/list/get/update/publish/add-variant/delete, store GET |
+| `test_e2e_admin_product_with_variants` | 4 | admin product create with options/variants, calculated_price, option combo |
+| `test_e2e_cart_update_and_delete` | 7 | cart create/add-item/update/delete-line-item, empty cart complete |
+| `test_e2e_cart_completed_guards` | 5 | cart complete, update completed (409), add item completed (409) |
+| `test_e2e_error_responses` | 7 | 404, 422, 400, 401 error scenarios |
+| `test_e2e_response_shapes` | 5 | Product, Cart, Order, Customer, Error contract shapes |
 
 ## Contract Tests (10.6)
 
@@ -130,7 +146,12 @@ Fixes applied during verification:
 ## Running
 
 ```bash
-make test        # cargo test
-make lint        # cargo clippy -- -D warnings
-make cov         # cargo llvm-cov --summary-only
+make docker-up    # Start PG (auto-creates toko_test + toko_e2e)
+make test-pg      # Integration tests against PostgreSQL
+make test-e2e     # E2E tests only
+make test-e2e-pg  # All tests (integration + E2E)
+make lint         # cargo clippy -- -D warnings
+make cov          # cargo llvm-cov --summary-only
 ```
+
+All tests require `--test-threads=1` for DB isolation. Makefile targets handle this automatically.

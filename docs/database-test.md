@@ -2,7 +2,7 @@
 
 ## Overview
 
-All 117 integration and unit tests run against PostgreSQL 16 via Docker Compose. Tests are no longer in-memory SQLite — they exercise real database behavior including type constraints, partial unique indexes, and `RETURNING` clauses.
+All 125 integration, unit, and E2E tests run against PostgreSQL 16 via Docker Compose. Tests are no longer in-memory SQLite — they exercise real database behavior including type constraints, partial unique indexes, and `RETURNING` clauses.
 
 ## Prerequisites
 
@@ -22,12 +22,14 @@ The `docker-compose.yml` provisions PostgreSQL 16 on port 5432 with:
 | Database | Purpose | Created by |
 |---|---|---|
 | `toko` | Production / manual testing | `docker-compose.yml` |
-| `toko_test` | Integration tests | Manual: `createdb toko_test` or test runner |
+| `toko_test` | Integration tests | `scripts/init-dbs.sh` (auto on first `docker compose up`) |
+| `toko_e2e` | E2E tests (live HTTP) | `scripts/init-dbs.sh` (auto on first `docker compose up`) |
 
-Create `toko_test` before running tests:
+Create `toko_test` and `toko_e2e` databases (automatic with `docker compose up -d`):
 
 ```bash
-docker compose exec postgres psql -U postgres -c "CREATE DATABASE toko_test;"
+docker compose up -d
+# databases created automatically via scripts/init-dbs.sh
 ```
 
 ## Running Tests
@@ -104,8 +106,9 @@ PG `INTEGER` is INT4 (32-bit). Rust `i64` requires INT8. All numeric columns cha
 | `tests/order_test.rs` | 10 | Order creation, display_id, customer orders |
 | `tests/customer_test.rs` | 2 | Customer CRUD |
 | `tests/contract_test.rs` | 34 | Response shapes, error formats, validation |
-| `tests/seed_flow_test.rs` | 0 | (Empty — seed tests in `src/seed.rs`) |
-| **Total** | **117** | |
+| `tests/seed_flow_test.rs` | 2 | Seed data browse/checkout flow |
+| `tests/e2e/` | 8 | E2E live HTTP tests |
+| **Total** | **125** | |
 
 ## Error Mapping
 
@@ -122,9 +125,11 @@ Repos also check `db_err.code().as_deref() == Some("23505")` inline for context-
 ## Makefile
 
 ```bash
-make docker-up    # Start PG container
+make docker-up    # Start PG container (auto-creates toko_test + toko_e2e)
 make docker-down  # Stop PG container
-make test-pg      # Run tests against PG (DATABASE_URL set in Makefile)
+make test-pg      # Run integration tests against PG
+make test-e2e     # Run E2E tests only
+make test-e2e-pg  # Run all tests (integration + E2E)
 make test         # cargo test (requires DATABASE_URL set)
 ```
 
@@ -136,3 +141,12 @@ SQLite migrations in `migrations/sqlite/` are preserved but **not currently used
 3. Conditional SQL in repos (or the translator)
 
 This is deferred to a future task (noted in design.md Decision 2).
+
+## Test Coverage
+
+```
+Line Coverage:  92.12% (2233/2409 lines covered)
+Region Coverage: 88.45%
+```
+
+Run with: `make cov` or `cargo llvm-cov --summary-only -- --test-threads=1`

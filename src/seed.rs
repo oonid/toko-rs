@@ -356,20 +356,11 @@ async fn seed_sneakers_variants(pool: &sqlx::PgPool) -> Result<(), AppError> {
 async fn seed_customer(pool: &sqlx::PgPool) -> Result<(), AppError> {
     let id = "cus_seed_budi";
 
-    let exists: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM customers WHERE id = $1")
-        .bind(id)
-        .fetch_one(pool)
-        .await?;
-
-    if exists.0 > 0 {
-        tracing::info!(customer = id, "Customer already exists, skipping");
-        return Ok(());
-    }
-
     sqlx::query(
         r#"
         INSERT INTO customers (id, first_name, last_name, email, phone, has_account)
         VALUES ($1, $2, $3, $4, $5, TRUE)
+        ON CONFLICT (id) DO NOTHING
         "#,
     )
     .bind(id)
@@ -380,7 +371,7 @@ async fn seed_customer(pool: &sqlx::PgPool) -> Result<(), AppError> {
     .execute(pool)
     .await?;
 
-    tracing::info!(customer = id, "Created customer");
+    tracing::info!(customer = id, "Seeded customer");
     Ok(())
 }
 

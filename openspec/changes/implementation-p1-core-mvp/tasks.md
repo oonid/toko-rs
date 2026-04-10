@@ -362,35 +362,35 @@ Full HTTP integration tests using `reqwest` against a live `axum::serve` instanc
 
 ### 16a. Test harness
 
-- [ ] 16a.1 Create `tests/e2e/mod.rs` — `setup_e2e_app(database_url)` function that creates DB pool, runs migrations, seeds data, binds to `127.0.0.1:0` (random port), starts `axum::serve` in background `tokio::spawn`, returns base URL + `reqwest::Client` + DB pool for assertions. Detects `E2E_DATABASE_URL` env var for PostgreSQL; falls back to SQLite in-memory.
-- [ ] 16a.2 Add `testcontainers` dependency to `Cargo.toml` `[dev-dependencies]` with `postgres` feature. Add helper to start PG container programmatically when `E2E_DATABASE_URL=testcontainers://` is set.
-- [ ] 16a.3 Update `docker-compose.yml` — add `toko_test` database init or use separate `docker-compose.test.yml` with ephemeral PG container.
-- [ ] 16a.4 Add Makefile targets: `test-e2e` (SQLite cycle), `test-e2e-pg` (both SQLite + PG cycles via Docker Compose), `test-e2e-tc` (both cycles via testcontainers).
+- [x] 16a.1 Create `tests/e2e/mod.rs` — `setup_e2e_app(database_url)` function that creates DB pool, runs migrations, seeds data, binds to `127.0.0.1:0` (random port), starts `axum::serve` in background `tokio::spawn`, returns base URL + `reqwest::Client` + DB pool for assertions. Detects `E2E_DATABASE_URL` env var for PostgreSQL; falls back to SQLite in-memory.
+- [x] 16a.2 Add `testcontainers` dependency to `Cargo.toml` `[dev-dependencies]` with `postgres` feature. Add helper to start PG container programmatically when `E2E_DATABASE_URL=testcontainers://` is set.
+- [x] 16a.3 Update `docker-compose.yml` — add `toko_test` database init or use separate `docker-compose.test.yml` with ephemeral PG container.
+- [x] 16a.4 Add Makefile targets: `test-e2e` (SQLite cycle), `test-e2e-pg` (both SQLite + PG cycles via Docker Compose), `test-e2e-tc` (both cycles via testcontainers).
 
 ### 16b. Full commerce cycle test (happy path, 17 steps)
 
-- [ ] 16b.1 Implement `test_e2e_guest_checkout_flow` — covers steps 1-9 from seed-data.md: health check → browse products → product detail → create cart → add item → add second item (merge qty) → update quantity → verify totals → complete cart → verify order.
-- [ ] 16b.2 Implement `test_e2e_customer_lifecycle` — covers steps 10-17: register customer → get profile → update profile → create cart with customer_id → add item → complete → list orders → view order detail. Tests `X-Customer-Id` header auth.
+- [x] 16b.1 Implement `test_e2e_guest_checkout_flow` — covers steps 1-9 from seed-data.md: health check → browse products → product detail → create cart → add item → add second item (merge qty) → update quantity → verify totals → complete cart → verify order.
+- [x] 16b.2 Implement `test_e2e_customer_lifecycle` — covers steps 10-17: register customer → get profile → update profile → create cart with customer_id → add item → complete → list orders → view order detail. Tests `X-Customer-Id` header auth.
 
 ### 16c. Admin product CRUD tests
 
-- [ ] 16c.1 Implement `test_e2e_admin_product_crud` — create draft product → list all products (includes drafts) → get single product → publish → partial update → add variant → verify variant + options → soft-delete → verify 404 on store GET.
-- [ ] 16c.2 Implement `test_e2e_admin_product_with_variants` — create product with options + variants in one request → verify option coverage validation → verify calculated_price on variant → verify unique option combo constraint.
+- [x] 16c.1 Implement `test_e2e_admin_product_crud` — create draft product → list all products (includes drafts) → get single product → publish → partial update → add variant → verify variant + options → soft-delete → verify 404 on store GET.
+- [x] 16c.2 Implement `test_e2e_admin_product_with_variants` — create product with options + variants in one request → verify option coverage validation → verify calculated_price on variant → verify unique option combo constraint.
 
 ### 16d. Cart manipulation tests
 
-- [ ] 16d.1 Implement `test_e2e_cart_update_and_delete` — create cart → add item → update cart email → delete line item → add same variant again (verify merge) → verify empty cart completion returns 400.
-- [ ] 16d.2 Implement `test_e2e_cart_completed_guards` — create cart → add item → complete → attempt update → 409 → attempt add item → 409 → attempt update line item → 409 → attempt delete line item → 409.
+- [x] 16d.1 Implement `test_e2e_cart_update_and_delete` — create cart → add item → update cart email → delete line item → add same variant again (verify merge) → verify empty cart completion returns 400.
+- [x] 16d.2 Implement `test_e2e_cart_completed_guards` — create cart → add item → complete → attempt update → 409 → attempt add item → 409 → attempt update line item → 409 → attempt delete line item → 409.
 
 ### 16e. Error and validation tests
 
-- [ ] 16e.1 Implement `test_e2e_error_responses` — verify 422 for duplicate email, 404 for nonexistent cart/order/customer, 400 for invalid quantity, 401 for missing X-Customer-Id on protected endpoints, 422 for unknown fields, 422 for invalid product status, 422 for string metadata.
-- [ ] 16e.2 Implement `test_e2e_response_shapes` — verify contract shapes for product (images, is_giftcard, discountable, calculated_price), cart (22 total fields), order (22 total fields, payment_status, fulfillment_status, fulfillments, shipping_methods), customer (addresses array, default address IDs), line items (requires_shipping, is_discountable, is_tax_inclusive).
+- [x] 16e.1 Implement `test_e2e_error_responses` — verify 422 for duplicate email, 404 for nonexistent cart/order/customer, 400 for invalid quantity, 401 for missing X-Customer-Id on protected endpoints, 422 for unknown fields, 422 for invalid product status, 422 for string metadata.
+- [x] 16e.2 Implement `test_e2e_response_shapes` — verify contract shapes for product (images, is_giftcard, discountable, calculated_price), cart (22 total fields), order (22 total fields, payment_status, fulfillment_status, fulfillments, shipping_methods), customer (addresses array, default address IDs), line items (requires_shipping, is_discountable, is_tax_inclusive).
 
 ### 16f. Verification
 
-- [ ] 16f.1 Run `test-e2e` (SQLite) — all E2E tests pass.
-- [ ] 16f.2 Run `test-e2e-pg` or `test-e2e-tc` (PostgreSQL) — same tests pass against real PostgreSQL.
-- [ ] 16f.3 Run `cargo test` — all existing 117 tests still pass (no regressions).
-- [ ] 16f.4 Run `cargo clippy -- -D warnings` — zero warnings.
-- [ ] 16f.5 Update `docs/audit-correction.md` with Task 16 changes.
+- [x] 16f.1 Run `test-e2e` (SQLite) — all E2E tests pass.
+- [x] 16f.2 Run `test-e2e-pg` or `test-e2e-tc` (PostgreSQL) — same tests pass against real PostgreSQL.
+- [x] 16f.3 Run `cargo test` — all existing 117 tests still pass (no regressions).
+- [x] 16f.4 Run `cargo clippy -- -D warnings` — zero warnings.
+- [x] 16f.5 Update `docs/audit-correction.md` with Task 16 changes.
