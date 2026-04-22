@@ -802,3 +802,45 @@ async fn test_same_variant_different_price_creates_separate_items() {
     assert_eq!(items[1]["unit_price"], 1500);
     assert_eq!(items[1]["quantity"], 1);
 }
+
+#[tokio::test]
+async fn test_cart_line_item_snapshot_fields_surface_top_level() {
+    let (app, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+    sqlx::query("INSERT INTO products (id, title, handle, description, status) VALUES ('prod_snap', 'Snap Product', 'snap-product', 'A nice product', 'published')")
+        .execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO product_variants (id, product_id, title, sku, price) VALUES ('var_snap', 'prod_snap', 'Large', 'SNAP-L', 5000)")
+        .execute(&pool).await.unwrap();
+
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            "/store/carts",
+            &json!({"currency_code": "idr"}),
+        ))
+        .await
+        .unwrap();
+    let cart_id = body_json(res).await["cart"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/line-items", cart_id),
+            &json!({"variant_id": "var_snap", "quantity": 1}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = body_json(res).await;
+    let item = &body["cart"]["items"].as_array().unwrap()[0];
+    assert_eq!(item["product_title"], "Snap Product");
+    assert_eq!(item["variant_title"], "Large");
+    assert_eq!(item["variant_sku"], "SNAP-L");
+    assert_eq!(item["product_handle"], "snap-product");
+    assert_eq!(item["product_description"], "A nice product");
+}
