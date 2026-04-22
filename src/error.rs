@@ -8,31 +8,31 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum AppError {
-    #[error("Not Found: {0}")]
+    #[error("{0}")]
     NotFound(String),
 
-    #[error("Invalid Data: {0}")]
+    #[error("{0}")]
     InvalidData(String),
 
-    #[error("Duplicate Error: {0}")]
+    #[error("{0}")]
     DuplicateError(String),
 
-    #[error("Unauthorized: {0}")]
+    #[error("{0}")]
     Unauthorized(String),
 
-    #[error("Unexpected State: {0}")]
+    #[error("{0}")]
     UnexpectedState(String),
 
-    #[error("Conflict: {0}")]
+    #[error("{0}")]
     Conflict(String),
 
-    #[error("Forbidden: {0}")]
+    #[error("{0}")]
     Forbidden(String),
 
-    #[error("Database Error: {0}")]
+    #[error("{0}")]
     DatabaseError(#[from] sqlx::Error),
 
-    #[error("Migration Error: {0}")]
+    #[error("{0}")]
     MigrationError(#[from] sqlx::migrate::MigrateError),
 }
 
@@ -142,7 +142,7 @@ mod tests {
         assert_eq!(body["_status"], 404);
         assert_eq!(body["code"], "invalid_request_error");
         assert_eq!(body["type"], "not_found");
-        assert_eq!(body["message"], "Not Found: gone");
+        assert_eq!(body["message"], "gone");
     }
 
     #[tokio::test]
@@ -188,7 +188,7 @@ mod tests {
         assert_eq!(body["_status"], 409);
         assert_eq!(body["code"], "invalid_state_error");
         assert_eq!(body["type"], "conflict");
-        assert_eq!(body["message"], "Conflict: cart already completed");
+        assert_eq!(body["message"], "cart already completed");
     }
 
     #[tokio::test]
@@ -198,7 +198,7 @@ mod tests {
         assert_eq!(body["_status"], 403);
         assert_eq!(body["code"], "invalid_state_error");
         assert_eq!(body["type"], "forbidden");
-        assert_eq!(body["message"], "Forbidden: not allowed");
+        assert_eq!(body["message"], "not allowed");
     }
 
     #[tokio::test]
