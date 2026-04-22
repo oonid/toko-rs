@@ -29,6 +29,9 @@ pub enum AppError {
     #[error("Forbidden: {0}")]
     Forbidden(String),
 
+    #[error("Validation Error: {0}")]
+    ValidationError(String),
+
     #[error("Database Error: {0}")]
     DatabaseError(#[from] sqlx::Error),
 
@@ -45,6 +48,7 @@ impl AppError {
             AppError::UnexpectedState(_) => StatusCode::INTERNAL_SERVER_ERROR,
             AppError::Conflict(_) => StatusCode::CONFLICT,
             AppError::Forbidden(_) => StatusCode::FORBIDDEN,
+            AppError::ValidationError(_) => StatusCode::UNPROCESSABLE_ENTITY,
             AppError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
             AppError::DatabaseError(_) | AppError::MigrationError(_) => {
                 StatusCode::INTERNAL_SERVER_ERROR
@@ -60,6 +64,7 @@ impl AppError {
             AppError::Unauthorized(_) => "unauthorized",
             AppError::UnexpectedState(_) => "unexpected_state",
             AppError::Conflict(_) => "conflict",
+            AppError::ValidationError(_) => "invalid_data",
             AppError::Forbidden(_) => "forbidden",
             AppError::DatabaseError(_) => "database_error",
             AppError::MigrationError(_) => "database_error",
@@ -74,6 +79,7 @@ impl AppError {
             AppError::Unauthorized(_) => "unknown_error",
             AppError::UnexpectedState(_) => "invalid_state_error",
             AppError::Conflict(_) => "invalid_state_error",
+            AppError::ValidationError(_) => "invalid_request_error",
             AppError::Forbidden(_) => "invalid_state_error",
             AppError::DatabaseError(_) => "api_error",
             AppError::MigrationError(_) => "api_error",
@@ -221,6 +227,42 @@ mod tests {
         assert_eq!(body["code"], "api_error");
         assert_eq!(body["type"], "database_error");
         assert_eq!(body["message"], "Internal server error");
+    }
+
+    #[tokio::test]
+    async fn test_map_db_constraint() {
+        use super::map_db_constraint;
+        use crate::db::TestDbError;
+
+        let db_err = sqlx::Error::Database(Box::new(TestDbError {
+            code: Some(crate::db::unique_violation_code().to_string()),
+            message: "dup".into(),
+            ..Default::default()
+        }));
+        let resp = map_db_constraint(db_err).into_response();
+        let body = into_body(resp).await;
+        assert_eq!(body["_status"], 422);
+        assert_eq!(body["type"], "duplicate_error");
+
+        let db_err = sqlx::Error::Database(Box::new(TestDbError {
+            code: Some(crate::db::fk_violation_code().to_string()),
+            message: "fk".into(),
+            ..Default::default()
+        }));
+        let resp = map_db_constraint(db_err).into_response();
+        let body = into_body(resp).await;
+        assert_eq!(body["_status"], 404);
+        assert_eq!(body["type"], "not_found");
+
+        let db_err = sqlx::Error::Database(Box::new(TestDbError {
+            code: Some(crate::db::not_null_violation_code().to_string()),
+            message: "nn".into(),
+            ..Default::default()
+        }));
+        let resp = map_db_constraint(db_err).into_response();
+        let body = into_body(resp).await;
+        assert_eq!(body["_status"], 400);
+        assert_eq!(body["type"], "invalid_data");
     }
 
     #[test]
