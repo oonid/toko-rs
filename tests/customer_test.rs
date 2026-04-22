@@ -211,3 +211,69 @@ async fn test_customer_response_format() {
     assert!(body["customer"]["created_at"].is_string());
     assert!(body["customer"]["updated_at"].is_string());
 }
+
+#[tokio::test]
+async fn test_create_customer_with_company_name() {
+    let (app, _) = setup_test_app().await;
+    let payload = json!({
+        "email": "biz@example.com",
+        "first_name": "Biz",
+        "company_name": "PT Toko Maju"
+    });
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri("/store/customers")
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body["customer"]["company_name"], "PT Toko Maju");
+}
+
+#[tokio::test]
+async fn test_update_customer_company_name() {
+    let (app, _) = setup_test_app().await;
+    let payload = json!({"email": "updco@example.com", "first_name": "Upd"});
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri("/store/customers")
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    let cus_id = body_json(resp).await["customer"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let update = json!({"company_name": "CV Berkah Jaya"});
+    let req2 = Request::builder()
+        .method(Method::POST)
+        .uri("/store/customers/me")
+        .header("content-type", "application/json")
+        .header("X-Customer-Id", &cus_id)
+        .body(Body::from(update.to_string()))
+        .unwrap();
+    let resp2 = app.oneshot(req2).await.unwrap();
+    assert_eq!(resp2.status(), StatusCode::OK);
+    let body2 = body_json(resp2).await;
+    assert_eq!(body2["customer"]["company_name"], "CV Berkah Jaya");
+}
+
+#[tokio::test]
+async fn test_customer_company_name_absent_when_not_set() {
+    let (app, _) = setup_test_app().await;
+    let payload = json!({"email": "nocomp@example.com", "first_name": "No"});
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri("/store/customers")
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert!(body["customer"]["company_name"].is_null());
+}
