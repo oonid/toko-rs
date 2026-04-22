@@ -87,7 +87,7 @@ impl CartRepository {
                 customer_id = COALESCE($2, customer_id),
                 metadata = COALESCE($3, metadata),
                 updated_at = CURRENT_TIMESTAMP
-            WHERE id = $4 AND deleted_at IS NULL
+            WHERE id = $4 AND deleted_at IS NULL AND completed_at IS NULL
             "#,
         )
         .bind(&input.email)
@@ -106,17 +106,37 @@ impl CartRepository {
     ) -> Result<CartWithItems, AppError> {
         let mut tx = self.pool.begin().await?;
 
-        let cart =
-            sqlx::query_as::<_, Cart>("SELECT * FROM carts WHERE id = $1 AND deleted_at IS NULL")
-                .bind(cart_id)
-                .fetch_optional(&mut *tx)
-                .await?
-                .ok_or_else(|| AppError::NotFound("Cart not found".into()))?;
+        let cart = sqlx::query_as::<_, Cart>(
+            #[cfg(feature = "postgres")]
+            "SELECT * FROM carts WHERE id = $1 AND deleted_at IS NULL FOR UPDATE",
+            #[cfg(feature = "sqlite")]
+            "SELECT * FROM carts WHERE id = $1 AND deleted_at IS NULL",
+        )
+        .bind(cart_id)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Cart not found".into()))?;
 
         if cart.completed_at.is_some() {
             return Err(AppError::Conflict(
                 "Cannot add items to a completed cart".into(),
             ));
+        }
+
+        #[cfg(feature = "sqlite")]
+        {
+            let guard = sqlx::query(
+                "UPDATE carts SET updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND completed_at IS NULL",
+            )
+            .bind(cart_id)
+            .execute(&mut *tx)
+            .await?;
+
+            if guard.rows_affected() == 0 {
+                return Err(AppError::Conflict(
+                    "Cannot add items to a completed cart".into(),
+                ));
+            }
         }
 
         let row = sqlx::query(
@@ -279,6 +299,7 @@ impl CartRepository {
                 metadata = COALESCE($2, metadata),
                 updated_at = CURRENT_TIMESTAMP 
             WHERE id = $3 AND cart_id = $4 AND deleted_at IS NULL
+            AND (SELECT completed_at FROM carts WHERE id = $4) IS NULL
             "#,
         )
         .bind(input.quantity)
@@ -310,7 +331,7 @@ impl CartRepository {
         }
 
         sqlx::query(
-            "UPDATE cart_line_items SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1 AND cart_id = $2 AND deleted_at IS NULL"
+            "UPDATE cart_line_items SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1 AND cart_id = $2 AND deleted_at IS NULL AND (SELECT completed_at FROM carts WHERE id = $2) IS NULL"
         )
         .bind(line_id)
         .bind(cart_id)

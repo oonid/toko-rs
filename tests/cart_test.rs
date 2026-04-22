@@ -125,10 +125,13 @@ async fn test_cart_full_flow() {
     let item = &cart_resp["cart"]["items"][0];
     assert_eq!(item["unit_price"], 1000);
     assert_eq!(item["quantity"], 2);
-    let snapshot = &item["snapshot"];
-    assert_eq!(snapshot["product_title"], "Test Product");
-    assert_eq!(snapshot["variant_title"], "Small");
-    assert_eq!(snapshot["variant_sku"], "TEST-S");
+    assert!(
+        item.get("snapshot").is_none(),
+        "snapshot must not appear in API responses"
+    );
+    assert_eq!(item["product_title"], "Test Product");
+    assert_eq!(item["variant_title"], "Small");
+    assert_eq!(item["variant_sku"], "TEST-S");
     assert_eq!(cart_resp["cart"]["item_total"], 2000);
     assert_eq!(cart_resp["cart"]["total"], 2000);
     let line_id = item["id"].as_str().unwrap();
@@ -901,4 +904,81 @@ async fn test_variant_option_values_in_cart_line_item() {
     let opts = item["variant_option_values"].as_object().unwrap();
     assert_eq!(opts["Color"], "Red");
     assert_eq!(opts["Size"], "M");
+}
+
+#[tokio::test]
+async fn test_concurrent_add_line_item_dedup() {
+    let (app, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+    seed_in_pool(&pool).await;
+
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            "/store/carts",
+            &json!({"currency_code": "idr"}),
+        ))
+        .await
+        .unwrap();
+    let cart_id = body_json(res).await["cart"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let app1 = app.clone();
+    let app2 = app.clone();
+    let cart_id1 = cart_id.clone();
+    let cart_id2 = cart_id.clone();
+
+    let h1 = tokio::spawn(async move {
+        app1.oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/line-items", cart_id1),
+            &json!({"variant_id": "var_1", "quantity": 1}),
+        ))
+        .await
+        .unwrap()
+    });
+    let h2 = tokio::spawn(async move {
+        app2.oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/line-items", cart_id2),
+            &json!({"variant_id": "var_1", "quantity": 1}),
+        ))
+        .await
+        .unwrap()
+    });
+
+    let r1 = h1.await.unwrap();
+    let r2 = h2.await.unwrap();
+
+    assert_eq!(r1.status(), StatusCode::OK);
+    assert_eq!(r2.status(), StatusCode::OK);
+
+    let item_count: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM cart_line_items WHERE cart_id = $1 AND deleted_at IS NULL",
+    )
+    .bind(&cart_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        item_count.0, 1,
+        "concurrent add_line_item should produce exactly 1 merged line item, got {}",
+        item_count.0
+    );
+
+    let body = body_json(
+        app.oneshot(request(
+            Method::GET,
+            &format!("/store/carts/{}", cart_id),
+            &json!(null),
+        ))
+        .await
+        .unwrap(),
+    )
+    .await;
+    let item = &body["cart"]["items"].as_array().unwrap()[0];
+    assert_eq!(item["quantity"], 2, "merged item should have quantity 2");
 }
