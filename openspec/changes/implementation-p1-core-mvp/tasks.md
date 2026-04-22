@@ -658,3 +658,70 @@ Full six-dimension comparison of all 25 P1 endpoints against `vendor/medusa/` so
 - [x] 20i.2 Run `cargo clippy -- -D warnings` — zero warnings
 - [x] 20i.3 Run `cargo fmt --check` — clean
 - [x] 20i.4 Update `docs/audit-p1-task20.md` with verification results
+
+## Task 21. Sixth Audit — P1 Medusa Compatibility Verification
+
+Source: `docs/audit-p1-task21.md`. Full 6-dimension audit against `vendor/medusa/` at develop branch. Reconciled against `docs/audit-master-checklist.md` (77 prior fixes confirmed). Found 2 new bugs, 6 HIGH, 9 MEDIUM, 5 LOW findings.
+
+### 21a. Fix order ownership verification (B1 — BUG MEDIUM)
+
+- [x] 21a.1 Extract `Extension(customer): Extension<CustomerId>` in `store_get_order` handler in `src/order/routes.rs:56-63`
+- [x] 21a.2 After `find_by_id`, verify `order.customer_id == Some(customer.id)` — return 404 if mismatch
+- [x] 21a.3 Add test: authenticated customer cannot view another customer's order
+- [x] 21a.4 Add test: authenticated customer CAN view their own order
+- [x] 21a.5 Run full test suite — all tests pass, clippy clean
+
+### 21b. Fix `add_line_item` race condition (B2 — BUG MEDIUM)
+
+- [x] 21b.1 Add `SELECT ... FOR UPDATE` on cart row (PG) or guard UPDATE (SQLite) inside `add_line_item` in `src/cart/repository.rs`, before the dedup SELECT
+- [x] 21b.2 Add test: concurrent add_line_item for same cart+variant produces one merged line item, not two
+- [x] 21b.3 Run full test suite — all tests pass, clippy clean
+
+### 21c. Hide internal `snapshot` field from API responses (S4 — HIGH)
+
+- [x] 21c.1 Add `#[serde(skip)]` to `snapshot` field on `CartLineItem` in `src/cart/models.rs`
+- [x] 21c.2 Add `#[serde(skip)]` to `snapshot` field on `OrderLineItem` in `src/order/models.rs`
+- [x] 21c.3 Update any contract tests that assert on `snapshot` key presence
+- [x] 21c.4 Run full test suite — all tests pass, clippy clean
+
+### 21d. Hide `has_account` from store customer responses (S5 — HIGH)
+
+- [x] 21d.1 ~~Create separate `StoreCustomer` response struct~~ **FALSE POSITIVE**: Medusa store query config includes `has_account` — confirmed in `vendor/medusa/packages/medusa/src/api/store/customers/query-config.ts`. No change needed.
+
+### 21e. Fix `orders.status` CHECK constraint missing "draft" (D1 — HIGH)
+
+- [x] 21e.1 Add `'draft'` to `CHECK (status IN (...))` in `migrations/004_orders.sql`
+- [x] 21e.2 Add `'draft'` to `CHECK (status IN (...))` in `migrations/sqlite/004_orders.sql`
+- [x] 21e.3 Run full test suite — all tests pass, clippy clean
+
+### 21f. Add `deleted_at` to `payment_records` (D2 — HIGH)
+
+- [x] 21f.1 Add `deleted_at TIMESTAMPTZ` column to `payment_records` in `migrations/005_payments.sql`
+- [x] 21f.2 Add `deleted_at DATETIME` column to `payment_records` in `migrations/sqlite/005_payments.sql`
+- [x] 21f.3 Add `deleted_at: Option<DateTime<Utc>>` to `PaymentRecord` model in `src/payment/models.rs`
+- [x] 21f.4 Run full test suite — all tests pass, clippy clean
+
+### 21g. Remove `deny_unknown_fields` from non-strict types (I1 — MEDIUM)
+
+- [x] 21g.1 Remove `#[serde(deny_unknown_fields)]` from `CreateProductOptionInput` in `src/product/types.rs`
+- [x] 21g.2 Remove `#[serde(deny_unknown_fields)]` from `AddLineItemInput` and `UpdateLineItemInput` in `src/cart/types.rs`
+- [x] 21g.3 Remove `#[serde(deny_unknown_fields)]` from `CreateCustomerInput` and `UpdateCustomerInput` in `src/customer/types.rs`
+- [x] 21g.4 Update any tests that rely on unknown-field rejection for these types (none needed — existing tests target types that retain `deny_unknown_fields`)
+- [x] 21g.5 Run full test suite — all tests pass, clippy clean
+
+### 21h. Add completed_at guard to cart UPDATE WHERE clauses (B3 — MEDIUM)
+
+- [x] 21h.1 Add `AND completed_at IS NULL` to UPDATE WHERE in `update_cart` in `src/cart/repository.rs`
+- [x] 21h.2 Add `AND (SELECT completed_at FROM carts WHERE id = $4) IS NULL` to UPDATE WHERE in `update_line_item` in `src/cart/repository.rs`
+- [x] 21h.3 Add same guard to `delete_line_item` UPDATE WHERE in `src/cart/repository.rs`
+- [x] 21h.4 Verify existing completed-cart guard tests still pass
+- [x] 21h.5 Run full test suite — all tests pass, clippy clean
+
+### 21i. Verification pass
+
+- [x] 21i.1 Run full test suite on SQLite — all tests pass
+- [x] 21i.2 Run full test suite on PostgreSQL — all tests pass
+- [x] 21i.3 Run `cargo clippy -- -D warnings` on both features — zero warnings
+- [x] 21i.4 Run `cargo fmt --check` — clean
+- [x] 21i.5 Update `docs/audit-p1-task21.md` with verification results
+- [x] 21i.6 Update `docs/audit-master-checklist.md` with new fixes
