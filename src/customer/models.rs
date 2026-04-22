@@ -9,6 +9,7 @@ pub struct Customer {
     pub last_name: Option<String>,
     pub email: String,
     pub phone: Option<String>,
+    pub company_name: Option<String>,
     pub has_account: bool,
     #[serde(skip_deserializing)]
     pub metadata: Option<sqlx::types::Json<serde_json::Value>>,

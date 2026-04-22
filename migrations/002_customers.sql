@@ -4,6 +4,7 @@ CREATE TABLE customers (
     last_name TEXT,
     email TEXT NOT NULL,
     phone TEXT,
+    company_name TEXT,
     has_account BOOLEAN NOT NULL DEFAULT FALSE,
     metadata JSONB,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),

@@ -358,8 +358,8 @@ async fn seed_customer(pool: &DbPool) -> Result<(), AppError> {
 
     sqlx::query(
         r#"
-        INSERT INTO customers (id, first_name, last_name, email, phone, has_account)
-        VALUES ($1, $2, $3, $4, $5, TRUE)
+        INSERT INTO customers (id, first_name, last_name, email, phone, company_name, has_account)
+        VALUES ($1, $2, $3, $4, $5, $6, TRUE)
         ON CONFLICT (id) DO NOTHING
         "#,
     )
@@ -368,6 +368,7 @@ async fn seed_customer(pool: &DbPool) -> Result<(), AppError> {
     .bind("Santoso")
     .bind("budi@example.com")
     .bind("+6281234567890")
+    .bind("Toko Budi Sejahtera")
     .execute(pool)
     .await?;
 
