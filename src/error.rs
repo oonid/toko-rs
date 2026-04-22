@@ -29,9 +29,6 @@ pub enum AppError {
     #[error("Forbidden: {0}")]
     Forbidden(String),
 
-    #[error("Validation Error: {0}")]
-    ValidationError(String),
-
     #[error("Database Error: {0}")]
     DatabaseError(#[from] sqlx::Error),
 
@@ -48,7 +45,6 @@ impl AppError {
             AppError::UnexpectedState(_) => StatusCode::INTERNAL_SERVER_ERROR,
             AppError::Conflict(_) => StatusCode::CONFLICT,
             AppError::Forbidden(_) => StatusCode::FORBIDDEN,
-            AppError::ValidationError(_) => StatusCode::UNPROCESSABLE_ENTITY,
             AppError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
             AppError::DatabaseError(_) | AppError::MigrationError(_) => {
                 StatusCode::INTERNAL_SERVER_ERROR
@@ -64,7 +60,6 @@ impl AppError {
             AppError::Unauthorized(_) => "unauthorized",
             AppError::UnexpectedState(_) => "unexpected_state",
             AppError::Conflict(_) => "conflict",
-            AppError::ValidationError(_) => "invalid_data",
             AppError::Forbidden(_) => "forbidden",
             AppError::DatabaseError(_) => "database_error",
             AppError::MigrationError(_) => "database_error",
@@ -79,7 +74,6 @@ impl AppError {
             AppError::Unauthorized(_) => "unknown_error",
             AppError::UnexpectedState(_) => "invalid_state_error",
             AppError::Conflict(_) => "invalid_state_error",
-            AppError::ValidationError(_) => "invalid_request_error",
             AppError::Forbidden(_) => "invalid_state_error",
             AppError::DatabaseError(_) => "api_error",
             AppError::MigrationError(_) => "api_error",
