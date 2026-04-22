@@ -8,7 +8,7 @@ toko-rs is a Rust single-binary headless e-commerce backend inspired by MedusaJS
 - **Validation schemas**: Zod validators in `vendor/medusa/packages/medusa/src/api/*/validators.ts` — used to derive Rust request validation.
 - **Route handlers**: Implementation patterns in `vendor/medusa/packages/medusa/src/api/*/route.ts` — used to understand response wrapping and error handling.
 
-**Current state**: Phase 0 (scaffold) and Phase 1-A (product module) are **complete**: all 8 product endpoints implemented, 41 tests passing, clippy clean, 90.78% line coverage. Cart module has basic create/line-item/update flow with 3 integration tests. Order, customer, and payment modules have only `mod.rs` stubs. Phase 2b (Database Refactor) is the next phase — consolidating to PostgreSQL-primary with single repo per module.
+**Current state**: All 19 P1 task groups are **complete**. 99 integration + 8 E2E tests passing (107 total), clippy clean, `cargo fmt` clean. 25+ endpoint methods across product (12), cart (7), order (3), customer (3), and health (1). Four audit passes completed (Tasks 16, 17, 18, 19) with all HIGH/MEDIUM findings resolved. Dual-database support (PostgreSQL + SQLite) via feature flags. Key features: soft-delete cascade, variant option uniqueness, line-item snapshot fields, admin variant CRUD, `company_name` on customers, `metadata` on product options/option_values, 6 additional DB indexes on orders/line_items. See `docs/audit-p1-task19.md` for the most recent compatibility audit against Medusa v2.
 
 **Medusa micro-kernel architecture reference**: MedusaJS separates its codebase into three layers (see `vendor/medusa/packages/`):
 
