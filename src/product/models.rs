@@ -22,6 +22,8 @@ pub struct ProductOption {
     pub id: String,
     pub product_id: String,
     pub title: String,
+    #[serde(skip_deserializing)]
+    pub metadata: Option<sqlx::types::Json<serde_json::Value>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub deleted_at: Option<DateTime<Utc>>,
@@ -32,6 +34,8 @@ pub struct ProductOptionValue {
     pub id: String,
     pub option_id: String,
     pub value: String,
+    #[serde(skip_deserializing)]
+    pub metadata: Option<sqlx::types::Json<serde_json::Value>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub deleted_at: Option<DateTime<Utc>>,
