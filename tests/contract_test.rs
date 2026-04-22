@@ -450,13 +450,19 @@ async fn test_contract_order_detail_response_shape() {
     .execute(&pool)
     .await
     .unwrap();
+    sqlx::query(
+        "INSERT INTO customers (id, first_name, email, has_account) VALUES ('cus_contract', 'C', 'c@test.com', TRUE) ON CONFLICT (id) DO NOTHING",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
 
     let cart = body_json(
         app.clone()
             .oneshot(request(
                 Method::POST,
                 "/store/carts",
-                &json!({"currency_code": "idr"}),
+                &json!({"currency_code": "idr", "customer_id": "cus_contract"}),
             ))
             .await
             .unwrap(),
@@ -488,7 +494,7 @@ async fn test_contract_order_detail_response_shape() {
         .oneshot(request_with_header(
             Method::GET,
             &format!("/store/orders/{}", order_id),
-            ("X-Customer-Id", "any"),
+            ("X-Customer-Id", "cus_contract"),
         ))
         .await
         .unwrap();
@@ -529,13 +535,19 @@ async fn test_contract_order_list_response_shape() {
     .execute(&pool)
     .await
     .unwrap();
+    sqlx::query(
+        "INSERT INTO customers (id, first_name, email, has_account) VALUES ('cus_contract', 'C', 'c@test.com', TRUE) ON CONFLICT (id) DO NOTHING",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
 
     let cart = body_json(
         app.clone()
             .oneshot(request(
                 Method::POST,
                 "/store/carts",
-                &json!({"currency_code": "idr", "customer_id": "c1"}),
+                &json!({"currency_code": "idr", "customer_id": "cus_contract"}),
             ))
             .await
             .unwrap(),

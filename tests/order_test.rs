@@ -30,13 +30,15 @@ async fn create_cart_with_item(app: &axum::Router, pool: &toko_rs::db::DbPool) -
         .execute(pool).await.unwrap();
     sqlx::query("INSERT INTO product_variants (id, product_id, title, sku, price) VALUES ('var_1', 'prod_1', 'Small', 'TEST-S', 1000) ON CONFLICT (id) DO NOTHING")
         .execute(pool).await.unwrap();
+    sqlx::query("INSERT INTO customers (id, first_name, email, has_account) VALUES ('cus_test1', 'Test', 'test@test.com', TRUE) ON CONFLICT (id) DO NOTHING")
+        .execute(pool).await.unwrap();
 
     let res = app
         .clone()
         .oneshot(request(
             Method::POST,
             "/store/carts",
-            &json!({"currency_code": "idr"}),
+            &json!({"currency_code": "idr", "customer_id": "cus_test1"}),
         ))
         .await
         .unwrap();
@@ -232,6 +234,74 @@ async fn test_get_order_not_found() {
         .await
         .unwrap();
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_get_order_rejects_wrong_customer() {
+    let (app, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+    let cart_id = create_cart_with_item(&app, &pool).await;
+
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/complete", cart_id),
+            &json!(null),
+        ))
+        .await
+        .unwrap();
+    let body = body_json(res).await;
+    let order_id = body["order"]["id"].as_str().unwrap().to_string();
+
+    sqlx::query("INSERT INTO customers (id, first_name, email, has_account) VALUES ('cus_other', 'Other', 'other@test.com', TRUE) ON CONFLICT (id) DO NOTHING")
+        .execute(&pool).await.unwrap();
+
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri(&format!("/store/orders/{}", order_id))
+                .header("X-Customer-Id", "cus_other")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_get_order_without_customer_header_rejected() {
+    let (app, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+    let cart_id = create_cart_with_item(&app, &pool).await;
+
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/complete", cart_id),
+            &json!(null),
+        ))
+        .await
+        .unwrap();
+    let body = body_json(res).await;
+    let order_id = body["order"]["id"].as_str().unwrap().to_string();
+
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri(&format!("/store/orders/{}", order_id))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]

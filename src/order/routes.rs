@@ -55,9 +55,17 @@ async fn store_list_orders(
 #[tracing::instrument(skip_all, fields(id = %id))]
 async fn store_get_order(
     State(state): State<AppState>,
+    axum::Extension(customer): axum::Extension<CustomerId>,
     Path(id): Path<String>,
 ) -> Result<Json<OrderResponse>, AppError> {
     let order = state.repos.order.find_by_id(&id).await?;
+
+    if order.order.customer_id.as_deref() != Some(customer.id.as_str()) {
+        return Err(AppError::NotFound(format!(
+            "Order with id: {} was not found",
+            id
+        )));
+    }
 
     Ok(Json(OrderResponse { order }))
 }
