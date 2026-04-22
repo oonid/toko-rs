@@ -1726,3 +1726,25 @@ Added to `design.md`:
 7. **GREEN** (18e): Added serialization failure mapping.
 8. **GREEN** (18f): Changed images type to `Vec<ImageStub>`.
 9. **Verify**: 137 tests pass on both PG and SQLite, clippy clean on both feature sets.
+
+## Task 19: Fourth Audit — Medusa Compatibility Deep-Dive
+
+Source: `docs/audit-p1-task19.md`. 20 findings: 5 HIGH, 8 MEDIUM, 7 LOW.
+
+### Changes applied
+
+| Finding | Files changed | Description |
+|---|---|---|
+| 19a | `src/extract.rs`, `src/error.rs` | `JsonDataError` → `ValidationError` (422/`invalid_data`); syntax errors stay 400 |
+| 19b | `src/product/routes.rs`, `src/product/repository.rs`, `src/product/types.rs` | 4 admin variant endpoints: list, get, update, delete |
+| 19c | `src/product/repository.rs` | Soft-delete cascade to variants, options, option_values |
+| 19d | `src/product/repository.rs` | DB-aware variant option combo uniqueness check |
+| 19e | `src/cart/repository.rs` | Line-item dedup includes `unit_price` in WHERE |
+| 19f | `src/order/types.rs`, `src/order/routes.rs` | `CartCompleteResponse` with `success()`/`error()` + `CartCompleteError` struct |
+| 19g | `migrations/*/002_customers.sql`, `src/customer/{models,types,repository}.rs`, `src/seed.rs` | Added `company_name` column to customers |
+| 19h | `design.md` (Decisions 14–15) | Documented auth divergence on order lookup + `customer_id` on cart create |
+| — | `tests/order_test.rs` | +2 tests: success/error response shape |
+| — | `tests/product_test.rs` | +14 tests: variant CRUD, cascade, option combo |
+| — | `tests/cart_test.rs` | +1 test: different price separate line item |
+| — | `tests/customer_test.rs` | +3 tests: create/update/null company_name |
+| — | `tests/contract_test.rs` | +2 tests: missing content-type, wrong type mapping |
