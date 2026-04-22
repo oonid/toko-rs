@@ -31,12 +31,13 @@ pub struct OrderLineItem {
     pub unit_price: i64,
     pub variant_id: Option<String>,
     pub product_id: Option<String>,
-    #[serde(skip_deserializing)]
+    #[serde(skip)]
     pub snapshot: Option<sqlx::types::Json<serde_json::Value>>,
     #[serde(skip_deserializing)]
     pub metadata: Option<sqlx::types::Json<serde_json::Value>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    #[serde(skip)]
     pub deleted_at: Option<DateTime<Utc>>,
     #[sqlx(skip)]
     pub requires_shipping: bool,
