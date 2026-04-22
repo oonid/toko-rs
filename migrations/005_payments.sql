@@ -7,7 +7,8 @@ CREATE TABLE payment_records (
     provider TEXT NOT NULL DEFAULT 'manual',
     metadata JSONB,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at TIMESTAMPTZ
 );
 
 CREATE INDEX idx_payment_records_order_id ON payment_records (order_id);
