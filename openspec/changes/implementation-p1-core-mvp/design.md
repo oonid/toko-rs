@@ -224,3 +224,11 @@ All input types use `#[serde(deny_unknown_fields)]`. Any field accepted by Medus
 - **Default pagination limit**: toko-rs defaults to 20, Medusa to 50. Clients that don't specify `limit` get fewer results per page.
 - **`images` type**: toko-rs uses `ImageStub { url: String }` objects matching Medusa's `BaseProductImage` shape. Currently always empty in P1.
 - **DELETE idempotency**: DELETE on already-deleted product returns 200 (matches Medusa). Previously returned 404.
+
+### 14. `GET /store/orders/:id` requires `X-Customer-Id` header
+
+Medusa allows unauthenticated access to `GET /store/orders/:id` (the order lookup is scoped by session/auth token, but the endpoint itself doesn't enforce auth in all configurations). Toko-rs requires the `X-Customer-Id` header on this endpoint and verifies the order belongs to the specified customer. This is an intentional security improvement — without it, any client could enumerate orders by ID. The header will be replaced by proper JWT/session auth in P2.
+
+### 15. `customer_id` in `CreateCartInput` as intentional P1 extension
+
+Medusa infers the customer from the session/auth context when creating a cart. Toko-rs accepts an optional `customer_id` field in the create-cart request body as a P1 workaround (no real auth yet). This field will be removed when proper authentication is implemented in P2 and the customer is inferred from the auth token instead.
