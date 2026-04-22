@@ -973,3 +973,72 @@ async fn test_product_option_and_value_metadata_in_response() {
         "option value should have metadata field"
     );
 }
+
+#[tokio::test]
+async fn test_create_product_accepts_is_giftcard_and_discountable() {
+    let (app, _) = common::setup_test_app().await;
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri("/admin/products")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            json!({
+                "title": "Gift Card",
+                "is_giftcard": true,
+                "discountable": false
+            })
+            .to_string(),
+        ))
+        .unwrap();
+    let res = app.oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = body_json(res).await;
+    assert!(body["product"]["is_giftcard"].is_boolean());
+    assert!(body["product"]["discountable"].is_boolean());
+}
+
+#[tokio::test]
+async fn test_update_product_accepts_is_giftcard_and_discountable() {
+    let (app, _) = common::setup_test_app().await;
+    let created = create_sample_product(&app).await;
+    let id = created["product"]["id"].as_str().unwrap();
+
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(&format!("/admin/products/{}", id))
+        .header("content-type", "application/json")
+        .body(Body::from(
+            json!({"discountable": false, "subtitle": "Updated"}).to_string(),
+        ))
+        .unwrap();
+    let res = app.oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_add_variant_with_explicit_rank() {
+    let (app, _) = common::setup_test_app().await;
+    let created = create_sample_product(&app).await;
+    let id = created["product"]["id"].as_str().unwrap();
+
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(&format!("/admin/products/{}/variants", id))
+        .header("content-type", "application/json")
+        .body(Body::from(
+            json!({
+                "title": "Extra",
+                "price": 9999,
+                "variant_rank": 42,
+                "options": {"Size": "L"}
+            })
+            .to_string(),
+        ))
+        .unwrap();
+    let res = app.oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = body_json(res).await;
+    let variants = body["product"]["variants"].as_array().unwrap();
+    let extra = variants.iter().find(|v| v["title"] == "Extra").unwrap();
+    assert_eq!(extra["variant_rank"], 42);
+}
