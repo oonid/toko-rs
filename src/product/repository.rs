@@ -552,8 +552,10 @@ impl ProductRepository {
         .fetch_all(&mut **tx)
         .await?;
 
-        let mut variant_combos: std::collections::HashMap<String, std::collections::HashSet<(String, String)>> =
-            std::collections::HashMap::new();
+        let mut variant_combos: std::collections::HashMap<
+            String,
+            std::collections::HashSet<(String, String)>,
+        > = std::collections::HashMap::new();
         for (variant_id, opt_title, val) in &existing_rows {
             variant_combos
                 .entry(variant_id.clone())
@@ -561,8 +563,10 @@ impl ProductRepository {
                 .insert((opt_title.clone(), val.clone()));
         }
 
-        let new_combo: std::collections::HashSet<(String, String)> =
-            new_opts.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+        let new_combo: std::collections::HashSet<(String, String)> = new_opts
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
 
         for (variant_id, combo) in &variant_combos {
             if combo == &new_combo {
