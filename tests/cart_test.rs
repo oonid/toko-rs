@@ -844,3 +844,56 @@ async fn test_cart_line_item_snapshot_fields_surface_top_level() {
     assert_eq!(item["product_handle"], "snap-product");
     assert_eq!(item["product_description"], "A nice product");
 }
+
+#[tokio::test]
+async fn test_variant_option_values_in_cart_line_item() {
+    let (app, _) = common::setup_test_app().await;
+
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            "/admin/products",
+            &json!({
+                "title": "Shirt",
+                "options": [{"title": "Color", "values": ["Red", "Blue"]}, {"title": "Size", "values": ["M"]}],
+                "variants": [
+                    {"title": "Red M", "price": 3000, "options": {"Color": "Red", "Size": "M"}},
+                    {"title": "Blue M", "price": 3000, "options": {"Color": "Blue", "Size": "M"}}
+                ]
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let product = body_json(res).await["product"].clone();
+    let red_m_id = product["variants"].as_array().unwrap()[0]["id"].as_str().unwrap();
+
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            "/store/carts",
+            &json!({"currency_code": "idr"}),
+        ))
+        .await
+        .unwrap();
+    let cart_id = body_json(res).await["cart"]["id"].as_str().unwrap().to_string();
+
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/line-items", cart_id),
+            &json!({"variant_id": red_m_id, "quantity": 1}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = body_json(res).await;
+    let item = &body["cart"]["items"].as_array().unwrap()[0];
+
+    let opts = item["variant_option_values"].as_object().unwrap();
+    assert_eq!(opts["Color"], "Red");
+    assert_eq!(opts["Size"], "M");
+}

@@ -612,9 +612,9 @@ Full six-dimension comparison of all 25 P1 endpoints against `vendor/medusa/` so
 
 ### 20c. Fix BUG-3: Snapshot captures 5 fields but model extracts 8
 
-- [ ] 20c.1 Capture `variant_option_values` in snapshot JSON during `add_line_item`
-- [ ] 20c.2 Add test: verify `variant_option_values` is populated in cart/order line item responses
-- [ ] 20c.3 Run full test suite — all tests pass, clippy clean
+- [x] 20c.1 Capture `variant_option_values` in snapshot JSON during `add_line_item`
+- [x] 20c.2 Add test: verify `variant_option_values` is populated in cart/order line item responses
+- [x] 20c.3 Run full test suite — all tests pass, clippy clean
 
 ### 20d. Add missing input fields for SDK compatibility (F1)
 
