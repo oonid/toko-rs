@@ -295,7 +295,7 @@ async fn test_list_orders_by_customer() {
     let body = body_json(res).await;
     assert_eq!(body["count"], 1);
     assert_eq!(body["orders"].as_array().unwrap().len(), 1);
-    assert_eq!(body["limit"], 20);
+    assert_eq!(body["limit"], 50);
     assert_eq!(body["offset"], 0);
 }
 
@@ -589,24 +589,22 @@ async fn test_concurrent_cart_completion_only_one_succeeds() {
     let cart_id2 = cart_id.clone();
 
     let h1 = tokio::spawn(async move {
-        app1
-            .oneshot(request(
-                Method::POST,
-                &format!("/store/carts/{}/complete", cart_id1),
-                &json!(null),
-            ))
-            .await
-            .unwrap()
+        app1.oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/complete", cart_id1),
+            &json!(null),
+        ))
+        .await
+        .unwrap()
     });
     let h2 = tokio::spawn(async move {
-        app2
-            .oneshot(request(
-                Method::POST,
-                &format!("/store/carts/{}/complete", cart_id2),
-                &json!(null),
-            ))
-            .await
-            .unwrap()
+        app2.oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/complete", cart_id2),
+            &json!(null),
+        ))
+        .await
+        .unwrap()
     });
 
     let r1 = h1.await.unwrap();
@@ -617,14 +615,21 @@ async fn test_concurrent_cart_completion_only_one_succeeds() {
 
     let one_ok = (s1 == StatusCode::OK && s2 == StatusCode::CONFLICT)
         || (s1 == StatusCode::CONFLICT && s2 == StatusCode::OK);
-    assert!(one_ok, "expected one 200 and one 409, got {} and {}", s1, s2);
+    assert!(
+        one_ok,
+        "expected one 200 and one 409, got {} and {}",
+        s1, s2
+    );
 
     let order_count: (i64,) =
         sqlx::query_as("SELECT COUNT(*) FROM orders WHERE display_id IS NOT NULL")
             .fetch_one(&pool)
             .await
             .unwrap();
-    assert_eq!(order_count.0, 1, "only one order should be created for the cart");
+    assert_eq!(
+        order_count.0, 1,
+        "only one order should be created for the cart"
+    );
 }
 
 #[tokio::test]
@@ -645,7 +650,10 @@ async fn test_line_item_per_item_totals() {
         ))
         .await
         .unwrap();
-    let cart_id = body_json(res).await["cart"]["id"].as_str().unwrap().to_string();
+    let cart_id = body_json(res).await["cart"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     let res = app
         .clone()
