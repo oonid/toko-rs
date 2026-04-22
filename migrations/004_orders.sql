@@ -38,4 +38,9 @@ CREATE TABLE order_line_items (
 
 CREATE INDEX idx_orders_customer_id ON orders (customer_id) WHERE deleted_at IS NULL;
 CREATE INDEX idx_orders_display_id ON orders (display_id);
+CREATE INDEX idx_orders_deleted_at ON orders (deleted_at) WHERE deleted_at IS NOT NULL;
+CREATE INDEX idx_orders_currency_code ON orders (currency_code) WHERE deleted_at IS NULL;
 CREATE INDEX idx_order_line_items_order_id ON order_line_items (order_id);
+CREATE INDEX idx_order_line_items_deleted_at ON order_line_items (deleted_at) WHERE deleted_at IS NOT NULL;
+CREATE INDEX idx_order_line_items_product_id ON order_line_items (product_id) WHERE deleted_at IS NULL;
+CREATE INDEX idx_order_line_items_variant_id ON order_line_items (variant_id) WHERE deleted_at IS NULL;
