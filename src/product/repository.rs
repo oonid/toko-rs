@@ -281,6 +281,31 @@ impl ProductRepository {
             )));
         }
 
+        sqlx::query(
+            "UPDATE product_variants SET deleted_at = CURRENT_TIMESTAMP WHERE product_id = $1 AND deleted_at IS NULL",
+        )
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query(
+            "UPDATE product_options SET deleted_at = CURRENT_TIMESTAMP WHERE product_id = $1 AND deleted_at IS NULL",
+        )
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query(
+            r#"
+            UPDATE product_option_values SET deleted_at = CURRENT_TIMESTAMP
+            WHERE option_id IN (SELECT id FROM product_options WHERE product_id = $1)
+              AND deleted_at IS NULL
+            "#,
+        )
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+
         Ok(id.to_string())
     }
 
@@ -301,6 +326,10 @@ impl ProductRepository {
             AppError::NotFound(format!("Product with id {} was not found", product_id))
         })?;
 
+        if let Some(ref opts) = input.options {
+            Self::check_db_variant_option_combo(&mut tx, product_id, opts).await?;
+        }
+
         let rank: (i64,) = sqlx::query_as(
             "SELECT COALESCE(MAX(variant_rank), -1) + 1 FROM product_variants WHERE product_id = $1 AND deleted_at IS NULL",
         )
@@ -313,6 +342,257 @@ impl ProductRepository {
 
         tx.commit().await?;
         self.find_by_id_any(product_id).await
+    }
+
+    pub async fn list_variants(
+        &self,
+        product_id: &str,
+        params: &FindParams,
+    ) -> Result<(Vec<ProductVariantWithOptions>, i64), AppError> {
+        let _product = sqlx::query_as::<_, Product>(
+            "SELECT * FROM products WHERE id = $1 AND deleted_at IS NULL",
+        )
+        .bind(product_id)
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or_else(|| {
+            AppError::NotFound(format!("Product with id {} was not found", product_id))
+        })?;
+
+        let count: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM product_variants WHERE product_id = $1 AND deleted_at IS NULL",
+        )
+        .bind(product_id)
+        .fetch_one(&self.pool)
+        .await?;
+
+        let order = params.order.as_deref().unwrap_or("variant_rank ASC");
+        let query_sql = format!(
+            "SELECT * FROM product_variants WHERE product_id = $1 AND deleted_at IS NULL ORDER BY {} LIMIT $2 OFFSET $3",
+            order
+        );
+        let variants = sqlx::query_as::<_, ProductVariant>(&query_sql)
+            .bind(product_id)
+            .bind(params.capped_limit())
+            .bind(params.offset)
+            .fetch_all(&self.pool)
+            .await?;
+
+        let mut results = Vec::with_capacity(variants.len());
+        for v in &variants {
+            let opts = Self::load_variant_options(&self.pool, &v.id).await?;
+            results.push(ProductVariantWithOptions {
+                variant: v.clone(),
+                options: opts,
+                calculated_price: super::models::CalculatedPrice {
+                    calculated_amount: v.price,
+                    original_amount: v.price,
+                    is_calculated_price_tax_inclusive: false,
+                },
+            });
+        }
+
+        Ok((results, count.0))
+    }
+
+    pub async fn get_variant(
+        &self,
+        product_id: &str,
+        variant_id: &str,
+    ) -> Result<ProductVariantWithOptions, AppError> {
+        let _product = sqlx::query_as::<_, Product>(
+            "SELECT * FROM products WHERE id = $1 AND deleted_at IS NULL",
+        )
+        .bind(product_id)
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or_else(|| {
+            AppError::NotFound(format!("Product with id {} was not found", product_id))
+        })?;
+
+        let variant = sqlx::query_as::<_, ProductVariant>(
+            "SELECT * FROM product_variants WHERE id = $1 AND product_id = $2 AND deleted_at IS NULL",
+        )
+        .bind(variant_id)
+        .bind(product_id)
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or_else(|| {
+            AppError::NotFound(format!(
+                "Variant with id {} was not found",
+                variant_id
+            ))
+        })?;
+
+        let opts = Self::load_variant_options(&self.pool, &variant.id).await?;
+        Ok(ProductVariantWithOptions {
+            calculated_price: super::models::CalculatedPrice {
+                calculated_amount: variant.price,
+                original_amount: variant.price,
+                is_calculated_price_tax_inclusive: false,
+            },
+            variant,
+            options: opts,
+        })
+    }
+
+    pub async fn update_variant(
+        &self,
+        product_id: &str,
+        variant_id: &str,
+        input: &UpdateVariantInput,
+    ) -> Result<ProductVariantWithOptions, AppError> {
+        let _product = sqlx::query_as::<_, Product>(
+            "SELECT * FROM products WHERE id = $1 AND deleted_at IS NULL",
+        )
+        .bind(product_id)
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or_else(|| {
+            AppError::NotFound(format!("Product with id {} was not found", product_id))
+        })?;
+
+        let _existing = sqlx::query_as::<_, ProductVariant>(
+            "SELECT * FROM product_variants WHERE id = $1 AND product_id = $2 AND deleted_at IS NULL",
+        )
+        .bind(variant_id)
+        .bind(product_id)
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or_else(|| {
+            AppError::NotFound(format!(
+                "Variant with id {} was not found",
+                variant_id
+            ))
+        })?;
+
+        sqlx::query(
+            r#"
+            UPDATE product_variants SET
+                title = COALESCE($1, title),
+                sku = COALESCE($2, sku),
+                price = COALESCE($3, price),
+                metadata = COALESCE($4, metadata),
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = $5
+            "#,
+        )
+        .bind(&input.title)
+        .bind(&input.sku)
+        .bind(input.price)
+        .bind(metadata_to_json(input.metadata.clone()))
+        .bind(variant_id)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| {
+            if crate::db::is_unique_violation(&e) {
+                return AppError::DuplicateError(format!(
+                    "Variant with SKU '{}' already exists",
+                    input.sku.as_deref().unwrap_or("")
+                ));
+            }
+            AppError::DatabaseError(e)
+        })?;
+
+        self.get_variant(product_id, variant_id).await
+    }
+
+    pub async fn soft_delete_variant(
+        &self,
+        product_id: &str,
+        variant_id: &str,
+    ) -> Result<(String, ProductWithRelations), AppError> {
+        let _product = self.find_by_id(product_id).await?;
+
+        let result = sqlx::query(
+            "UPDATE product_variants SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1 AND product_id = $2 AND deleted_at IS NULL",
+        )
+        .bind(variant_id)
+        .bind(product_id)
+        .execute(&self.pool)
+        .await?;
+
+        if result.rows_affected() == 0 {
+            let exists: Option<(i32,)> = sqlx::query_as(
+                "SELECT 1 FROM product_variants WHERE id = $1 AND deleted_at IS NOT NULL",
+            )
+            .bind(variant_id)
+            .fetch_optional(&self.pool)
+            .await?;
+            if exists.is_some() {
+                let parent = self.find_by_id_any(product_id).await?;
+                return Ok((variant_id.to_string(), parent));
+            }
+            return Err(AppError::NotFound(format!(
+                "Variant with id {} was not found",
+                variant_id
+            )));
+        }
+
+        let parent = self.find_by_id_any(product_id).await?;
+        Ok((variant_id.to_string(), parent))
+    }
+
+    async fn check_db_variant_option_combo(
+        tx: &mut DbTransaction<'_>,
+        product_id: &str,
+        new_opts: &std::collections::HashMap<String, String>,
+    ) -> Result<(), AppError> {
+        let existing_rows: Vec<(String, String, String)> = sqlx::query_as(
+            r#"
+            SELECT v.id, po.title, pov.value
+            FROM product_variants v
+            JOIN product_variant_option pvo ON pvo.variant_id = v.id
+            JOIN product_option_values pov ON pvo.option_value_id = pov.id
+            JOIN product_options po ON pov.option_id = po.id
+            WHERE v.product_id = $1 AND v.deleted_at IS NULL AND pov.deleted_at IS NULL
+            "#,
+        )
+        .bind(product_id)
+        .fetch_all(&mut **tx)
+        .await?;
+
+        let mut variant_combos: std::collections::HashMap<String, std::collections::HashSet<(String, String)>> =
+            std::collections::HashMap::new();
+        for (variant_id, opt_title, val) in &existing_rows {
+            variant_combos
+                .entry(variant_id.clone())
+                .or_default()
+                .insert((opt_title.clone(), val.clone()));
+        }
+
+        let new_combo: std::collections::HashSet<(String, String)> =
+            new_opts.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+
+        for (variant_id, combo) in &variant_combos {
+            if combo == &new_combo {
+                return Err(AppError::DuplicateError(format!(
+                    "Variant with the same option combination already exists (variant {})",
+                    variant_id
+                )));
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn load_variant_options(
+        pool: &DbPool,
+        variant_id: &str,
+    ) -> Result<Vec<VariantOptionValue>, AppError> {
+        sqlx::query_as::<_, VariantOptionValue>(
+            r#"
+            SELECT pov.id, pov.value, pov.option_id
+            FROM product_variant_option pvo
+            JOIN product_option_values pov ON pvo.option_value_id = pov.id
+            WHERE pvo.variant_id = $1
+              AND pov.deleted_at IS NULL
+            "#,
+        )
+        .bind(variant_id)
+        .fetch_all(pool)
+        .await
+        .map_err(AppError::DatabaseError)
     }
 
     async fn insert_variant_tx(
@@ -424,18 +704,7 @@ impl ProductRepository {
 
         let mut variants_with_options = Vec::with_capacity(variants.len());
         for v in &variants {
-            let opts = sqlx::query_as::<_, VariantOptionValue>(
-                r#"
-                SELECT pov.id, pov.value, pov.option_id
-                FROM product_variant_option pvo
-                JOIN product_option_values pov ON pvo.option_value_id = pov.id
-                WHERE pvo.variant_id = $1
-                  AND pov.deleted_at IS NULL
-                "#,
-            )
-            .bind(&v.id)
-            .fetch_all(&self.pool)
-            .await?;
+            let opts = Self::load_variant_options(&self.pool, &v.id).await?;
             variants_with_options.push(ProductVariantWithOptions {
                 variant: v.clone(),
                 options: opts,

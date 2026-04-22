@@ -20,7 +20,16 @@ pub fn router() -> Router<AppState> {
                 .post(admin_update_product)
                 .delete(admin_delete_product),
         )
-        .route("/admin/products/{id}/variants", post(admin_add_variant))
+        .route(
+            "/admin/products/{id}/variants",
+            post(admin_add_variant).get(admin_list_variants),
+        )
+        .route(
+            "/admin/products/{id}/variants/{variant_id}",
+            get(admin_get_variant)
+                .post(admin_update_variant)
+                .delete(admin_delete_variant),
+        )
         .route("/store/products", get(store_list_products))
         .route("/store/products/{id}", get(store_get_product))
 }
@@ -107,6 +116,60 @@ async fn admin_add_variant(
         .add_variant(&product_id, &payload)
         .await?;
     Ok(Json(ProductResponse { product }))
+}
+
+#[tracing::instrument(skip_all, fields(product_id = %product_id, offset = params.offset, limit = params.limit))]
+async fn admin_list_variants(
+    State(state): State<AppState>,
+    Path(product_id): Path<String>,
+    Query(params): Query<FindParams>,
+) -> Result<Json<VariantListResponse>, AppError> {
+    let (variants, count) = state.repos.product.list_variants(&product_id, &params).await?;
+
+    Ok(Json(VariantListResponse {
+        variants,
+        count,
+        offset: params.offset,
+        limit: params.capped_limit(),
+    }))
+}
+
+#[tracing::instrument(skip_all, fields(product_id = %product_id, variant_id = %variant_id))]
+async fn admin_get_variant(
+    State(state): State<AppState>,
+    Path((product_id, variant_id)): Path<(String, String)>,
+) -> Result<Json<VariantResponse>, AppError> {
+    let variant = state.repos.product.get_variant(&product_id, &variant_id).await?;
+    Ok(Json(VariantResponse { variant }))
+}
+
+#[tracing::instrument(skip_all, fields(product_id = %product_id, variant_id = %variant_id))]
+async fn admin_update_variant(
+    State(state): State<AppState>,
+    Path((product_id, variant_id)): Path<(String, String)>,
+    extract::Json(payload): extract::Json<UpdateVariantInput>,
+) -> Result<Json<VariantResponse>, AppError> {
+    payload
+        .validate()
+        .map_err(|e| AppError::InvalidData(e.to_string()))?;
+
+    let variant = state.repos.product.update_variant(&product_id, &variant_id, &payload).await?;
+    Ok(Json(VariantResponse { variant }))
+}
+
+#[tracing::instrument(skip_all, fields(product_id = %product_id, variant_id = %variant_id))]
+async fn admin_delete_variant(
+    State(state): State<AppState>,
+    Path((product_id, variant_id)): Path<(String, String)>,
+) -> Result<Json<VariantDeleteResponse>, AppError> {
+    let (id, parent) = state.repos.product.soft_delete_variant(&product_id, &variant_id).await?;
+
+    Ok(Json(VariantDeleteResponse {
+        id,
+        object: "variant".to_string(),
+        deleted: true,
+        parent,
+    }))
 }
 
 #[tracing::instrument(skip_all, fields(offset = params.offset, limit = params.limit))]
