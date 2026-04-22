@@ -122,7 +122,8 @@ impl CartRepository {
         let row = sqlx::query(
             r#"
             SELECT v.id as variant_id, v.title as variant_title, v.sku as variant_sku, v.price,
-                   p.id as product_id, p.title as product_title
+                   p.id as product_id, p.title as product_title,
+                   p.description as product_description, p.handle as product_handle
             FROM product_variants v
             JOIN products p ON p.id = v.product_id
             WHERE v.id = $1 AND v.deleted_at IS NULL AND p.deleted_at IS NULL
@@ -139,10 +140,14 @@ impl CartRepository {
         let price: i64 = sqlx::Row::get(&row, "price");
         let product_id: String = sqlx::Row::get(&row, "product_id");
         let product_title: String = sqlx::Row::get(&row, "product_title");
+        let product_description: Option<String> = sqlx::Row::get(&row, "product_description");
+        let product_handle: Option<String> = sqlx::Row::get(&row, "product_handle");
 
         let line_id = generate_entity_id("cali");
         let snapshot = serde_json::json!({
             "product_title": product_title,
+            "product_description": product_description,
+            "product_handle": product_handle,
             "variant_title": variant_title,
             "variant_sku": variant_sku
         });

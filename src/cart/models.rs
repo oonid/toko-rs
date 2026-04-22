@@ -42,6 +42,22 @@ pub struct CartLineItem {
     pub is_discountable: bool,
     #[sqlx(skip)]
     pub is_tax_inclusive: bool,
+    #[sqlx(skip)]
+    pub product_title: Option<String>,
+    #[sqlx(skip)]
+    pub product_description: Option<String>,
+    #[sqlx(skip)]
+    pub product_subtitle: Option<String>,
+    #[sqlx(skip)]
+    pub product_handle: Option<String>,
+    #[sqlx(skip)]
+    pub variant_sku: Option<String>,
+    #[sqlx(skip)]
+    pub variant_barcode: Option<String>,
+    #[sqlx(skip)]
+    pub variant_title: Option<String>,
+    #[sqlx(skip)]
+    pub variant_option_values: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -79,6 +95,38 @@ impl CartWithItems {
             item.requires_shipping = true;
             item.is_discountable = true;
             item.is_tax_inclusive = false;
+            if let Some(ref snap) = item.snapshot {
+                let s = &snap.0;
+                item.product_title = s
+                    .get("product_title")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                item.product_description = s
+                    .get("product_description")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                item.product_subtitle = s
+                    .get("product_subtitle")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                item.product_handle = s
+                    .get("product_handle")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                item.variant_sku = s
+                    .get("variant_sku")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                item.variant_barcode = s
+                    .get("variant_barcode")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                item.variant_title = s
+                    .get("variant_title")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                item.variant_option_values = s.get("variant_option_values").cloned();
+            }
         }
         let item_total = items.iter().map(|i| i.quantity * i.unit_price).sum();
         Self {
