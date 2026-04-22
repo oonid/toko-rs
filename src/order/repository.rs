@@ -19,6 +19,9 @@ impl OrderRepository {
         let mut tx = self.pool.begin().await?;
 
         let cart = sqlx::query_as::<_, crate::cart::models::Cart>(
+            #[cfg(feature = "postgres")]
+            "SELECT * FROM carts WHERE id = $1 AND deleted_at IS NULL FOR UPDATE",
+            #[cfg(feature = "sqlite")]
             "SELECT * FROM carts WHERE id = $1 AND deleted_at IS NULL",
         )
         .bind(cart_id)
@@ -28,6 +31,20 @@ impl OrderRepository {
 
         if cart.completed_at.is_some() {
             return Err(AppError::Conflict("Cart is already completed".into()));
+        }
+
+        #[cfg(feature = "sqlite")]
+        {
+            let guard = sqlx::query(
+                "UPDATE carts SET updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND completed_at IS NULL",
+            )
+            .bind(cart_id)
+            .execute(&mut *tx)
+            .await?;
+
+            if guard.rows_affected() == 0 {
+                return Err(AppError::Conflict("Cart is already completed".into()));
+            }
         }
 
         let cart_items = sqlx::query_as::<_, crate::cart::models::CartLineItem>(

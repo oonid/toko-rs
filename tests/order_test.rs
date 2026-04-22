@@ -576,3 +576,53 @@ async fn test_order_line_item_snapshot_fields_surface_top_level() {
     assert_eq!(item["product_handle"], "order-snap");
     assert_eq!(item["product_description"], "Desc here");
 }
+
+#[tokio::test]
+async fn test_concurrent_cart_completion_only_one_succeeds() {
+    let (app, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+    let cart_id = create_cart_with_item(&app, &pool).await;
+
+    let app1 = app.clone();
+    let app2 = app.clone();
+    let cart_id1 = cart_id.clone();
+    let cart_id2 = cart_id.clone();
+
+    let h1 = tokio::spawn(async move {
+        app1
+            .oneshot(request(
+                Method::POST,
+                &format!("/store/carts/{}/complete", cart_id1),
+                &json!(null),
+            ))
+            .await
+            .unwrap()
+    });
+    let h2 = tokio::spawn(async move {
+        app2
+            .oneshot(request(
+                Method::POST,
+                &format!("/store/carts/{}/complete", cart_id2),
+                &json!(null),
+            ))
+            .await
+            .unwrap()
+    });
+
+    let r1 = h1.await.unwrap();
+    let r2 = h2.await.unwrap();
+
+    let s1 = r1.status();
+    let s2 = r2.status();
+
+    let one_ok = (s1 == StatusCode::OK && s2 == StatusCode::CONFLICT)
+        || (s1 == StatusCode::CONFLICT && s2 == StatusCode::OK);
+    assert!(one_ok, "expected one 200 and one 409, got {} and {}", s1, s2);
+
+    let order_count: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM orders WHERE display_id IS NOT NULL")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(order_count.0, 1, "only one order should be created for the cart");
+}

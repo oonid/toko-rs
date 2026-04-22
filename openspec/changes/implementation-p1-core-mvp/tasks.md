@@ -601,9 +601,9 @@ Full six-dimension comparison of all 25 P1 endpoints against `vendor/medusa/` so
 
 ### 20a. Fix BUG-1: Cart completion idempotency
 
-- [ ] 20a.1 Add `SELECT ... FOR UPDATE` on cart row in `create_from_cart` to serialize concurrent completions
-- [ ] 20a.2 Add integration test: concurrent cart completion returns Conflict for second request
-- [ ] 20a.3 Run full test suite — all tests pass, clippy clean
+- [x] 20a.1 Add `SELECT ... FOR UPDATE` on cart row in `create_from_cart` to serialize concurrent completions
+- [x] 20a.2 Add integration test: concurrent cart completion returns Conflict for second request
+- [x] 20a.3 Run full test suite — all tests pass, clippy clean
 
 ### 20b. Fix BUG-2: Soft-delete transactionality
 
