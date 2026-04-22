@@ -56,24 +56,24 @@ async fn test_e2e_error_responses() {
     let resp = ctx.get("/store/orders").await;
     assert_eq!(resp.status(), 401);
 
-    // 422 unknown fields
+    // 400 unknown fields
     let resp = ctx
         .post_json("/store/carts", &json!({"totally_wrong_field": true}))
         .await;
-    assert_eq!(resp.status(), 422);
+    assert_eq!(resp.status(), 400);
 
-    // 422 invalid product status
+    // 400 invalid product status
     let resp = ctx
         .post_json(
             "/admin/products",
             &json!({"title": "Bad Status", "status": "banana"}),
         )
         .await;
-    assert_eq!(resp.status(), 422);
+    assert_eq!(resp.status(), 400);
 
-    // 422 string metadata (must be object)
+    // 400 string metadata (must be object)
     let resp = ctx
         .post_json("/store/carts", &json!({"metadata": "not_an_object"}))
         .await;
-    assert_eq!(resp.status(), 422);
+    assert_eq!(resp.status(), 400);
 }

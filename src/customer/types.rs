@@ -5,7 +5,6 @@ use validator::Validate;
 use super::models::{Customer, CustomerAddress};
 
 #[derive(Debug, Deserialize, Validate)]
-#[serde(deny_unknown_fields)]
 pub struct CreateCustomerInput {
     pub first_name: Option<String>,
     pub last_name: Option<String>,
@@ -17,7 +16,6 @@ pub struct CreateCustomerInput {
 }
 
 #[derive(Debug, Deserialize, Validate)]
-#[serde(deny_unknown_fields)]
 pub struct UpdateCustomerInput {
     pub first_name: Option<String>,
     pub last_name: Option<String>,

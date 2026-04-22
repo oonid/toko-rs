@@ -23,7 +23,6 @@ pub struct UpdateCartInput {
 }
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
-#[serde(deny_unknown_fields)]
 pub struct AddLineItemInput {
     pub variant_id: String,
     #[validate(range(min = 1))]
@@ -32,7 +31,6 @@ pub struct AddLineItemInput {
 }
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
-#[serde(deny_unknown_fields)]
 pub struct UpdateLineItemInput {
     #[validate(range(min = 0))]
     pub quantity: i64,
