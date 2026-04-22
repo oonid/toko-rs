@@ -867,7 +867,9 @@ async fn test_variant_option_values_in_cart_line_item() {
         .unwrap();
     assert_eq!(res.status(), StatusCode::OK);
     let product = body_json(res).await["product"].clone();
-    let red_m_id = product["variants"].as_array().unwrap()[0]["id"].as_str().unwrap();
+    let red_m_id = product["variants"].as_array().unwrap()[0]["id"]
+        .as_str()
+        .unwrap();
 
     let res = app
         .clone()
@@ -878,7 +880,10 @@ async fn test_variant_option_values_in_cart_line_item() {
         ))
         .await
         .unwrap();
-    let cart_id = body_json(res).await["cart"]["id"].as_str().unwrap().to_string();
+    let cart_id = body_json(res).await["cart"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     let res = app
         .clone()

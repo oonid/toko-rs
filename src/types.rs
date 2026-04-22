@@ -35,5 +35,5 @@ impl FindParams {
 }
 
 pub fn default_limit() -> i64 {
-    20
+    50
 }
