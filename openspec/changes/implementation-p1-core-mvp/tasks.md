@@ -618,12 +618,12 @@ Full six-dimension comparison of all 25 P1 endpoints against `vendor/medusa/` so
 
 ### 20d. Add missing input fields for SDK compatibility (F1)
 
-- [ ] 20d.1 Add `is_giftcard: Option<bool>` and `discountable: Option<bool>` to `CreateProductInput`
-- [ ] 20d.2 Add `is_giftcard: Option<bool>` and `discountable: Option<bool>` to `UpdateProductInput`
-- [ ] 20d.3 Add `variant_rank: Option<i64>` to `CreateProductVariantInput`
-- [ ] 20d.4 Use values in repository INSERT/UPDATE, fall back to DB defaults when None
-- [ ] 20d.5 Add tests: verify new fields are accepted and persisted
-- [ ] 20d.6 Run full test suite — all tests pass, clippy clean
+- [x] 20d.1 Add `is_giftcard: Option<bool>` and `discountable: Option<bool>` to `CreateProductInput`
+- [x] 20d.2 Add `is_giftcard: Option<bool>` and `discountable: Option<bool>` to `UpdateProductInput`
+- [x] 20d.3 Add `variant_rank: Option<i64>` to `CreateProductVariantInput`
+- [x] 20d.4 Use values in repository INSERT/UPDATE, fall back to DB defaults when None
+- [x] 20d.5 Add tests: verify new fields are accepted and persisted
+- [x] 20d.6 Run full test suite — all tests pass, clippy clean
 
 ### 20e. Remove dead ValidationError variant (F2)
 

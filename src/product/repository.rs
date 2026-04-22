@@ -335,14 +335,19 @@ impl ProductRepository {
             Self::check_db_variant_option_combo(&mut tx, product_id, opts).await?;
         }
 
-        let rank: (i64,) = sqlx::query_as(
-            "SELECT COALESCE(MAX(variant_rank), -1) + 1 FROM product_variants WHERE product_id = $1 AND deleted_at IS NULL",
-        )
-        .bind(product_id)
-        .fetch_one(&mut *tx)
-        .await?;
+        let rank: i64 = if let Some(r) = input.variant_rank {
+            r
+        } else {
+            let computed: (i64,) = sqlx::query_as(
+                "SELECT COALESCE(MAX(variant_rank), -1) + 1 FROM product_variants WHERE product_id = $1 AND deleted_at IS NULL",
+            )
+            .bind(product_id)
+            .fetch_one(&mut *tx)
+            .await?;
+            computed.0
+        };
 
-        let variant = Self::insert_variant_tx(&mut tx, product_id, input, rank.0).await?;
+        let variant = Self::insert_variant_tx(&mut tx, product_id, input, rank).await?;
         Self::resolve_variant_options_tx(&mut tx, product_id, &variant.id, &input.options).await?;
 
         tx.commit().await?;

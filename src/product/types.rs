@@ -32,10 +32,13 @@ impl ProductStatus {
 pub struct CreateProductInput {
     #[validate(length(min = 1, message = "Title cannot be empty"))]
     pub title: String,
+    pub subtitle: Option<String>,
     pub handle: Option<String>,
     pub description: Option<String>,
     pub status: Option<ProductStatus>,
     pub thumbnail: Option<String>,
+    pub is_giftcard: Option<bool>,
+    pub discountable: Option<bool>,
     pub metadata: Option<HashMap<String, serde_json::Value>>,
     #[validate(nested)]
     pub options: Option<Vec<CreateProductOptionInput>>,
@@ -59,6 +62,7 @@ pub struct CreateProductVariantInput {
     pub sku: Option<String>,
     #[validate(range(min = 0, message = "Price cannot be negative"))]
     pub price: i64,
+    pub variant_rank: Option<i64>,
     pub options: Option<HashMap<String, String>>,
     pub metadata: Option<HashMap<String, serde_json::Value>>,
 }
@@ -67,10 +71,13 @@ pub struct CreateProductVariantInput {
 #[serde(deny_unknown_fields)]
 pub struct UpdateProductInput {
     pub title: Option<String>,
+    pub subtitle: Option<String>,
     pub handle: Option<String>,
     pub description: Option<String>,
     pub status: Option<ProductStatus>,
     pub thumbnail: Option<String>,
+    pub is_giftcard: Option<bool>,
+    pub discountable: Option<bool>,
     pub metadata: Option<HashMap<String, serde_json::Value>>,
 }
 
