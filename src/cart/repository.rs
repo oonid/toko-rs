@@ -143,13 +143,38 @@ impl CartRepository {
         let product_description: Option<String> = sqlx::Row::get(&row, "product_description");
         let product_handle: Option<String> = sqlx::Row::get(&row, "product_handle");
 
+        let option_rows = sqlx::query(
+            r#"
+            SELECT po.title AS opt_title, pov.value AS opt_value
+            FROM product_variant_option pvo
+            JOIN product_option_values pov ON pvo.option_value_id = pov.id
+            JOIN product_options po ON pov.option_id = po.id
+            WHERE pvo.variant_id = $1
+              AND pov.deleted_at IS NULL
+              AND po.deleted_at IS NULL
+            "#,
+        )
+        .bind(&variant_id)
+        .fetch_all(&mut *tx)
+        .await?;
+
+        let variant_option_values: serde_json::Map<String, serde_json::Value> = option_rows
+            .iter()
+            .map(|r| {
+                let title: String = sqlx::Row::get(r, "opt_title");
+                let value: String = sqlx::Row::get(r, "opt_value");
+                (title, serde_json::Value::String(value))
+            })
+            .collect();
+
         let line_id = generate_entity_id("cali");
         let snapshot = serde_json::json!({
             "product_title": product_title,
             "product_description": product_description,
             "product_handle": product_handle,
             "variant_title": variant_title,
-            "variant_sku": variant_sku
+            "variant_sku": variant_sku,
+            "variant_option_values": variant_option_values
         });
 
         let input_metadata = metadata_to_json(input.metadata.clone());
