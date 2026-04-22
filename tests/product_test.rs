@@ -132,10 +132,26 @@ async fn test_soft_delete_cascades_to_children() {
     let list_resp = app.clone().oneshot(list_with_deleted_req).await.unwrap();
     assert_eq!(list_resp.status(), StatusCode::OK);
     let body = body_json(list_resp).await;
-    let deleted_product = body["products"].as_array().unwrap().iter().find(|p| p["id"] == product_id).unwrap();
-    assert!(deleted_product["deleted_at"].is_string(), "product should have deleted_at");
-    assert_eq!(deleted_product["variants"].as_array().unwrap().len(), 0, "variants should be cascade-deleted and filtered by load_relations");
-    assert_eq!(deleted_product["options"].as_array().unwrap().len(), 0, "options should be cascade-deleted and filtered by load_relations");
+    let deleted_product = body["products"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["id"] == product_id)
+        .unwrap();
+    assert!(
+        deleted_product["deleted_at"].is_string(),
+        "product should have deleted_at"
+    );
+    assert_eq!(
+        deleted_product["variants"].as_array().unwrap().len(),
+        0,
+        "variants should be cascade-deleted and filtered by load_relations"
+    );
+    assert_eq!(
+        deleted_product["options"].as_array().unwrap().len(),
+        0,
+        "options should be cascade-deleted and filtered by load_relations"
+    );
 }
 
 #[tokio::test]
@@ -691,7 +707,10 @@ async fn test_admin_list_variants_pagination() {
 
     let req = Request::builder()
         .method(Method::GET)
-        .uri(&format!("/admin/products/{}/variants?limit=1&offset=0", product_id))
+        .uri(&format!(
+            "/admin/products/{}/variants?limit=1&offset=0",
+            product_id
+        ))
         .body(Body::empty())
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
@@ -711,7 +730,10 @@ async fn test_admin_get_variant() {
 
     let req = Request::builder()
         .method(Method::GET)
-        .uri(&format!("/admin/products/{}/variants/{}", product_id, variant_id))
+        .uri(&format!(
+            "/admin/products/{}/variants/{}",
+            product_id, variant_id
+        ))
         .body(Body::empty())
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
@@ -731,7 +753,10 @@ async fn test_admin_get_variant_not_found() {
 
     let req = Request::builder()
         .method(Method::GET)
-        .uri(&format!("/admin/products/{}/variants/variant_nonexistent", product_id))
+        .uri(&format!(
+            "/admin/products/{}/variants/variant_nonexistent",
+            product_id
+        ))
         .body(Body::empty())
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
@@ -751,16 +776,25 @@ async fn test_admin_update_variant() {
     });
     let req = Request::builder()
         .method(Method::POST)
-        .uri(&format!("/admin/products/{}/variants/{}", product_id, variant_id))
+        .uri(&format!(
+            "/admin/products/{}/variants/{}",
+            product_id, variant_id
+        ))
         .header("content-type", "application/json")
         .body(Body::from(payload.to_string()))
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
-    assert_eq!(body["variant"]["id"], variant_id);
-    assert_eq!(body["variant"]["title"], "Medium Updated");
-    assert_eq!(body["variant"]["price"], 3000);
+    assert_eq!(body["product"]["id"], product_id);
+    let updated_variant = body["product"]["variants"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|v| v["id"] == variant_id)
+        .unwrap();
+    assert_eq!(updated_variant["title"], "Medium Updated");
+    assert_eq!(updated_variant["price"], 3000);
 }
 
 #[tokio::test]
@@ -773,7 +807,10 @@ async fn test_admin_update_variant_sku_uniqueness() {
     let payload = json!({"sku": "TS-S"});
     let req = Request::builder()
         .method(Method::POST)
-        .uri(&format!("/admin/products/{}/variants/{}", product_id, variant_id))
+        .uri(&format!(
+            "/admin/products/{}/variants/{}",
+            product_id, variant_id
+        ))
         .header("content-type", "application/json")
         .body(Body::from(payload.to_string()))
         .unwrap();
@@ -792,7 +829,10 @@ async fn test_admin_delete_variant() {
 
     let req = Request::builder()
         .method(Method::DELETE)
-        .uri(&format!("/admin/products/{}/variants/{}", product_id, variant_id))
+        .uri(&format!(
+            "/admin/products/{}/variants/{}",
+            product_id, variant_id
+        ))
         .body(Body::empty())
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
@@ -814,7 +854,10 @@ async fn test_admin_delete_variant_idempotent() {
 
     let del_req1 = Request::builder()
         .method(Method::DELETE)
-        .uri(&format!("/admin/products/{}/variants/{}", product_id, variant_id))
+        .uri(&format!(
+            "/admin/products/{}/variants/{}",
+            product_id, variant_id
+        ))
         .body(Body::empty())
         .unwrap();
     let resp1 = app.clone().oneshot(del_req1).await.unwrap();
@@ -822,7 +865,10 @@ async fn test_admin_delete_variant_idempotent() {
 
     let del_req2 = Request::builder()
         .method(Method::DELETE)
-        .uri(&format!("/admin/products/{}/variants/{}", product_id, variant_id))
+        .uri(&format!(
+            "/admin/products/{}/variants/{}",
+            product_id, variant_id
+        ))
         .body(Body::empty())
         .unwrap();
     let resp2 = app.clone().oneshot(del_req2).await.unwrap();
@@ -840,7 +886,10 @@ async fn test_admin_delete_variant_not_found() {
 
     let req = Request::builder()
         .method(Method::DELETE)
-        .uri(&format!("/admin/products/{}/variants/variant_nonexistent", product_id))
+        .uri(&format!(
+            "/admin/products/{}/variants/variant_nonexistent",
+            product_id
+        ))
         .body(Body::empty())
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
@@ -904,4 +953,23 @@ async fn test_admin_list_variants_product_not_found() {
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_product_option_and_value_metadata_in_response() {
+    let (app, _) = common::setup_test_app().await;
+    let body = create_sample_product(&app).await;
+    let options = body["product"]["options"].as_array().unwrap();
+    assert!(!options.is_empty(), "product should have options");
+    let opt = &options[0];
+    assert!(
+        opt.get("metadata").is_some(),
+        "option should have metadata field"
+    );
+    let values = opt["values"].as_array().unwrap();
+    assert!(!values.is_empty(), "option should have values");
+    assert!(
+        values[0].get("metadata").is_some(),
+        "option value should have metadata field"
+    );
 }

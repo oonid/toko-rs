@@ -15,6 +15,7 @@ CREATE TABLE product_options (
     id TEXT PRIMARY KEY,
     product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
+    metadata JSONB,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted_at TIMESTAMPTZ
@@ -24,6 +25,7 @@ CREATE TABLE product_option_values (
     id TEXT PRIMARY KEY,
     option_id TEXT NOT NULL REFERENCES product_options(id) ON DELETE CASCADE,
     value TEXT NOT NULL,
+    metadata JSONB,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted_at TIMESTAMPTZ
@@ -57,3 +59,4 @@ CREATE INDEX idx_product_option_values_option_id ON product_option_values (optio
 CREATE UNIQUE INDEX uq_product_option_values_option_id_value ON product_option_values (option_id, value) WHERE deleted_at IS NULL;
 CREATE INDEX idx_product_variants_product_id ON product_variants (product_id) WHERE deleted_at IS NULL;
 CREATE UNIQUE INDEX uq_product_variants_sku ON product_variants (sku) WHERE deleted_at IS NULL AND sku IS NOT NULL;
+CREATE INDEX idx_product_variants_id_product_id ON product_variants (id, product_id) WHERE deleted_at IS NULL;
