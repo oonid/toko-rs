@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use validator::Validate;
 
-use super::models::ProductWithRelations;
+use super::models::{ProductVariantWithOptions, ProductWithRelations};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -74,6 +74,15 @@ pub struct UpdateProductInput {
     pub metadata: Option<HashMap<String, serde_json::Value>>,
 }
 
+#[derive(Debug, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateVariantInput {
+    pub title: Option<String>,
+    pub sku: Option<String>,
+    pub price: Option<i64>,
+    pub metadata: Option<HashMap<String, serde_json::Value>>,
+}
+
 // --- API Responses ---
 
 #[derive(Debug, Serialize)]
@@ -87,6 +96,27 @@ pub struct ProductListResponse {
     pub count: i64,
     pub offset: i64,
     pub limit: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct VariantListResponse {
+    pub variants: Vec<ProductVariantWithOptions>,
+    pub count: i64,
+    pub offset: i64,
+    pub limit: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct VariantResponse {
+    pub variant: ProductVariantWithOptions,
+}
+
+#[derive(Debug, Serialize)]
+pub struct VariantDeleteResponse {
+    pub id: String,
+    pub object: String,
+    pub deleted: bool,
+    pub parent: ProductWithRelations,
 }
 
 #[derive(Debug, Serialize)]
