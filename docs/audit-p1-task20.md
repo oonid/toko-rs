@@ -261,3 +261,45 @@ Six parallel audit streams compared toko-rs against `vendor/medusa/`:
 6. **Business logic**: 8 core flows compared step-by-step
 
 Findings were then filtered to P1 scope only, excluding all documented P2 deferrals.
+
+---
+
+## Verification Results
+
+**Date**: 2026-04-22
+
+### All Findings Fixed
+
+| Finding | Fix Commit | Status |
+|---------|------------|--------|
+| BUG-1: Cart completion idempotency | `e15944b` | Fixed — `SELECT ... FOR UPDATE` (PG) + guard UPDATE (SQLite) |
+| BUG-2: Soft-delete transactionality | `cbf14c0` | Fixed — 4 UPDATEs wrapped in single transaction |
+| BUG-3: Snapshot missing `variant_option_values` | `19fcf63` | Fixed — captured via JOIN query during `add_line_item` |
+| F1: Missing input fields | `1191a2a` | Fixed — `is_giftcard`, `discountable`, `subtitle`, `variant_rank` accepted |
+| F2: Dead `ValidationError` variant | `4b55e5f` | Fixed — removed from enum |
+| F3: Per-item totals missing | `cae4c15` | Fixed — 12 `#[sqlx(skip)]` fields per line item, computed in `from_items()` |
+| F4: Error message prefixing | `6815e83` | Fixed — prefixes removed from `#[error(...)]` attrs and tests |
+| F5: Pagination defaults | `a22d0bc` | Fixed — `default_limit()` returns 50, test assertions updated |
+
+### Deferred Findings (low priority)
+
+| Finding | Reason |
+|---------|--------|
+| F6: N+1 query optimization | Performance, not correctness |
+| F7: Generic constraint message parsing | Requires PG-specific error handling |
+| F8: Conditional `code` field | Minor difference |
+
+### Test Suite
+
+| Database | Tests | Result |
+|----------|-------|--------|
+| SQLite (in-memory) | 164 (34 unit + 130 integration) | All pass |
+| PostgreSQL 16 | 164 (34 unit + 130 integration) | All pass |
+
+### Lint & Format
+
+| Check | Result |
+|-------|--------|
+| `cargo clippy --features sqlite -- -D warnings` | Clean |
+| `cargo clippy --features postgres -- -D warnings` | Clean |
+| `cargo fmt --check` | Clean |

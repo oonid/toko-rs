@@ -648,13 +648,13 @@ Full six-dimension comparison of all 25 P1 endpoints against `vendor/medusa/` so
 
 ### 20h. Fix pagination defaults (F5)
 
-- [ ] 20h.1 Change default `limit` from 20 to 50 for product, variant, and order list endpoints
-- [ ] 20h.2 Update existing tests that assert on pagination defaults
-- [ ] 20h.3 Run full test suite — all tests pass, clippy clean
+- [x] 20h.1 Change default `limit` from 20 to 50 for product, variant, and order list endpoints
+- [x] 20h.2 Update existing tests that assert on pagination defaults
+- [x] 20h.3 Run full test suite — all tests pass, clippy clean
 
 ### 20i. Verification pass
 
-- [ ] 20i.1 Run full test suite on SQLite — all tests pass
-- [ ] 20i.2 Run `cargo clippy -- -D warnings` — zero warnings
-- [ ] 20i.3 Run `cargo fmt --check` — clean
-- [ ] 20i.4 Update `docs/audit-p1-task20.md` with verification results
+- [x] 20i.1 Run full test suite on SQLite — all tests pass
+- [x] 20i.2 Run `cargo clippy -- -D warnings` — zero warnings
+- [x] 20i.3 Run `cargo fmt --check` — clean
+- [x] 20i.4 Update `docs/audit-p1-task20.md` with verification results
