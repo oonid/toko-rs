@@ -627,9 +627,9 @@ Full six-dimension comparison of all 25 P1 endpoints against `vendor/medusa/` so
 
 ### 20e. Remove dead ValidationError variant (F2)
 
-- [ ] 20e.1 Remove `AppError::ValidationError` variant from `src/error.rs`
-- [ ] 20e.2 Update any affected unit tests in `error.rs`
-- [ ] 20e.3 Run full test suite — all tests pass, clippy clean
+- [x] 20e.1 Remove `AppError::ValidationError` variant from `src/error.rs`
+- [x] 20e.2 Update any affected unit tests in `error.rs`
+- [x] 20e.3 Run full test suite — all tests pass, clippy clean
 
 ### 20f. Add per-item totals on line items (F3)
 
