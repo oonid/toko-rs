@@ -438,3 +438,141 @@ async fn test_payment_repo_create_and_find() {
     let not_found = repo.find_by_order_id("order_nonexistent").await.unwrap();
     assert!(not_found.is_none());
 }
+
+#[tokio::test]
+async fn test_cart_complete_success_response_shape() {
+    let (app, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+    let cart_id = create_cart_with_item(&app, &pool).await;
+
+    let res = app
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/complete", cart_id),
+            &json!(null),
+        ))
+        .await
+        .unwrap();
+    let body = body_json(res).await;
+    assert_eq!(body["type"], "order");
+    assert!(body["order"].is_object());
+    assert!(
+        body.get("cart").is_none(),
+        "success response must not have 'cart' key"
+    );
+    assert!(
+        body.get("error").is_none(),
+        "success response must not have 'error' key"
+    );
+}
+
+#[tokio::test]
+async fn test_cart_complete_error_response_type() {
+    let success_val = serde_json::to_value(toko_rs::order::types::CartCompleteResponse::success(
+        toko_rs::order::models::OrderWithItems::from_items(
+            toko_rs::order::models::Order {
+                id: "order_test".into(),
+                display_id: 1,
+                customer_id: None,
+                email: None,
+                currency_code: "idr".into(),
+                status: "pending".into(),
+                metadata: None,
+                canceled_at: None,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+                deleted_at: None,
+                shipping_address: None,
+                billing_address: None,
+            },
+            vec![],
+        ),
+    ))
+    .unwrap();
+    assert_eq!(success_val["type"], "order");
+    assert!(success_val["order"].is_object());
+    assert!(success_val.get("cart").is_none());
+    assert!(success_val.get("error").is_none());
+
+    let cart = toko_rs::cart::models::CartWithItems::from_items(
+        toko_rs::cart::models::Cart {
+            id: "cart_test".into(),
+            customer_id: None,
+            email: None,
+            currency_code: "idr".into(),
+            metadata: None,
+            completed_at: None,
+            shipping_address: None,
+            billing_address: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            deleted_at: None,
+        },
+        vec![],
+    );
+    let error_val = serde_json::to_value(toko_rs::order::types::CartCompleteResponse::error(
+        cart,
+        "Payment authorization failed",
+    ))
+    .unwrap();
+    assert_eq!(error_val["type"], "cart");
+    assert!(error_val["cart"].is_object());
+    assert!(error_val["error"].is_object());
+    assert_eq!(
+        error_val["error"]["message"],
+        "Payment authorization failed"
+    );
+    assert_eq!(error_val["error"]["name"], "unknown_error");
+    assert_eq!(error_val["error"]["type"], "invalid_data");
+    assert!(error_val.get("order").is_none());
+}
+
+#[tokio::test]
+async fn test_order_line_item_snapshot_fields_surface_top_level() {
+    let (app, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+    sqlx::query("INSERT INTO products (id, title, handle, description, status) VALUES ('prod_osnap', 'Order Snap Product', 'order-snap', 'Desc here', 'published')")
+        .execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO product_variants (id, product_id, title, sku, price) VALUES ('var_osnap', 'prod_osnap', 'XL', 'OSNAP-XL', 7500)")
+        .execute(&pool).await.unwrap();
+
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            "/store/carts",
+            &json!({"currency_code": "idr"}),
+        ))
+        .await
+        .unwrap();
+    let cart_id = body_json(res).await["cart"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    app.clone()
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/line-items", cart_id),
+            &json!({"variant_id": "var_osnap", "quantity": 3}),
+        ))
+        .await
+        .unwrap();
+
+    let res = app
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/complete", cart_id),
+            &json!(null),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = body_json(res).await;
+    let item = &body["order"]["items"].as_array().unwrap()[0];
+    assert_eq!(item["product_title"], "Order Snap Product");
+    assert_eq!(item["variant_title"], "XL");
+    assert_eq!(item["variant_sku"], "OSNAP-XL");
+    assert_eq!(item["product_handle"], "order-snap");
+    assert_eq!(item["product_description"], "Desc here");
+}

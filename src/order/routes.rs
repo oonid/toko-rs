@@ -28,10 +28,7 @@ async fn store_complete_cart(
 
     Ok((
         StatusCode::OK,
-        Json(CartCompleteResponse {
-            response_type: "order".to_string(),
-            order: order_with_items,
-        }),
+        Json(CartCompleteResponse::success(order_with_items)),
     ))
 }
 
