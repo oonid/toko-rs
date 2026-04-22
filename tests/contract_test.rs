@@ -1116,6 +1116,25 @@ async fn test_wrong_json_type_returns_consistent_error() {
     let res = app.oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let body = body_json(res).await;
-    assert!(body["code"].is_string());
+    assert_eq!(body["type"], "invalid_data");
+    assert_eq!(body["code"], "invalid_request_error");
     assert!(body["message"].is_string());
+}
+
+#[tokio::test]
+async fn test_missing_content_type_returns_400() {
+    let (app, _) = common::setup_test_app().await;
+    let req = axum::http::Request::builder()
+        .method(Method::POST)
+        .uri("/store/carts")
+        .body(axum::body::Body::from(
+            json!({"currency_code": "usd"}).to_string(),
+        ))
+        .unwrap();
+    let res = app.oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    let body = body_json(res).await;
+    assert_eq!(body["type"], "invalid_data");
+    assert_eq!(body["code"], "invalid_request_error");
+    assert!(body["message"].as_str().unwrap().contains("Content-Type"));
 }
