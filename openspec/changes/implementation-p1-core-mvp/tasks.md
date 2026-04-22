@@ -594,3 +594,67 @@ Source: `docs/audit-p1-task19.md`. Comprehensive comparison against Medusa `deve
 - [x] 19v.5 Document atomicity gap in S3: soft-delete cascade runs 4 independent queries (not transactional) — low risk, deferred
 - [x] 19v.6 Write full verification report: `docs/audit-p1-task19-verification.md`
 - [x] 19v.7 Run full test suite — 158 tests pass, clippy clean, fmt clean
+
+## Task 20. Fifth Audit — P1 Medusa Compatibility Re-Audit
+
+Full six-dimension comparison of all 25 P1 endpoints against `vendor/medusa/` source. Focused exclusively on P1 scope — no P2 features (pricing, inventory, shipping, tax, events, admin orders, admin customers, etc.). Report: `docs/audit-p1-task20.md`.
+
+### 20a. Fix BUG-1: Cart completion idempotency
+
+- [ ] 20a.1 Add `SELECT ... FOR UPDATE` on cart row in `create_from_cart` to serialize concurrent completions
+- [ ] 20a.2 Add integration test: concurrent cart completion returns Conflict for second request
+- [ ] 20a.3 Run full test suite — all tests pass, clippy clean
+
+### 20b. Fix BUG-2: Soft-delete transactionality
+
+- [ ] 20b.1 Wrap `soft_delete` method in a DB transaction (4 UPDATEs on `self.pool` → single `tx`)
+- [ ] 20b.2 Run full test suite — all tests pass, clippy clean
+
+### 20c. Fix BUG-3: Snapshot captures 5 fields but model extracts 8
+
+- [ ] 20c.1 Capture `variant_option_values` in snapshot JSON during `add_line_item`
+- [ ] 20c.2 Add test: verify `variant_option_values` is populated in cart/order line item responses
+- [ ] 20c.3 Run full test suite — all tests pass, clippy clean
+
+### 20d. Add missing input fields for SDK compatibility (F1)
+
+- [ ] 20d.1 Add `is_giftcard: Option<bool>` and `discountable: Option<bool>` to `CreateProductInput`
+- [ ] 20d.2 Add `is_giftcard: Option<bool>` and `discountable: Option<bool>` to `UpdateProductInput`
+- [ ] 20d.3 Add `variant_rank: Option<i64>` to `CreateProductVariantInput`
+- [ ] 20d.4 Use values in repository INSERT/UPDATE, fall back to DB defaults when None
+- [ ] 20d.5 Add tests: verify new fields are accepted and persisted
+- [ ] 20d.6 Run full test suite — all tests pass, clippy clean
+
+### 20e. Remove dead ValidationError variant (F2)
+
+- [ ] 20e.1 Remove `AppError::ValidationError` variant from `src/error.rs`
+- [ ] 20e.2 Update any affected unit tests in `error.rs`
+- [ ] 20e.3 Run full test suite — all tests pass, clippy clean
+
+### 20f. Add per-item totals on line items (F3)
+
+- [ ] 20f.1 Add `#[sqlx(skip)]` per-item total fields to `CartLineItem` and `OrderLineItem`
+- [ ] 20f.2 Compute per-item totals in `CartWithItems::from_items` and `OrderWithItems::from_items`
+- [ ] 20f.3 Add tests: verify `item_total`, `subtotal`, `total` appear on line items
+- [ ] 20f.4 Run full test suite — all tests pass, clippy clean
+
+### 20g. Remove error message prefixing (F4)
+
+- [ ] 20g.1 Remove prefixes from `#[error(...)]` attributes in `src/error.rs`
+- [ ] 20g.2 Update repository error messages to not include redundant prefixes
+- [ ] 20g.3 Update unit tests in `error.rs` to match new message format
+- [ ] 20g.4 Update integration tests that assert on error messages
+- [ ] 20g.5 Run full test suite — all tests pass, clippy clean
+
+### 20h. Fix pagination defaults (F5)
+
+- [ ] 20h.1 Change default `limit` from 20 to 50 for product, variant, and order list endpoints
+- [ ] 20h.2 Update existing tests that assert on pagination defaults
+- [ ] 20h.3 Run full test suite — all tests pass, clippy clean
+
+### 20i. Verification pass
+
+- [ ] 20i.1 Run full test suite on SQLite — all tests pass
+- [ ] 20i.2 Run `cargo clippy -- -D warnings` — zero warnings
+- [ ] 20i.3 Run `cargo fmt --check` — clean
+- [ ] 20i.4 Update `docs/audit-p1-task20.md` with verification results
