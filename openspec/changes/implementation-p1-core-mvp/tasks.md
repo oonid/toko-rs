@@ -495,3 +495,92 @@ Source: `docs/audit-p1-task18.md`. Behavioral comparison against Medusa route ha
 - [x] 18h.3 Run `cargo clippy -- -D warnings` on both feature sets — zero warnings.
 - [x] 18h.4 Run `cargo fmt --check` — clean.
 - [x] 18h.5 Update `docs/audit-correction.md` with Task 18 section.
+
+## Task 19: Fourth Audit — Medusa Compatibility Deep-Dive
+
+Source: `docs/audit-p1-task19.md`. Comprehensive comparison against Medusa `develop` branch at `12b4e72189`. 6 audit streams: routes, response shapes, input types, DB schema, error handling, business logic. 20 findings: 5 HIGH, 8 MEDIUM, 7 LOW.
+
+### 19a. Fix `JsonDataError` mapping (S1 — HIGH)
+
+- [x] 19a.1 Fix `src/extract.rs` — change `JsonDataError` mapping from `AppError::DuplicateError` to `AppError::InvalidData` so structurally-valid JSON with wrong field types returns 400 instead of 422
+- [x] 19a.2 Add test: send JSON with wrong field type (e.g., string where number expected) — verify 400 `{ type: "invalid_data" }` not 422 `{ type: "duplicate_error" }`
+
+### 19b. Missing admin variant endpoints (S2 — HIGH)
+
+- [x] 19b.1 Implement `GET /admin/products/:id/variants` — paginated list returning `{ variants, count, offset, limit }`
+- [x] 19b.2 Implement `GET /admin/products/:id/variants/:variant_id` — single variant with options
+- [x] 19b.3 Implement `POST /admin/products/:id/variants/:variant_id` — partial variant update (COALESCE pattern)
+- [x] 19b.4 Implement `DELETE /admin/products/:id/variants/:variant_id` — soft-delete returning `{ id, object: "variant", deleted: true, parent: { product } }`
+- [x] 19b.5 Add integration tests for all 4 variant endpoints
+
+### 19c. Soft-delete cascade to children (S3 — HIGH)
+
+- [x] 19c.1 Update `soft_delete` in `src/product/repository.rs` — after setting `deleted_at` on product, also UPDATE `deleted_at` on `product_variants`, `product_options`, and `product_option_values` where `product_id = $1 AND deleted_at IS NULL`
+- [x] 19c.2 Add test: soft-delete product, verify variants/options/option_values have `deleted_at` set
+- [x] 19c.3 Add test: soft-delete product, verify `load_relations` on a different product still returns only non-deleted children
+
+### 19d. Variant option uniqueness against DB (S4 — HIGH)
+
+- [x] 19d.1 Update `add_variant` in `src/product/repository.rs` — query existing `product_variant_option` rows for the product, reconstruct option combos, and reject if new variant's option combination matches an existing DB variant
+- [x] 19d.2 Update `create_product` duplicate option combination check to also verify against existing DB variants (not just input batch) — N/A for new products (no DB variants exist); check is only needed in `add_variant`
+- [x] 19d.3 Add test: create product with variant `{Color: Red, Size: M}`, then add another variant via separate API call with same combination — verify 422 rejection
+
+### 19e. Line-item dedup include `unit_price` (S5 — HIGH)
+
+- [x] 19e.1 Update existing-item lookup SQL in `src/cart/repository.rs` to include `unit_price` comparison — items with same variant_id but different unit_price become separate line items
+- [x] 19e.2 Add test: add item at price X, change variant price, add same variant — verify second line item created (not merged)
+- [x] 19e.3 Add test: add item at price X, add same variant at same price — verify quantity merged (existing behavior preserved)
+
+### 19f. Cart complete error branch (S6 — MEDIUM)
+
+- [ ] 19f.1 Add error variant to `CartCompleteResponse` in `src/order/types.rs` — `{ type: "cart", cart: CartWithItems, error: { message, name, type } }`
+- [ ] 19f.2 Update `store_complete_cart` handler to return error branch on payment/processing failures instead of just AppError
+- [ ] 19f.3 Add test: verify error response shape matches Medusa's `{ type: "cart", cart, error }` format
+
+### 19g. Add `company_name` to customer (S7 — MEDIUM)
+
+- [ ] 19g.1 Add `company_name TEXT` column to `customers` table in both PG and SQLite migrations (`002_customers.sql`)
+- [ ] 19g.2 Add `company_name: Option<String>` to `Customer` model in `src/customer/models.rs`
+- [ ] 19g.3 Add `company_name` to `CreateCustomerInput` and `UpdateCustomerInput` in `src/customer/types.rs`
+- [ ] 19g.4 Update seed data in `src/seed.rs` if applicable
+- [ ] 19g.5 Add tests: create customer with `company_name`, update customer `company_name`, verify in response
+
+### 19h. Document `GET /store/orders/:id` auth divergence (S8 — MEDIUM)
+
+- [ ] 19h.1 Document in `design.md`: toko-rs requires `X-Customer-Id` on `GET /store/orders/:id` (intentional security improvement over Medusa's unauthenticated access)
+- [ ] 19h.2 Update `docs/audit-correction.md` with divergence note
+
+### 19i. Add `metadata` to product options and option values (S9 — MEDIUM)
+
+- [ ] 19i.1 Add `metadata JSONB` column to `product_options` table in both PG and SQLite migrations (`001_products.sql`)
+- [ ] 19i.2 Add `metadata JSONB` column to `product_option_values` table in both PG and SQLite migrations (`001_products.sql`)
+- [ ] 19i.3 Add `metadata: Option<serde_json::Value>` to `ProductOption` and `ProductOptionValue` models in `src/product/models.rs`
+- [ ] 19i.4 Update `load_relations` queries and repository INSERT/UPDATE to handle new metadata columns
+- [ ] 19i.5 Add tests: verify `metadata` appears in product response options and option values
+
+### 19j. Add missing DB indexes (S10 — MEDIUM)
+
+- [ ] 19j.1 Add `idx_product_variants_id_product_id ON product_variants (id, product_id) WHERE deleted_at IS NULL` to both PG and SQLite `001_products.sql`
+- [ ] 19j.2 Add `idx_orders_deleted_at ON orders (deleted_at) WHERE deleted_at IS NOT NULL` to both PG and SQLite `004_orders.sql`
+- [ ] 19j.3 Add `idx_orders_currency_code ON orders (currency_code) WHERE deleted_at IS NULL` to both PG and SQLite `004_orders.sql`
+- [ ] 19j.4 Add `idx_order_line_items_deleted_at ON order_line_items (deleted_at) WHERE deleted_at IS NOT NULL` to both PG and SQLite `004_orders.sql`
+- [ ] 19j.5 Add `idx_order_line_items_product_id ON order_line_items (product_id) WHERE deleted_at IS NULL` to both PG and SQLite `004_orders.sql`
+- [ ] 19j.6 Add `idx_order_line_items_variant_id ON order_line_items (variant_id) WHERE deleted_at IS NULL` to both PG and SQLite `004_orders.sql`
+
+### 19k. Surface line-item snapshot fields in response (S12 — MEDIUM)
+
+- [ ] 19k.1 Add top-level fields to `CartLineItem` response: `product_title`, `product_description`, `product_subtitle`, `product_handle`, `variant_sku`, `variant_barcode`, `variant_title`, `variant_option_values` — populated from `snapshot` JSON column
+- [ ] 19k.2 Add top-level fields to `OrderLineItem` response with same snapshot-derived fields
+- [ ] 19k.3 Update contract tests to verify new fields appear in cart and order line item responses
+
+### 19l. Document `customer_id` on cart create as intentional (S13 — MEDIUM)
+
+- [ ] 19l.1 Document in `design.md`: `customer_id` in `CreateCartInput` is an intentional toko-rs extension (Medusa infers from auth context); will be removed when real auth is implemented in P2
+
+### 19m. Verification pass
+
+- [ ] 19m.1 Run full test suite on PG — all existing + new tests pass
+- [ ] 19m.2 Run full test suite on SQLite — all existing + new tests pass
+- [ ] 19m.3 Run `cargo clippy -- -D warnings` on both feature sets — zero warnings
+- [ ] 19m.4 Run `cargo fmt --check` — clean
+- [ ] 19m.5 Update `docs/audit-correction.md` with Task 19 section
