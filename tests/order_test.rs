@@ -626,3 +626,43 @@ async fn test_concurrent_cart_completion_only_one_succeeds() {
             .unwrap();
     assert_eq!(order_count.0, 1, "only one order should be created for the cart");
 }
+
+#[tokio::test]
+async fn test_line_item_per_item_totals() {
+    let (app, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+    sqlx::query("INSERT INTO products (id, title, handle, status) VALUES ('prod_tot', 'Totals Product', 'totals', 'published')")
+        .execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO product_variants (id, product_id, title, price) VALUES ('var_tot', 'prod_tot', 'One', 2000)")
+        .execute(&pool).await.unwrap();
+
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            "/store/carts",
+            &json!({"currency_code": "idr"}),
+        ))
+        .await
+        .unwrap();
+    let cart_id = body_json(res).await["cart"]["id"].as_str().unwrap().to_string();
+
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/line-items", cart_id),
+            &json!({"variant_id": "var_tot", "quantity": 5}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = body_json(res).await;
+    let item = &body["cart"]["items"].as_array().unwrap()[0];
+    assert_eq!(item["item_total"], 10000);
+    assert_eq!(item["subtotal"], 10000);
+    assert_eq!(item["total"], 10000);
+    assert_eq!(item["original_total"], 10000);
+    assert_eq!(item["tax_total"], 0);
+    assert_eq!(item["discount_total"], 0);
+}
