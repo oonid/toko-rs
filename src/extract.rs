@@ -22,7 +22,7 @@ fn map_json_rejection(rejection: JsonRejection) -> crate::error::AppError {
             "Request must have Content-Type: application/json".into(),
         ),
         JsonRejection::JsonDataError(msg) => {
-            crate::error::AppError::ValidationError(format!("{}", msg))
+            crate::error::AppError::InvalidData(format!("{}", msg))
         }
         _ => crate::error::AppError::InvalidData(format!("Invalid request body: {}", rejection)),
     }

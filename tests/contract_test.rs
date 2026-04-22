@@ -923,7 +923,7 @@ async fn test_product_invalid_status_rejected() {
         ))
         .await
         .unwrap();
-    assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]
@@ -950,7 +950,7 @@ async fn test_product_update_validates() {
         ))
         .await
         .unwrap();
-    assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]
@@ -1034,7 +1034,7 @@ async fn test_unknown_fields_rejected() {
         ))
         .await
         .unwrap();
-    assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]
@@ -1048,7 +1048,7 @@ async fn test_product_unknown_fields_rejected() {
         ))
         .await
         .unwrap();
-    assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]
@@ -1062,7 +1062,7 @@ async fn test_metadata_must_be_object() {
         ))
         .await
         .unwrap();
-    assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]
@@ -1114,7 +1114,7 @@ async fn test_wrong_json_type_returns_consistent_error() {
         ))
         .unwrap();
     let res = app.oneshot(req).await.unwrap();
-    assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
     let body = body_json(res).await;
     assert_eq!(body["type"], "invalid_data");
     assert_eq!(body["code"], "invalid_request_error");

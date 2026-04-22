@@ -124,7 +124,11 @@ async fn admin_list_variants(
     Path(product_id): Path<String>,
     Query(params): Query<FindParams>,
 ) -> Result<Json<VariantListResponse>, AppError> {
-    let (variants, count) = state.repos.product.list_variants(&product_id, &params).await?;
+    let (variants, count) = state
+        .repos
+        .product
+        .list_variants(&product_id, &params)
+        .await?;
 
     Ok(Json(VariantListResponse {
         variants,
@@ -139,7 +143,11 @@ async fn admin_get_variant(
     State(state): State<AppState>,
     Path((product_id, variant_id)): Path<(String, String)>,
 ) -> Result<Json<VariantResponse>, AppError> {
-    let variant = state.repos.product.get_variant(&product_id, &variant_id).await?;
+    let variant = state
+        .repos
+        .product
+        .get_variant(&product_id, &variant_id)
+        .await?;
     Ok(Json(VariantResponse { variant }))
 }
 
@@ -148,13 +156,20 @@ async fn admin_update_variant(
     State(state): State<AppState>,
     Path((product_id, variant_id)): Path<(String, String)>,
     extract::Json(payload): extract::Json<UpdateVariantInput>,
-) -> Result<Json<VariantResponse>, AppError> {
+) -> Result<Json<crate::product::types::ProductResponse>, AppError> {
     payload
         .validate()
         .map_err(|e| AppError::InvalidData(e.to_string()))?;
 
-    let variant = state.repos.product.update_variant(&product_id, &variant_id, &payload).await?;
-    Ok(Json(VariantResponse { variant }))
+    let _variant = state
+        .repos
+        .product
+        .update_variant(&product_id, &variant_id, &payload)
+        .await?;
+    let parent = state.repos.product.find_by_id(&product_id).await?;
+    Ok(Json(crate::product::types::ProductResponse {
+        product: parent,
+    }))
 }
 
 #[tracing::instrument(skip_all, fields(product_id = %product_id, variant_id = %variant_id))]
@@ -162,7 +177,11 @@ async fn admin_delete_variant(
     State(state): State<AppState>,
     Path((product_id, variant_id)): Path<(String, String)>,
 ) -> Result<Json<VariantDeleteResponse>, AppError> {
-    let (id, parent) = state.repos.product.soft_delete_variant(&product_id, &variant_id).await?;
+    let (id, parent) = state
+        .repos
+        .product
+        .soft_delete_variant(&product_id, &variant_id)
+        .await?;
 
     Ok(Json(VariantDeleteResponse {
         id,

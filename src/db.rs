@@ -307,9 +307,7 @@ impl sqlx::error::DatabaseError for TestDbError {
         self
     }
 
-    fn into_error(
-        self: Box<Self>,
-    ) -> Box<dyn std::error::Error + Send + Sync + 'static> {
+    fn into_error(self: Box<Self>) -> Box<dyn std::error::Error + Send + Sync + 'static> {
         self
     }
 }
