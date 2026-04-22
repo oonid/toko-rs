@@ -47,7 +47,6 @@ pub struct CreateProductInput {
 }
 
 #[derive(Debug, Deserialize, Validate)]
-#[serde(deny_unknown_fields)]
 pub struct CreateProductOptionInput {
     #[validate(length(min = 1, message = "Option title cannot be empty"))]
     pub title: String,
