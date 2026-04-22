@@ -58,6 +58,28 @@ pub struct CartLineItem {
     pub variant_title: Option<String>,
     #[sqlx(skip)]
     pub variant_option_values: Option<serde_json::Value>,
+    #[sqlx(skip)]
+    pub item_total: i64,
+    #[sqlx(skip)]
+    pub item_subtotal: i64,
+    #[sqlx(skip)]
+    pub item_tax_total: i64,
+    #[sqlx(skip)]
+    pub total: i64,
+    #[sqlx(skip)]
+    pub subtotal: i64,
+    #[sqlx(skip)]
+    pub tax_total: i64,
+    #[sqlx(skip)]
+    pub discount_total: i64,
+    #[sqlx(skip)]
+    pub discount_tax_total: i64,
+    #[sqlx(skip)]
+    pub original_total: i64,
+    #[sqlx(skip)]
+    pub original_subtotal: i64,
+    #[sqlx(skip)]
+    pub original_tax_total: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -127,6 +149,18 @@ impl CartWithItems {
                     .map(String::from);
                 item.variant_option_values = s.get("variant_option_values").cloned();
             }
+            let line_total = item.quantity * item.unit_price;
+            item.item_total = line_total;
+            item.item_subtotal = line_total;
+            item.item_tax_total = 0;
+            item.total = line_total;
+            item.subtotal = line_total;
+            item.tax_total = 0;
+            item.discount_total = 0;
+            item.discount_tax_total = 0;
+            item.original_total = line_total;
+            item.original_subtotal = line_total;
+            item.original_tax_total = 0;
         }
         let item_total = items.iter().map(|i| i.quantity * i.unit_price).sum();
         Self {

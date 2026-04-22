@@ -633,10 +633,10 @@ Full six-dimension comparison of all 25 P1 endpoints against `vendor/medusa/` so
 
 ### 20f. Add per-item totals on line items (F3)
 
-- [ ] 20f.1 Add `#[sqlx(skip)]` per-item total fields to `CartLineItem` and `OrderLineItem`
-- [ ] 20f.2 Compute per-item totals in `CartWithItems::from_items` and `OrderWithItems::from_items`
-- [ ] 20f.3 Add tests: verify `item_total`, `subtotal`, `total` appear on line items
-- [ ] 20f.4 Run full test suite — all tests pass, clippy clean
+- [x] 20f.1 Add `#[sqlx(skip)]` per-item total fields to `CartLineItem` and `OrderLineItem`
+- [x] 20f.2 Compute per-item totals in `CartWithItems::from_items` and `OrderWithItems::from_items`
+- [x] 20f.3 Add tests: verify `item_total`, `subtotal`, `total` appear on line items
+- [x] 20f.4 Run full test suite — all tests pass, clippy clean
 
 ### 20g. Remove error message prefixing (F4)
 
