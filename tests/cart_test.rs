@@ -738,3 +738,67 @@ async fn test_same_variant_same_metadata_merges_quantity() {
     );
     assert_eq!(items[0]["quantity"], 5);
 }
+
+#[tokio::test]
+async fn test_same_variant_different_price_creates_separate_items() {
+    let (app, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+    seed_in_pool(&pool).await;
+
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            "/store/carts",
+            &json!({"currency_code": "usd"}),
+        ))
+        .await
+        .unwrap();
+    let cart_id = body_json(res).await["cart"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let add1 = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/line-items", cart_id),
+            &json!({"variant_id": "var_1", "quantity": 2}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(add1.status(), StatusCode::OK);
+    let body1 = body_json(add1).await;
+    assert_eq!(body1["cart"]["items"][0]["unit_price"], 1000);
+
+    sqlx::query("UPDATE product_variants SET price = 1500 WHERE id = $1")
+        .bind("var_1")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let add2 = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/line-items", cart_id),
+            &json!({"variant_id": "var_1", "quantity": 1}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(add2.status(), StatusCode::OK);
+    let items = body_json(add2).await["cart"]["items"]
+        .as_array()
+        .unwrap()
+        .clone();
+    assert_eq!(
+        items.len(),
+        2,
+        "different unit_price should create separate line items"
+    );
+    assert_eq!(items[0]["unit_price"], 1000);
+    assert_eq!(items[0]["quantity"], 2);
+    assert_eq!(items[1]["unit_price"], 1500);
+    assert_eq!(items[1]["quantity"], 1);
+}

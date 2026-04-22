@@ -149,9 +149,10 @@ impl CartRepository {
 
         let input_metadata = metadata_to_json(input.metadata.clone());
 
-        let existing = sqlx::query("SELECT id, quantity, metadata FROM cart_line_items WHERE cart_id = $1 AND variant_id = $2 AND deleted_at IS NULL")
+        let existing = sqlx::query("SELECT id, quantity, metadata FROM cart_line_items WHERE cart_id = $1 AND variant_id = $2 AND unit_price = $3 AND deleted_at IS NULL")
             .bind(cart_id)
             .bind(&input.variant_id)
+            .bind(price)
             .fetch_optional(&mut *tx)
             .await?;
 
