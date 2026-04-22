@@ -259,22 +259,26 @@ impl ProductRepository {
     }
 
     pub async fn soft_delete(&self, id: &str) -> Result<String, AppError> {
+        let mut tx = self.pool.begin().await?;
+
         let result = sqlx::query(
             "UPDATE products SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1 AND deleted_at IS NULL",
         )
         .bind(id)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
 
         if result.rows_affected() == 0 {
             let exists: Option<(i32,)> =
                 sqlx::query_as("SELECT 1 FROM products WHERE id = $1 AND deleted_at IS NOT NULL")
                     .bind(id)
-                    .fetch_optional(&self.pool)
+                    .fetch_optional(&mut *tx)
                     .await?;
             if exists.is_some() {
+                tx.rollback().await?;
                 return Ok(id.to_string());
             }
+            tx.rollback().await?;
             return Err(AppError::NotFound(format!(
                 "Product with id {} was not found",
                 id
@@ -285,14 +289,14 @@ impl ProductRepository {
             "UPDATE product_variants SET deleted_at = CURRENT_TIMESTAMP WHERE product_id = $1 AND deleted_at IS NULL",
         )
         .bind(id)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
 
         sqlx::query(
             "UPDATE product_options SET deleted_at = CURRENT_TIMESTAMP WHERE product_id = $1 AND deleted_at IS NULL",
         )
         .bind(id)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
 
         sqlx::query(
@@ -303,9 +307,10 @@ impl ProductRepository {
             "#,
         )
         .bind(id)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
 
+        tx.commit().await?;
         Ok(id.to_string())
     }
 

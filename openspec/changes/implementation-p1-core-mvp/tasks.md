@@ -607,8 +607,8 @@ Full six-dimension comparison of all 25 P1 endpoints against `vendor/medusa/` so
 
 ### 20b. Fix BUG-2: Soft-delete transactionality
 
-- [ ] 20b.1 Wrap `soft_delete` method in a DB transaction (4 UPDATEs on `self.pool` → single `tx`)
-- [ ] 20b.2 Run full test suite — all tests pass, clippy clean
+- [x] 20b.1 Wrap `soft_delete` method in a DB transaction (4 UPDATEs on `self.pool` → single `tx`)
+- [x] 20b.2 Run full test suite — all tests pass, clippy clean
 
 ### 20c. Fix BUG-3: Snapshot captures 5 fields but model extracts 8
 
