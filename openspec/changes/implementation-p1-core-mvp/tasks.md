@@ -640,11 +640,11 @@ Full six-dimension comparison of all 25 P1 endpoints against `vendor/medusa/` so
 
 ### 20g. Remove error message prefixing (F4)
 
-- [ ] 20g.1 Remove prefixes from `#[error(...)]` attributes in `src/error.rs`
-- [ ] 20g.2 Update repository error messages to not include redundant prefixes
-- [ ] 20g.3 Update unit tests in `error.rs` to match new message format
-- [ ] 20g.4 Update integration tests that assert on error messages
-- [ ] 20g.5 Run full test suite — all tests pass, clippy clean
+- [x] 20g.1 Remove prefixes from `#[error(...)]` attributes in `src/error.rs`
+- [x] 20g.2 Update repository error messages to not include redundant prefixes
+- [x] 20g.3 Update unit tests in `error.rs` to match new message format
+- [x] 20g.4 Update integration tests that assert on error messages
+- [x] 20g.5 Run full test suite — all tests pass, clippy clean
 
 ### 20h. Fix pagination defaults (F5)
 
