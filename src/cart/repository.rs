@@ -292,7 +292,7 @@ impl CartRepository {
             ));
         }
 
-        sqlx::query(
+        let result = sqlx::query(
             r#"
             UPDATE cart_line_items 
             SET quantity = $1, 
@@ -308,6 +308,13 @@ impl CartRepository {
         .bind(cart_id)
         .execute(&self.pool)
         .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(AppError::NotFound(format!(
+                "Line item with id {} was not found",
+                line_id
+            )));
+        }
 
         self.get_cart(cart_id).await
     }
@@ -330,13 +337,20 @@ impl CartRepository {
             ));
         }
 
-        sqlx::query(
+        let result = sqlx::query(
             "UPDATE cart_line_items SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1 AND cart_id = $2 AND deleted_at IS NULL AND (SELECT completed_at FROM carts WHERE id = $2) IS NULL"
         )
         .bind(line_id)
         .bind(cart_id)
         .execute(&self.pool)
         .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(AppError::NotFound(format!(
+                "Line item with id {} was not found",
+                line_id
+            )));
+        }
 
         self.get_cart(cart_id).await
     }
