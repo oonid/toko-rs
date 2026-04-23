@@ -14,6 +14,7 @@ pub struct Product {
     pub metadata: Option<sqlx::types::Json<serde_json::Value>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    #[serde(skip)]
     pub deleted_at: Option<DateTime<Utc>>,
 }
 
@@ -26,6 +27,7 @@ pub struct ProductOption {
     pub metadata: Option<sqlx::types::Json<serde_json::Value>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    #[serde(skip)]
     pub deleted_at: Option<DateTime<Utc>>,
 }
 
@@ -38,6 +40,7 @@ pub struct ProductOptionValue {
     pub metadata: Option<sqlx::types::Json<serde_json::Value>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    #[serde(skip)]
     pub deleted_at: Option<DateTime<Utc>>,
 }
 
@@ -53,6 +56,7 @@ pub struct ProductVariant {
     pub metadata: Option<sqlx::types::Json<serde_json::Value>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    #[serde(skip)]
     pub deleted_at: Option<DateTime<Utc>>,
 }
 

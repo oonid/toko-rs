@@ -19,6 +19,7 @@ pub struct Order {
     pub canceled_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    #[serde(skip)]
     pub deleted_at: Option<DateTime<Utc>>,
 }
 

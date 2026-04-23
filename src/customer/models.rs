@@ -15,6 +15,7 @@ pub struct Customer {
     pub metadata: Option<sqlx::types::Json<serde_json::Value>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    #[serde(skip)]
     pub deleted_at: Option<DateTime<Utc>>,
 }
 
@@ -39,5 +40,6 @@ pub struct CustomerAddress {
     pub metadata: Option<sqlx::types::Json<serde_json::Value>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    #[serde(skip)]
     pub deleted_at: Option<DateTime<Utc>>,
 }
