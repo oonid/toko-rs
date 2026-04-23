@@ -17,6 +17,7 @@ pub struct Cart {
     pub completed_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    #[serde(skip)]
     pub deleted_at: Option<DateTime<Utc>>,
 }
 

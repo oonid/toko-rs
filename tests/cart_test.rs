@@ -631,7 +631,7 @@ async fn test_cart_get_response_format() {
     assert!(cart["created_at"].is_string());
     assert!(cart["updated_at"].is_string());
     assert!(cart["completed_at"].is_null());
-    assert!(cart["deleted_at"].is_null());
+    assert!(cart.get("deleted_at").is_none());
 }
 
 #[tokio::test]
@@ -981,4 +981,75 @@ async fn test_concurrent_add_line_item_dedup() {
     .await;
     let item = &body["cart"]["items"].as_array().unwrap()[0];
     assert_eq!(item["quantity"], 2, "merged item should have quantity 2");
+}
+
+#[tokio::test]
+async fn test_update_nonexistent_line_item_returns_404() {
+    let (app, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+    seed_in_pool(&pool).await;
+
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            "/store/carts",
+            &json!({"currency_code": "idr"}),
+        ))
+        .await
+        .unwrap();
+    let cart_id = body_json(res).await["cart"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let res = app
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/line-items/nonexistent_item", cart_id),
+            &json!({"quantity": 5}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+    let body = body_json(res).await;
+    assert_eq!(body["type"], "not_found");
+}
+
+#[tokio::test]
+async fn test_delete_nonexistent_line_item_returns_404() {
+    let (app, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+    seed_in_pool(&pool).await;
+
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            "/store/carts",
+            &json!({"currency_code": "idr"}),
+        ))
+        .await
+        .unwrap();
+    let cart_id = body_json(res).await["cart"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let res = app
+        .oneshot(
+            Request::builder()
+                .method(Method::DELETE)
+                .uri(&format!(
+                    "/store/carts/{}/line-items/nonexistent_item",
+                    cart_id
+                ))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+    let body = body_json(res).await;
+    assert_eq!(body["type"], "not_found");
 }

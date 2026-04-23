@@ -62,7 +62,6 @@ impl CartCompleteResponse {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct ListOrdersParams {
     #[serde(default)]
     pub offset: i64,

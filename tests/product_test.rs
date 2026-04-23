@@ -139,8 +139,8 @@ async fn test_soft_delete_cascades_to_children() {
         .find(|p| p["id"] == product_id)
         .unwrap();
     assert!(
-        deleted_product["deleted_at"].is_string(),
-        "product should have deleted_at"
+        deleted_product.get("deleted_at").is_none(),
+        "product should not expose deleted_at"
     );
     assert_eq!(
         deleted_product["variants"].as_array().unwrap().len(),
