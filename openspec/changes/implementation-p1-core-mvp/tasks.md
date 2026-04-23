@@ -725,3 +725,45 @@ Source: `docs/audit-p1-task21.md`. Full 6-dimension audit against `vendor/medusa
 - [x] 21i.4 Run `cargo fmt --check` — clean
 - [x] 21i.5 Update `docs/audit-p1-task21.md` with verification results
 - [x] 21i.6 Update `docs/audit-master-checklist.md` with new fixes
+
+## Task 22. Seventh Audit — P1 Medusa Compatibility Deep Audit
+
+Source: `docs/audit-p1-task22.md`. Comprehensive 6-dimension deep audit against `vendor/medusa/` at develop branch, reconciled against `docs/audit-master-checklist.md` (84 prior fixes). Found 1 new HIGH bug, 4 new HIGH findings, 6 new MEDIUM, 7 new LOW.
+
+### 22a. Hide `deleted_at` from API responses on 9 entity types (S1 — HIGH)
+
+- [x] 22a.1 Add `#[serde(skip)]` to `deleted_at` on `Product` in `src/product/models.rs`
+- [x] 22a.2 Add `#[serde(skip)]` to `deleted_at` on `ProductOption` in `src/product/models.rs`
+- [x] 22a.3 Add `#[serde(skip)]` to `deleted_at` on `ProductOptionValue` in `src/product/models.rs`
+- [x] 22a.4 Add `#[serde(skip)]` to `deleted_at` on `ProductVariant` in `src/product/models.rs`
+- [x] 22a.5 Add `#[serde(skip)]` to `deleted_at` on `Cart` in `src/cart/models.rs`
+- [x] 22a.6 Add `#[serde(skip)]` to `deleted_at` on `Order` in `src/order/models.rs`
+- [x] 22a.7 Add `#[serde(skip)]` to `deleted_at` on `Customer` and `CustomerAddress` in `src/customer/models.rs`
+- [x] 22a.8 Add `#[serde(skip)]` to `deleted_at` on `PaymentRecord` in `src/payment/models.rs`
+- [x] 22a.9 Update test assertions: `cart_test.rs:634` changed to `assert!(cart.get("deleted_at").is_none())`, `product_test.rs:142` changed to assert `deleted_product.get("deleted_at").is_none()`
+- [x] 22a.10 Run full test suite — 167 pass on SQLite, 175 pass on PostgreSQL (incl. 8 e2e), clippy clean
+
+### 22b. Cascade soft-delete to `product_variant_option` join table (D1 — HIGH)
+
+- [x] 22b.1 Add `DELETE FROM product_variant_option WHERE variant_id IN (SELECT id FROM product_variants WHERE product_id = $1)` to `soft_delete` in `src/product/repository.rs` — pivot table has no `deleted_at` column so hard-delete orphaned rows
+- [x] 22b.2 Run full test suite — all tests pass, clippy clean
+
+### 22c. Add affected-rows check to `update_line_item` and `delete_line_item` (B1 — HIGH)
+
+- [x] 22c.1 Check `result.rows_affected()` after UPDATE in `update_line_item` — return `NotFound` if 0
+- [x] 22c.2 Check `result.rows_affected()` after UPDATE in `delete_line_item` — return `NotFound` if 0
+- [x] 22c.3 Add tests: update/delete nonexistent line item returns 404
+- [x] 22c.4 Run full test suite — 169 SQLite, 177 PostgreSQL, clippy clean
+
+### 22d. Remove `deny_unknown_fields` from `ListOrdersParams` (I6 — HIGH)
+
+- [x] 22d.1 Remove `#[serde(deny_unknown_fields)]` from `ListOrdersParams` in `src/order/types.rs`
+- [x] 22d.2 Run full test suite — 169 SQLite, clippy clean
+
+### 22e. Verification pass
+
+- [x] 22e.1 Run full test suite on SQLite — 169 pass
+- [x] 22e.2 Run full test suite on PostgreSQL — 177 pass (incl. 8 e2e)
+- [x] 22e.3 Run `cargo clippy -- -D warnings` on both features — zero warnings
+- [x] 22e.4 Run `cargo fmt --check` — clean
+- [x] 22e.5 Update `docs/audit-master-checklist.md` with new fixes
