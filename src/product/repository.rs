@@ -310,6 +310,16 @@ impl ProductRepository {
         .execute(&mut *tx)
         .await?;
 
+        sqlx::query(
+            r#"
+            DELETE FROM product_variant_option
+            WHERE variant_id IN (SELECT id FROM product_variants WHERE product_id = $1)
+            "#,
+        )
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+
         tx.commit().await?;
         Ok(id.to_string())
     }
