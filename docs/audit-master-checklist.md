@@ -1,8 +1,8 @@
 # P1 Medusa Compatibility — Master Checklist
 
-Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20}.md` and `docs/audit-correction.md` into a single reference. Every item is tagged with its source audit, status, and where it was fixed (or why it was deferred).
+Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22}.md` and `docs/audit-correction.md` into a single reference. Every item is tagged with its source audit, status, and where it was fixed (or why it was deferred).
 
-**Last verified**: 2026-04-22 — 199 tests pass on SQLite + PostgreSQL, clippy clean, fmt clean.
+**Last verified**: 2026-04-23 — 169 tests pass on SQLite, 177 on PostgreSQL (incl. 8 e2e), clippy clean, fmt clean.
 
 ---
 
@@ -160,6 +160,16 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20}.md` and `docs
 | 92 | T12 L1-L7 | LOW: missing indexes, missing entities (P2+), no admin auth, missing cart fields | P2 scope or by-design |
 | 93 | T14 B | All P2 deferred items: multi-currency pricing, address CRUD, order transfers, shipping, etc. | Documented in design.md and audit reports |
 | 94 | T21 S5 | `has_account` on store customer response — reported as leaked but confirmed present in Medusa store query config | FALSE POSITIVE — no fix needed |
+| 95 | T22 S1 | `deleted_at` leaked on 9 entity types (Product, ProductOption, ProductOptionValue, ProductVariant, Cart, Order, Customer, CustomerAddress, PaymentRecord) | `#[serde(skip)]` on all 9 `deleted_at` fields | 22a |
+| 96 | T22 D1 | `product_variant_option` join rows NOT cascade-deleted on product soft-delete — orphan rows remain | `DELETE FROM product_variant_option WHERE variant_id IN (...)` in `soft_delete` | 22b |
+| 97 | T22 B1 | `update_line_item` / `delete_line_item` no affected-rows check — silent success on nonexistent/completed items | `rows_affected()` check returns 404 | 22c |
+| 98 | T22 I6 | `ListOrdersParams` has `deny_unknown_fields` but Medusa's `createFindParams` is NOT strict | Removed `deny_unknown_fields` | 22d |
+| 99 | T22 D2 | `product_variants.product_id` NOT NULL vs Medusa nullable | **Deferred** — arguably more correct |
+| 100 | T22 D4 | `order_line_items.unit_price` NOT NULL vs Medusa nullable | **Deferred** — edge case |
+| 101 | T22 D5 | `payment_records.status` uses different enum values than Medusa PaymentCollectionStatus | **Deferred** — architectural simplification |
+| 102 | T22 D7 | Missing `created_by` on customer model | **Deferred** — P2 audit trail |
+| 103 | T22 S7 | ImageStub missing `id` and `rank` fields | **Deferred** — P2 polish |
+| 104 | T22 B4 | Customer `find_by_email` not implemented | **Deferred** — needed for proper duplicate detection |
 
 ---
 
@@ -167,14 +177,14 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20}.md` and `docs
 
 | Category | Count |
 |----------|-------|
-| Bugs fixed | 17 |
-| Response shape fixes | 17 |
-| Input/validation fixes | 7 |
+| Bugs fixed | 18 |
+| Response shape fixes | 18 |
+| Input/validation fixes | 8 |
 | Error handling fixes | 11 |
-| Database schema fixes | 20 |
-| Business logic fixes | 8 |
+| Database schema fixes | 21 |
+| Business logic fixes | 9 |
 | Config/infra fixes | 4 |
-| **Total fixes applied** | **84** |
+| **Total fixes applied** | **89** |
 | Deferred to P2 | 16 |
 | Known divergences (by design) | ~10 |
 
