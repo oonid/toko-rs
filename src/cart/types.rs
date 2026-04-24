@@ -24,6 +24,7 @@ pub struct UpdateCartInput {
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct AddLineItemInput {
+    #[validate(length(min = 1, message = "variant_id is required"))]
     pub variant_id: String,
     #[validate(range(min = 1))]
     pub quantity: i64,
@@ -32,7 +33,7 @@ pub struct AddLineItemInput {
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct UpdateLineItemInput {
-    #[validate(range(min = 0))]
+    #[validate(range(min = 1, message = "Quantity must be at least 1"))]
     pub quantity: i64,
     pub metadata: Option<HashMap<String, serde_json::Value>>,
 }
