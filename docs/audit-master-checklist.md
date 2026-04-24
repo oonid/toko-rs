@@ -1,8 +1,8 @@
 # P1 Medusa Compatibility — Master Checklist
 
-Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22}.md` and `docs/audit-correction.md` into a single reference. Every item is tagged with its source audit, status, and where it was fixed (or why it was deferred).
+Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23}.md` and `docs/audit-correction.md` into a single reference. Every item is tagged with its source audit, status, and where it was fixed (or why it was deferred).
 
-**Last verified**: 2026-04-23 — 169 tests pass on SQLite, 177 on PostgreSQL (incl. 8 e2e), clippy clean, fmt clean.
+**Last verified**: 2026-04-24 — 149 tests pass on SQLite (141 integration + 8 e2e), 149 on PostgreSQL, clippy clean, fmt clean.
 
 ---
 
@@ -27,6 +27,9 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22}.md` and
 | 15 | T12 M4 | Empty cart completion returned 409 (Conflict) instead of 400 (Bad Request) | Changed to `AppError::InvalidData` | 12b.2 |
 | 16 | T21 B1 | `GET /store/orders/{id}` had no customer ownership check — any authenticated user could view any order | Added `CustomerId` extraction + ownership verification in `store_get_order` | 21a |
 | 17 | T21 B2 | `add_line_item` had no row-level lock — concurrent requests could create duplicate line items | Added `FOR UPDATE` (PG) + guard UPDATE (SQLite) to cart row in `add_line_item` | 21b |
+| 18 | T23 BUG-1 | SQL injection via `order` query param — user input interpolated into `ORDER BY` via `format!()` | Added `validate_order_param()` whitelist in `src/types.rs` | 23a |
+| 19 | T23 B1,B2 | Cart→order data loss — `metadata`, `shipping_address`, `billing_address`, line item `metadata` silently dropped | Extended order + order line item INSERT statements | 23b |
+| 20 | T23 B3 | `update_cart` missing `rows_affected()` check — stale data returned if cart completed between SELECT and UPDATE | Added `rows_affected()` guard returning `InvalidData` | 23c |
 
 ---
 
@@ -111,6 +114,13 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22}.md` and
 | 67 | T21 D1 | `orders.status` CHECK missing "draft" — would reject legitimate Medusa orders | Added `'draft'` to CHECK in both PG and SQLite migrations | 21e |
 | 68 | T21 D2 | `payment_records` missing `deleted_at` — no soft-delete support | Added `deleted_at` column to both PG and SQLite + model | 21f |
 
+| 21 | T23 S1 | `subtitle` accepted in input but never stored — no DB column, no model field | Added `subtitle TEXT` column + model field + INSERT/UPDATE bindings | 23d |
+| 22 | T23 S2 | `is_giftcard`/`discountable` always hardcoded (`false`/`true`) despite accepting input | Added DB columns, removed hardcoded fields from `ProductWithRelations` | 23e |
+| 23 | T23 S3,S4 | `deleted_at` hidden too broadly — Medusa admin product + store customer include it | Removed `#[serde(skip)]` from `Product` and `Customer`; kept on 7 other types | 23f |
+| 24 | T23 E2 | Cart state violations returned 409 (Conflict) — Medusa uses 400 (InvalidData) | Changed 8 locations from `AppError::Conflict` → `AppError::InvalidData` | 23g |
+| 25 | T23 D1 | `soft_delete_variant` left orphan `product_variant_option` pivot rows | Added `DELETE FROM product_variant_option WHERE variant_id = $1` + transaction | 23h |
+| 26 | T23 V1,V2 | `add_variant` had no option coverage check; `create_product` skipped check when `options` was `None` | Required `options` to cover ALL product option titles in both paths | 23i |
+
 ---
 
 ## 6. Business Logic Fixes
@@ -177,14 +187,14 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22}.md` and
 
 | Category | Count |
 |----------|-------|
-| Bugs fixed | 18 |
+| Bugs fixed | 24 |
 | Response shape fixes | 18 |
 | Input/validation fixes | 8 |
 | Error handling fixes | 11 |
-| Database schema fixes | 21 |
+| Database schema fixes | 26 |
 | Business logic fixes | 9 |
 | Config/infra fixes | 4 |
-| **Total fixes applied** | **89** |
+| **Total fixes applied** | **100** |
 | Deferred to P2 | 16 |
 | Known divergences (by design) | ~10 |
 
