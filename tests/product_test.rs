@@ -840,6 +840,27 @@ async fn test_admin_update_variant() {
 }
 
 #[tokio::test]
+async fn test_admin_update_variant_negative_price_rejected() {
+    let (app, _) = common::setup_test_app().await;
+    let created = create_sample_product(&app).await;
+    let product_id = created["product"]["id"].as_str().unwrap();
+    let variant_id = created["product"]["variants"][0]["id"].as_str().unwrap();
+
+    let payload = json!({"price": -500});
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(&format!(
+            "/admin/products/{}/variants/{}",
+            product_id, variant_id
+        ))
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
 async fn test_admin_update_variant_sku_uniqueness() {
     let (app, _) = common::setup_test_app().await;
     let created = create_sample_product(&app).await;

@@ -85,6 +85,7 @@ pub struct UpdateProductInput {
 pub struct UpdateVariantInput {
     pub title: Option<String>,
     pub sku: Option<String>,
+    #[validate(range(min = 0, message = "Price cannot be negative"))]
     pub price: Option<i64>,
     pub metadata: Option<HashMap<String, serde_json::Value>>,
 }
