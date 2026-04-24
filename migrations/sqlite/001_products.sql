@@ -3,9 +3,12 @@ CREATE TABLE products (
     title TEXT NOT NULL,
     handle TEXT NOT NULL,
     description TEXT,
+    subtitle TEXT,
     status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published', 'proposed', 'rejected')),
     thumbnail TEXT,
     metadata JSON,
+    is_giftcard BOOLEAN NOT NULL DEFAULT FALSE,
+    discountable BOOLEAN NOT NULL DEFAULT TRUE,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted_at DATETIME

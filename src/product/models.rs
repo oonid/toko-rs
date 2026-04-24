@@ -8,13 +8,15 @@ pub struct Product {
     pub title: String,
     pub handle: String,
     pub description: Option<String>,
+    pub subtitle: Option<String>,
     pub status: String,
     pub thumbnail: Option<String>,
     #[serde(skip_deserializing)]
     pub metadata: Option<sqlx::types::Json<serde_json::Value>>,
+    pub is_giftcard: bool,
+    pub discountable: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
-    #[serde(skip)]
     pub deleted_at: Option<DateTime<Utc>>,
 }
 
@@ -72,8 +74,6 @@ pub struct ProductWithRelations {
     pub options: Vec<ProductOptionWithValues>,
     pub variants: Vec<ProductVariantWithOptions>,
     pub images: Vec<ImageStub>,
-    pub is_giftcard: bool,
-    pub discountable: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

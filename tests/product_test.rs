@@ -139,8 +139,8 @@ async fn test_soft_delete_cascades_to_children() {
         .find(|p| p["id"] == product_id)
         .unwrap();
     assert!(
-        deleted_product.get("deleted_at").is_none(),
-        "product should not expose deleted_at"
+        deleted_product["deleted_at"].is_string(),
+        "admin listing should expose deleted_at"
     );
     assert_eq!(
         deleted_product["variants"].as_array().unwrap().len(),
@@ -558,7 +558,8 @@ async fn test_admin_add_variant_duplicate_sku() {
     let (app, _) = common::setup_test_app().await;
     let created = create_sample_product(&app).await;
     let id = created["product"]["id"].as_str().unwrap();
-    let payload = json!({"title": "Dupe SKU", "sku": "TS-S", "price": 2500});
+    let payload =
+        json!({"title": "Dupe SKU", "sku": "TS-S", "price": 2500, "options": {"Size": "L"}});
     let req = Request::builder()
         .method(Method::POST)
         .uri(&format!("/admin/products/{}/variants", id))
@@ -622,6 +623,47 @@ async fn test_soft_deleted_option_excluded_from_product() {
     let body = body_json(resp).await;
     let options = body["product"]["options"].as_array().unwrap();
     assert_eq!(options.len(), 0, "soft-deleted option should be excluded");
+}
+
+#[tokio::test]
+async fn test_soft_delete_variant_cleans_pivot_rows() {
+    let (app, db) = common::setup_test_app().await;
+    let created = create_sample_product(&app).await;
+    let product_id = created["product"]["id"].as_str().unwrap();
+    let variant_id = created["product"]["variants"][0]["id"].as_str().unwrap();
+
+    let pivot_count_before: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM product_variant_option WHERE variant_id = $1")
+            .bind(variant_id)
+            .fetch_one(&db.pool)
+            .await
+            .unwrap();
+    assert!(
+        pivot_count_before.0 > 0,
+        "variant should have pivot rows before deletion"
+    );
+
+    let del_req = Request::builder()
+        .method(Method::DELETE)
+        .uri(&format!(
+            "/admin/products/{}/variants/{}",
+            product_id, variant_id
+        ))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(del_req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let pivot_count_after: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM product_variant_option WHERE variant_id = $1")
+            .bind(variant_id)
+            .fetch_one(&db.pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        pivot_count_after.0, 0,
+        "pivot rows should be cleaned up after variant soft-delete"
+    );
 }
 
 #[tokio::test]
@@ -943,6 +985,92 @@ async fn test_add_variant_different_option_combo_allowed() {
 }
 
 #[tokio::test]
+async fn test_add_variant_missing_option_rejected() {
+    let (app, _) = common::setup_test_app().await;
+    let created = create_sample_product(&app).await;
+    let product_id = created["product"]["id"].as_str().unwrap();
+
+    let payload = json!({
+        "title": "Large",
+        "price": 3000,
+        "options": {"Color": "Red"}
+    });
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(&format!("/admin/products/{}/variants", product_id))
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = body_json(resp).await;
+    assert!(
+        body["message"].as_str().unwrap().contains("missing option"),
+        "expected missing option error, got: {:?}",
+        body
+    );
+}
+
+#[tokio::test]
+async fn test_add_variant_no_options_when_product_has_options_rejected() {
+    let (app, _) = common::setup_test_app().await;
+    let created = create_sample_product(&app).await;
+    let product_id = created["product"]["id"].as_str().unwrap();
+
+    let payload = json!({
+        "title": "Large",
+        "price": 3000
+    });
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(&format!("/admin/products/{}/variants", product_id))
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = body_json(resp).await;
+    assert!(
+        body["message"]
+            .as_str()
+            .unwrap()
+            .contains("must specify options"),
+        "expected 'must specify options' error, got: {:?}",
+        body
+    );
+}
+
+#[tokio::test]
+async fn test_create_product_variant_missing_option_rejected() {
+    let (app, _) = common::setup_test_app().await;
+    let payload = json!({
+        "title": "Shirt",
+        "options": [{"title": "Size", "values": ["S", "M"]}],
+        "variants": [
+            {"title": "Small", "price": 1000, "options": {"Size": "S"}},
+            {"title": "Medium", "price": 1000}
+        ]
+    });
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri("/admin/products")
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = body_json(resp).await;
+    assert!(
+        body["message"]
+            .as_str()
+            .unwrap()
+            .contains("must specify options"),
+        "expected 'must specify options' error, got: {:?}",
+        body
+    );
+}
+
+#[tokio::test]
 async fn test_admin_list_variants_product_not_found() {
     let (app, _) = common::setup_test_app().await;
 
@@ -1041,4 +1169,105 @@ async fn test_add_variant_with_explicit_rank() {
     let variants = body["product"]["variants"].as_array().unwrap();
     let extra = variants.iter().find(|v| v["title"] == "Extra").unwrap();
     assert_eq!(extra["variant_rank"], 42);
+}
+
+#[tokio::test]
+async fn test_invalid_order_param_rejected() {
+    let (app, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+    sqlx::query("INSERT INTO products (id, title, handle, status) VALUES ('p1', 'Test', 'test', 'published')")
+        .execute(&pool).await.unwrap();
+
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/admin/products?order=(SELECT+1)")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+
+    let res = app
+        .oneshot(
+            Request::builder()
+                .uri("/admin/products?order=created_at+DESC")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_product_subtitle_persists() {
+    let (app, _db) = common::setup_test_app().await;
+
+    let payload = json!({
+        "title": "Classic T-Shirt",
+        "subtitle": "Premium Cotton Blend",
+        "status": "published",
+    });
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri("/admin/products")
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = body_json(res).await;
+    let product_id = body["product"]["id"].as_str().unwrap();
+    assert_eq!(body["product"]["subtitle"], "Premium Cotton Blend");
+
+    let payload = json!({"subtitle": "Updated Subtitle"});
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(&format!("/admin/products/{}", product_id))
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = body_json(res).await;
+    assert_eq!(body["product"]["subtitle"], "Updated Subtitle");
+}
+
+#[tokio::test]
+async fn test_product_is_giftcard_and_discountable_persist() {
+    let (app, _) = common::setup_test_app().await;
+
+    let payload = json!({
+        "title": "Gift Card Product",
+        "is_giftcard": true,
+        "discountable": false,
+    });
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri("/admin/products")
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = body_json(res).await;
+    let product_id = body["product"]["id"].as_str().unwrap();
+    assert_eq!(body["product"]["is_giftcard"], true);
+    assert_eq!(body["product"]["discountable"], false);
+
+    let payload = json!({"discountable": true});
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(&format!("/admin/products/{}", product_id))
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = body_json(res).await;
+    assert_eq!(body["product"]["is_giftcard"], true);
+    assert_eq!(body["product"]["discountable"], true);
 }
