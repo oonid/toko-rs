@@ -89,7 +89,7 @@ impl OrderRepository {
 
         let mut order_items = Vec::with_capacity(cart_items.len());
         for ci in &cart_items {
-            let item_id = generate_entity_id("oli");
+            let item_id = generate_entity_id("ordli");
             let item = sqlx::query_as::<_, OrderLineItem>(
                 r#"
                 INSERT INTO order_line_items (id, order_id, title, quantity, unit_price,
