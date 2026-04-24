@@ -116,8 +116,6 @@ pub struct CartWithItems {
 impl CartWithItems {
     pub fn from_items(cart: Cart, mut items: Vec<CartLineItem>) -> Self {
         for item in &mut items {
-            item.requires_shipping = true;
-            item.is_discountable = true;
             item.is_tax_inclusive = false;
             if let Some(ref snap) = item.snapshot {
                 let s = &snap.0;
@@ -150,6 +148,14 @@ impl CartWithItems {
                     .and_then(|v| v.as_str())
                     .map(String::from);
                 item.variant_option_values = s.get("variant_option_values").cloned();
+                item.is_discountable = s
+                    .get("product_discountable")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true);
+                item.requires_shipping = !s
+                    .get("product_is_giftcard")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
             }
             let line_total = item.quantity * item.unit_price;
             item.item_total = line_total;
