@@ -39,7 +39,7 @@ CREATE TABLE product_variants (
     product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
     sku TEXT,
-    price BIGINT NOT NULL DEFAULT 0,
+    price BIGINT NOT NULL DEFAULT 0 CHECK (price >= 0),
     variant_rank BIGINT NOT NULL DEFAULT 0,
     metadata JSONB,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
