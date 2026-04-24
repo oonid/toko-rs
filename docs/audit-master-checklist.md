@@ -1,8 +1,8 @@
 # P1 Medusa Compatibility — Master Checklist
 
-Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23}.md` and `docs/audit-correction.md` into a single reference. Every item is tagged with its source audit, status, and where it was fixed (or why it was deferred).
+Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24}.md` and `docs/audit-correction.md` into a single reference. Every item is tagged with its source audit, status, and where it was fixed (or why it was deferred).
 
-**Last verified**: 2026-04-24 — 149 tests pass on SQLite (141 integration + 8 e2e), 149 on PostgreSQL, clippy clean, fmt clean.
+**Last verified**: 2026-04-24 — 154 tests pass on SQLite (146 integration + 8 e2e), 154 on PostgreSQL, clippy clean, fmt clean.
 
 ---
 
@@ -30,6 +30,11 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23}.md` 
 | 18 | T23 BUG-1 | SQL injection via `order` query param — user input interpolated into `ORDER BY` via `format!()` | Added `validate_order_param()` whitelist in `src/types.rs` | 23a |
 | 19 | T23 B1,B2 | Cart→order data loss — `metadata`, `shipping_address`, `billing_address`, line item `metadata` silently dropped | Extended order + order line item INSERT statements | 23b |
 | 20 | T23 B3 | `update_cart` missing `rows_affected()` check — stale data returned if cart completed between SELECT and UPDATE | Added `rows_affected()` guard returning `InvalidData` | 23c |
+| 21 | T24 BUG-1 | `product_subtitle` never populated in line item snapshot — extraction code was dead code | Added `p.subtitle` to snapshot query + JSON in `add_line_item` | 24a |
+| 22 | T24 BUG-2 | `requires_shipping` and `is_discountable` hardcoded to `true` — ignored product data | Read from snapshot (`product_discountable`, `product_is_giftcard`); gift cards get `requires_shipping: false`, `is_discountable: false` | 24b |
+| 23 | T24 BUG-3 | `UpdateVariantInput.price` had no range validation — negative prices accepted | Added `#[validate(range(min = 0))]` | 24c |
+| 24 | T24 BUG-4 | `AddLineItemInput.variant_id` accepted empty string | Added `#[validate(length(min = 1))]` | 24d |
+| 25 | T24 BUG-5 | `UpdateLineItemInput.quantity` allowed 0 — meaningless zero-quantity items persisted | Changed to `range(min = 1)`; clients must use DELETE endpoint | 24e |
 
 ---
 
@@ -187,14 +192,14 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23}.md` 
 
 | Category | Count |
 |----------|-------|
-| Bugs fixed | 24 |
+| Bugs fixed | 29 |
 | Response shape fixes | 18 |
 | Input/validation fixes | 8 |
 | Error handling fixes | 11 |
 | Database schema fixes | 26 |
 | Business logic fixes | 9 |
 | Config/infra fixes | 4 |
-| **Total fixes applied** | **100** |
+| **Total fixes applied** | **105** |
 | Deferred to P2 | 16 |
 | Known divergences (by design) | ~10 |
 

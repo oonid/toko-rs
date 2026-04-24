@@ -845,3 +845,51 @@ Source: `docs/audit-p1-task23.md`. Comprehensive 6-dimension audit against `vend
 - [x] 23k.2 Confirm all dynamic `ORDER BY` clauses pass through `validate_order_param()` whitelist
 - [x] 23k.3 Confirm all `WHERE` / filter clauses use parameterized bindings (`$1`, `$2`, …) not string interpolation
 - [x] 23k.4 Confirm no `format!` / `concat!` / string concatenation injects raw user input into SQL
+
+---
+
+## Task 24: Ninth Audit — P1 Medusa Compatibility Full Audit (Post-100 Fixes)
+
+**Audit report**: `docs/audit-p1-task24.md`
+**Date**: 2026-04-24
+**Status**: Findings identified, pending implementation.
+
+### 24a. Populate `product_subtitle` in line item snapshot (BUG-1 partial)
+- [x] 24a.1 Add `p.subtitle as product_subtitle` to snapshot query in `src/cart/repository.rs`
+- [x] 24a.2 Add `"product_subtitle"` to snapshot JSON
+- [x] 24a.3 Handle `None` case (subtitle is `Option<String>`) in snapshot construction
+- [x] 24a.4 Add test verifying `product_subtitle` appears in cart line item response
+- [x] 24a.5 Run full test suite
+
+### 24b. Read `is_discountable` and `requires_shipping` from product data (BUG-2)
+- [x] 24b.1 Add `"is_discountable"` and `"requires_shipping"` to snapshot JSON, read from product fields
+- [x] 24b.2 Update `from_items()` in both cart and order models to read from snapshot
+- [x] 24b.3 Default `requires_shipping` to `true`, read `is_discountable` from product's `discountable` column
+- [x] 24b.4 Add test: gift card product has `is_discountable: false` on line item
+- [x] 24b.5 Run full test suite
+
+### 24c. Add price validation to `UpdateVariantInput` (BUG-3)
+- [x] 24c.1 Add `#[validate(range(min = 0))]` to `UpdateVariantInput.price`
+- [x] 24c.2 Add test: negative price in update variant rejected with 400
+- [x] 24c.3 Run full test suite
+
+### 24d. Add `variant_id` length validation to `AddLineItemInput` (BUG-4)
+- [x] 24d.1 Add `#[validate(length(min = 1))]` to `AddLineItemInput.variant_id`
+- [x] 24d.2 Add test: empty variant_id rejected with 400
+- [x] 24d.3 Run full test suite
+
+### 24e. Handle `quantity: 0` in update line item (BUG-5)
+- [x] 24e.1 Change `UpdateLineItemInput.quantity` to `range(min = 1)` — reject quantity 0 (use DELETE instead)
+- [x] 24e.2 Add test: quantity 0 rejected with 400
+- [x] 24e.3 Update `test_cart_full_flow` to use DELETE instead of quantity=0
+
+### 24f. Add `deny_unknown_fields` to update input types (MEDIUM-1) — FALSE POSITIVE
+Already present on both `UpdateProductInput` and `UpdateVariantInput`. No changes needed.
+- [x] 24f.1 Verified `#[serde(deny_unknown_fields)]` already on both types
+
+### 24g. Verification pass
+- [x] 24g.1 Run full test suite on SQLite (146 integration + 8 e2e = 154 pass)
+- [x] 24g.2 Run full test suite on PostgreSQL (146 integration + 8 e2e = 154 pass)
+- [x] 24g.3 Run `cargo clippy -- -D warnings` on both features
+- [x] 24g.4 Run `cargo fmt --check`
+- [x] 24g.5 Update `docs/audit-master-checklist.md` with new fixes
