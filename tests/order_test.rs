@@ -156,7 +156,7 @@ async fn test_complete_already_completed_cart_rejected() {
         ))
         .await
         .unwrap();
-    assert_eq!(res.status(), StatusCode::CONFLICT);
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]
@@ -683,11 +683,12 @@ async fn test_concurrent_cart_completion_only_one_succeeds() {
     let s1 = r1.status();
     let s2 = r2.status();
 
-    let one_ok = (s1 == StatusCode::OK && s2 == StatusCode::CONFLICT)
-        || (s1 == StatusCode::CONFLICT && s2 == StatusCode::OK);
+    let rejected = StatusCode::BAD_REQUEST;
+    let one_ok =
+        (s1 == StatusCode::OK && s2 == rejected) || (s1 == rejected && s2 == StatusCode::OK);
     assert!(
         one_ok,
-        "expected one 200 and one 409, got {} and {}",
+        "expected one 200 and one 400, got {} and {}",
         s1, s2
     );
 
@@ -743,4 +744,83 @@ async fn test_line_item_per_item_totals() {
     assert_eq!(item["original_total"], 10000);
     assert_eq!(item["tax_total"], 0);
     assert_eq!(item["discount_total"], 0);
+}
+
+#[tokio::test]
+async fn test_cart_metadata_and_address_copied_to_order() {
+    let (app, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+    sqlx::query("INSERT INTO products (id, title, handle, status) VALUES ('prod_1', 'Test', 'test', 'published')")
+        .execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO product_variants (id, product_id, title, sku, price) VALUES ('var_1', 'prod_1', 'Small', 'T-S', 1000)")
+        .execute(&pool).await.unwrap();
+
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            "/store/carts",
+            &json!({"currency_code": "idr"}),
+        ))
+        .await
+        .unwrap();
+    let cart_id = body_json(res).await["cart"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}", cart_id),
+            &json!({
+                "metadata": {"order_note": "gift wrap please"},
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/line-items", cart_id),
+            &json!({"variant_id": "var_1", "quantity": 2, "metadata": {"engraving": "ABC"}}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/complete", cart_id),
+            &json!({}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = body_json(res).await;
+    let order_id = body["order"]["id"].as_str().unwrap();
+
+    let order: (Option<sqlx::types::Json<serde_json::Value>>,) =
+        sqlx::query_as("SELECT metadata FROM orders WHERE id = $1")
+            .bind(order_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let meta = order.0.unwrap().0;
+    assert_eq!(meta["order_note"], "gift wrap please");
+
+    let line_item: (Option<sqlx::types::Json<serde_json::Value>>,) =
+        sqlx::query_as("SELECT metadata FROM order_line_items WHERE order_id = $1")
+            .bind(order_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let li_meta = line_item.0.unwrap().0;
+    assert_eq!(li_meta["engraving"], "ABC");
 }
