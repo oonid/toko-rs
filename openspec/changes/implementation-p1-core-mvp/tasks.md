@@ -767,3 +767,81 @@ Source: `docs/audit-p1-task22.md`. Comprehensive 6-dimension deep audit against 
 - [x] 22e.3 Run `cargo clippy -- -D warnings` on both features — zero warnings
 - [x] 22e.4 Run `cargo fmt --check` — clean
 - [x] 22e.5 Update `docs/audit-master-checklist.md` with new fixes
+
+## Task 23. Eighth Audit — P1 Medusa Compatibility Deep Audit
+
+Source: `docs/audit-p1-task23.md`. Comprehensive 6-dimension audit against `vendor/medusa/` at develop branch, reconciled against `docs/audit-master-checklist.md` (89 prior fixes confirmed). Found 1 BUG, 4 HIGH, 11 MEDIUM, 10 LOW findings. 10 architectural P2 gaps documented.
+
+### 23a. Fix SQL injection in `order` query param (BUG-1 — CRITICAL)
+
+- [x] 23a.1 Add `validate_order_param()` to `src/types.rs` — whitelist allowed column+direction pairs
+- [x] 23a.2 Apply validation in `list`, `list_published`, `list_variants` in `src/product/repository.rs`
+- [x] 23a.3 Add tests: invalid order param returns 400, valid order params work
+
+### 23b. Copy cart fields to order on completion (B1, B2 — HIGH)
+
+- [x] 23b.1 Add `metadata`, `shipping_address`, `billing_address` to order INSERT in `create_from_cart`
+- [x] 23b.2 Add `metadata` to order line item INSERT in `create_from_cart`
+- [x] 23b.3 Add tests: cart metadata/address preserved in order, line item metadata preserved
+
+### 23c. Add `rows_affected()` check to `update_cart` (B3 — HIGH)
+
+- [x] 23c.1 Check `result.rows_affected()` after UPDATE in `update_cart` — return 409 if 0
+- [x] 23c.2 Existing test `test_cart_update_completed_cart_rejected` covers the guard path
+
+### 23d. Add `subtitle` column to products table (S1 — MEDIUM)
+
+- [x] 23d.1 Add `subtitle TEXT` to `products` in PG and SQLite migrations
+- [x] 23d.2 Add `subtitle: Option<String>` to `Product` model
+- [x] 23d.3 Bind `subtitle` in `create_product` and `update` repository methods
+- [x] 23d.4 Add tests: subtitle persists and returns in response
+
+### 23e. Add `is_giftcard` and `discountable` columns to products (S2 — MEDIUM)
+
+- [x] 23e.1 Add `is_giftcard BOOLEAN NOT NULL DEFAULT FALSE` and `discountable BOOLEAN NOT NULL DEFAULT TRUE` to PG and SQLite migrations
+- [x] 23e.2 Update `Product` model with new fields
+- [x] 23e.3 Bind values in `create_product` and `update` repository methods
+- [x] 23e.4 Update `load_relations` to read from DB instead of hardcoding — removed duplicate fields from `ProductWithRelations`, values come from flattened `Product`
+- [x] 23e.5 Add tests: values persist and return correctly
+
+### 23f. Fix `deleted_at` visibility — admin vs store split (S3, S4 — MEDIUM)
+
+- [x] 23f.1 Remove `#[serde(skip)]` from `deleted_at` on `Product` in `src/product/models.rs` — Medusa admin query config includes it
+- [x] 23f.2 Remove `#[serde(skip)]` from `deleted_at` on `Customer` in `src/customer/models.rs` — Medusa store query config includes it
+- [x] 23f.3 Keep `#[serde(skip)]` on `Cart`, `Order`, `CustomerAddress`, `PaymentRecord`, `ProductOption`, `ProductOptionValue`, `ProductVariant` (not in Medusa store query configs)
+- [x] 23f.4 Update product test: admin listing with_deleted now asserts `deleted_at` is present
+- [x] 23f.5 Run full test suite — 174 SQLite pass, clippy clean
+
+### 23g. Change cart state violations from 409 to 400 (E2 — MEDIUM)
+
+- [x] 23g.1 Change `Conflict` → `InvalidData` for completed-cart guards in `src/cart/repository.rs` (6 locations)
+- [x] 23g.2 Change `Conflict` → `InvalidData` for completed-cart guards in `src/order/repository.rs` (2 locations)
+- [x] 23g.3 Update affected tests
+- [x] 23g.4 Run full test suite
+
+### 23h. Cascade pivot row cleanup on single variant soft-delete (D1 — MEDIUM)
+
+- [x] 23h.1 Add `DELETE FROM product_variant_option WHERE variant_id = $1` to `soft_delete_variant`
+- [x] 23h.2 Run full test suite
+
+### 23i. Fix variant option coverage validation (V1, V2 — MEDIUM)
+
+- [x] 23i.1 Add "all options must be covered" check to `add_variant` (matching `create_product` logic)
+- [x] 23i.2 Fix `create_product` to require options when product has defined options (remove `if let Some` guard when `option_titles` is non-empty)
+- [x] 23i.3 Add tests: partial option coverage rejected in `add_variant`
+- [x] 23i.4 Run full test suite
+
+### 23j. Verification pass
+
+- [x] 23j.1 Run full test suite on SQLite (141 integration + 8 e2e = 149 pass)
+- [x] 23j.2 Run full test suite on PostgreSQL (141 integration + 8 e2e = 149 pass)
+- [x] 23j.3 Run `cargo clippy -- -D warnings` on both features
+- [x] 23j.4 Run `cargo fmt --check`
+- [x] 23j.5 Update `docs/audit-master-checklist.md` with new fixes
+
+### 23k. Final SQL injection sweep (related to 23a BUG-1)
+
+- [x] 23k.1 Audit every `format!()` call that builds SQL strings across all repository files for user-controlled input
+- [x] 23k.2 Confirm all dynamic `ORDER BY` clauses pass through `validate_order_param()` whitelist
+- [x] 23k.3 Confirm all `WHERE` / filter clauses use parameterized bindings (`$1`, `$2`, …) not string interpolation
+- [x] 23k.4 Confirm no `format!` / `concat!` / string concatenation injects raw user input into SQL
