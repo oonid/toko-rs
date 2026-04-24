@@ -449,9 +449,9 @@ async fn test_cart_update_completed_cart_rejected() {
         ))
         .await
         .unwrap();
-    assert_eq!(res.status(), StatusCode::CONFLICT);
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
     let body = body_json(res).await;
-    assert_eq!(body["type"], "conflict");
+    assert_eq!(body["type"], "invalid_data");
 }
 
 #[tokio::test]
@@ -489,7 +489,7 @@ async fn test_cart_add_item_to_completed_cart_rejected() {
         ))
         .await
         .unwrap();
-    assert_eq!(res.status(), StatusCode::CONFLICT);
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]
@@ -538,8 +538,8 @@ async fn test_cart_update_line_item_on_completed_cart_rejected() {
         ))
         .await
         .unwrap();
-    assert_eq!(res.status(), StatusCode::CONFLICT);
-    assert_eq!(body_json(res).await["type"], "conflict");
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(body_json(res).await["type"], "invalid_data");
 }
 
 #[tokio::test]
@@ -588,8 +588,8 @@ async fn test_cart_delete_line_item_on_completed_cart_rejected() {
         ))
         .await
         .unwrap();
-    assert_eq!(res.status(), StatusCode::CONFLICT);
-    assert_eq!(body_json(res).await["type"], "conflict");
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(body_json(res).await["type"], "invalid_data");
 }
 
 #[tokio::test]
