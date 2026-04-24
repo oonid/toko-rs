@@ -893,3 +893,39 @@ Already present on both `UpdateProductInput` and `UpdateVariantInput`. No change
 - [x] 24g.3 Run `cargo clippy -- -D warnings` on both features
 - [x] 24g.4 Run `cargo fmt --check`
 - [x] 24g.5 Update `docs/audit-master-checklist.md` with new fixes
+
+---
+
+## Task 25: Tenth Audit — P1 Medusa Compatibility Deep Audit (Post-105 Fixes)
+
+**Audit report**: `docs/audit-p1-task25.md`
+**Date**: 2026-04-24
+**Status**: Findings identified, pending implementation.
+
+### 25a. Fix order line item ID prefix (BUG-1)
+- [ ] 25a.1 Change `"oli"` to `"ordli"` in `src/order/repository.rs`
+- [ ] 25a.2 Update any test assertions matching `"oli_"` prefix
+- [ ] 25a.3 Run full test suite
+
+### 25b. Remove dead `quantity == 0` branch (HIGH-1)
+- [ ] 25b.1 Remove `if input.quantity == 0` branch from `update_line_item`
+- [ ] 25b.2 Run full test suite
+
+### 25c. Add CHECK constraints on monetary/quantity columns (HIGH-2)
+- [ ] 25c.1 Add `CHECK (price >= 0)` to `product_variants.price` in both PG and SQLite
+- [ ] 25c.2 Add `CHECK (quantity > 0)` to `cart_line_items.quantity` and `order_line_items.quantity`
+- [ ] 25c.3 Add `CHECK (unit_price >= 0)` to both line item tables
+- [ ] 25c.4 Add `CHECK (amount >= 0)` to `payment_records.amount`
+- [ ] 25c.5 Run full test suite
+
+### 25d. Read `is_tax_inclusive` from snapshot (MEDIUM-1)
+- [ ] 25d.1 Add `"is_tax_inclusive": false` to snapshot JSON
+- [ ] 25d.2 Update `from_items()` to read from snapshot with `false` default
+- [ ] 25d.3 Run full test suite
+
+### 25e. Verification pass
+- [ ] 25e.1 Run full test suite on SQLite
+- [ ] 25e.2 Run full test suite on PostgreSQL
+- [ ] 25e.3 Run `cargo clippy -- -D warnings` on both features
+- [ ] 25e.4 Run `cargo fmt --check`
+- [ ] 25e.5 Update `docs/audit-master-checklist.md`
