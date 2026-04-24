@@ -30,7 +30,7 @@ impl OrderRepository {
         .ok_or_else(|| AppError::NotFound("Cart not found".into()))?;
 
         if cart.completed_at.is_some() {
-            return Err(AppError::Conflict("Cart is already completed".into()));
+            return Err(AppError::InvalidData("Cart is already completed".into()));
         }
 
         #[cfg(feature = "sqlite")]
@@ -43,7 +43,7 @@ impl OrderRepository {
             .await?;
 
             if guard.rows_affected() == 0 {
-                return Err(AppError::Conflict("Cart is already completed".into()));
+                return Err(AppError::InvalidData("Cart is already completed".into()));
             }
         }
 
@@ -69,8 +69,9 @@ impl OrderRepository {
         let order_id = generate_entity_id("order");
         let order = sqlx::query_as::<_, Order>(
             r#"
-            INSERT INTO orders (id, display_id, customer_id, email, currency_code, status)
-            VALUES ($1, $2, $3, $4, $5, 'pending')
+            INSERT INTO orders (id, display_id, customer_id, email, currency_code, status,
+                                shipping_address, billing_address, metadata)
+            VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7, $8)
             RETURNING *
             "#,
         )
@@ -79,6 +80,9 @@ impl OrderRepository {
         .bind(&cart.customer_id)
         .bind(&cart.email)
         .bind(&cart.currency_code)
+        .bind(&cart.shipping_address)
+        .bind(&cart.billing_address)
+        .bind(&cart.metadata)
         .fetch_one(&mut *tx)
         .await
         .map_err(Self::map_display_id_conflict)?;
@@ -88,8 +92,9 @@ impl OrderRepository {
             let item_id = generate_entity_id("oli");
             let item = sqlx::query_as::<_, OrderLineItem>(
                 r#"
-                INSERT INTO order_line_items (id, order_id, title, quantity, unit_price, variant_id, product_id, snapshot)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                INSERT INTO order_line_items (id, order_id, title, quantity, unit_price,
+                                               variant_id, product_id, snapshot, metadata)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                 RETURNING *
                 "#,
             )
@@ -101,6 +106,7 @@ impl OrderRepository {
             .bind(&ci.variant_id)
             .bind(&ci.product_id)
             .bind(&ci.snapshot)
+            .bind(&ci.metadata)
             .fetch_one(&mut *tx)
             .await?;
             order_items.push(item);
