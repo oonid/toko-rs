@@ -76,10 +76,12 @@ impl CartRepository {
         .ok_or_else(|| AppError::NotFound("Cart not found".into()))?;
 
         if cart.completed_at.is_some() {
-            return Err(AppError::Conflict("Cannot update a completed cart".into()));
+            return Err(AppError::InvalidData(
+                "Cannot update a completed cart".into(),
+            ));
         }
 
-        sqlx::query(
+        let result = sqlx::query(
             r#"
             UPDATE carts 
             SET 
@@ -96,6 +98,12 @@ impl CartRepository {
         .bind(cart_id)
         .execute(&self.pool)
         .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(AppError::InvalidData(
+                "Cannot update a completed cart".into(),
+            ));
+        }
 
         self.get_cart(cart_id).await
     }
@@ -118,7 +126,7 @@ impl CartRepository {
         .ok_or_else(|| AppError::NotFound("Cart not found".into()))?;
 
         if cart.completed_at.is_some() {
-            return Err(AppError::Conflict(
+            return Err(AppError::InvalidData(
                 "Cannot add items to a completed cart".into(),
             ));
         }
@@ -133,7 +141,7 @@ impl CartRepository {
             .await?;
 
             if guard.rows_affected() == 0 {
-                return Err(AppError::Conflict(
+                return Err(AppError::InvalidData(
                     "Cannot add items to a completed cart".into(),
                 ));
             }
@@ -287,7 +295,7 @@ impl CartRepository {
                 .ok_or_else(|| AppError::NotFound("Cart not found".into()))?;
 
         if cart.completed_at.is_some() {
-            return Err(AppError::Conflict(
+            return Err(AppError::InvalidData(
                 "Cannot update items in a completed cart".into(),
             ));
         }
@@ -332,7 +340,7 @@ impl CartRepository {
                 .ok_or_else(|| AppError::NotFound("Cart not found".into()))?;
 
         if cart.completed_at.is_some() {
-            return Err(AppError::Conflict(
+            return Err(AppError::InvalidData(
                 "Cannot delete items from a completed cart".into(),
             ));
         }
