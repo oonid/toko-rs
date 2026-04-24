@@ -211,7 +211,8 @@ impl CartRepository {
             "product_is_giftcard": product_is_giftcard,
             "variant_title": variant_title,
             "variant_sku": variant_sku,
-            "variant_option_values": variant_option_values
+            "variant_option_values": variant_option_values,
+            "is_tax_inclusive": false
         });
 
         let input_metadata = metadata_to_json(input.metadata.clone());
@@ -292,10 +293,6 @@ impl CartRepository {
         line_id: &str,
         input: UpdateLineItemInput,
     ) -> Result<CartWithItems, AppError> {
-        if input.quantity == 0 {
-            return self.delete_line_item(cart_id, line_id).await;
-        }
-
         let cart =
             sqlx::query_as::<_, Cart>("SELECT * FROM carts WHERE id = $1 AND deleted_at IS NULL")
                 .bind(cart_id)
