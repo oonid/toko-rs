@@ -122,7 +122,6 @@ pub struct OrderWithItems {
 impl OrderWithItems {
     pub fn from_items(order: Order, mut items: Vec<OrderLineItem>) -> Self {
         for item in &mut items {
-            item.is_tax_inclusive = false;
             if let Some(ref snap) = item.snapshot {
                 let s = &snap.0;
                 item.product_title = s
@@ -160,6 +159,10 @@ impl OrderWithItems {
                     .unwrap_or(true);
                 item.requires_shipping = !s
                     .get("product_is_giftcard")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                item.is_tax_inclusive = s
+                    .get("is_tax_inclusive")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
             }
