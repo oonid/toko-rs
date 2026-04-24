@@ -119,7 +119,7 @@ async fn resolve_db_url() -> String {
             #[cfg(feature = "postgres")]
             let default = "postgres://postgres:postgres@localhost:5432/toko_e2e".to_string();
             #[cfg(feature = "sqlite")]
-            let default = "sqlite:toko_e2e.db".to_string();
+            let default = "sqlite::memory:".to_string();
             default
         }
     }

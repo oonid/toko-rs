@@ -773,7 +773,7 @@ async fn test_error_400_empty_cart_completion() {
 }
 
 #[tokio::test]
-async fn test_error_409_completed_cart_update() {
+async fn test_error_400_completed_cart_update() {
     let (app, db) = common::setup_test_app().await;
     let pool = db.pool.clone();
     let cart = body_json(
@@ -797,8 +797,12 @@ async fn test_error_409_completed_cart_update() {
         ))
         .await
         .unwrap();
-    assert_eq!(res.status(), StatusCode::CONFLICT);
-    assert_oas_error(&body_json(res).await, "conflict", "invalid_state_error");
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    assert_oas_error(
+        &body_json(res).await,
+        "invalid_data",
+        "invalid_request_error",
+    );
 }
 
 #[tokio::test]
