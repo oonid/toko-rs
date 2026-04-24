@@ -28,8 +28,9 @@ impl ProductRepository {
 
         let product = sqlx::query_as::<_, Product>(
             r#"
-            INSERT INTO products (id, title, handle, description, status, thumbnail, metadata)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            INSERT INTO products (id, title, handle, description, subtitle, status, thumbnail, metadata,
+                                  is_giftcard, discountable)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             RETURNING *
             "#,
         )
@@ -37,9 +38,12 @@ impl ProductRepository {
         .bind(&input.title)
         .bind(&handle)
         .bind(&input.description)
+        .bind(&input.subtitle)
         .bind(input.status.as_ref().map(|s| s.as_str()).unwrap_or("draft"))
         .bind(&input.thumbnail)
         .bind(metadata_to_json(input.metadata.clone()))
+        .bind(input.is_giftcard.unwrap_or(false))
+        .bind(input.discountable.unwrap_or(true))
         .fetch_one(&mut *tx)
         .await
         .map_err(|e| Self::map_unique_violation(e, "Product", &handle))?;
@@ -77,30 +81,38 @@ impl ProductRepository {
                 let mut seen_combos: std::collections::HashSet<Vec<(String, String)>> =
                     std::collections::HashSet::new();
                 for var_input in &vars {
-                    if let Some(ref opts) = var_input.options {
-                        let mut combo: Vec<(String, String)> =
-                            opts.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-                        combo.sort_by(|a, b| a.0.cmp(&b.0));
-                        if !seen_combos.insert(combo.clone()) {
-                            return Err(AppError::InvalidData(format!(
-                                "Duplicate option combination for variant '{}'",
-                                var_input.title
-                            )));
-                        }
+                    let opts = var_input.options.as_ref().ok_or_else(|| {
+                        AppError::InvalidData(format!(
+                            "Variant '{}' must specify options for all product option titles",
+                            var_input.title
+                        ))
+                    })?;
+                    let mut combo: Vec<(String, String)> =
+                        opts.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+                    combo.sort_by(|a, b| a.0.cmp(&b.0));
+                    if !seen_combos.insert(combo.clone()) {
+                        return Err(AppError::InvalidData(format!(
+                            "Duplicate option combination for variant '{}'",
+                            var_input.title
+                        )));
                     }
                 }
             }
 
             for (rank, var_input) in vars.into_iter().enumerate() {
                 if !option_titles.is_empty() {
-                    if let Some(ref opts) = var_input.options {
-                        for opt_title in &option_titles {
-                            if !opts.contains_key(opt_title) {
-                                return Err(AppError::InvalidData(format!(
-                                    "Variant '{}' is missing option '{}'",
-                                    var_input.title, opt_title
-                                )));
-                            }
+                    let opts = var_input.options.as_ref().ok_or_else(|| {
+                        AppError::InvalidData(format!(
+                            "Variant '{}' must specify options for all product option titles",
+                            var_input.title
+                        ))
+                    })?;
+                    for opt_title in &option_titles {
+                        if !opts.contains_key(opt_title) {
+                            return Err(AppError::InvalidData(format!(
+                                "Variant '{}' is missing option '{}'",
+                                var_input.title, opt_title
+                            )));
                         }
                     }
                 }
@@ -166,6 +178,7 @@ impl ProductRepository {
             "WHERE p.deleted_at IS NULL"
         };
         let order = params.order.as_deref().unwrap_or("p.created_at DESC");
+        let order = crate::types::validate_order_param(order).map_err(AppError::InvalidData)?;
 
         let count_sql = format!("SELECT COUNT(*) as count FROM products p {}", where_clause);
         let count: (i64,) = sqlx::query_as(&count_sql).fetch_one(&self.pool).await?;
@@ -199,6 +212,7 @@ impl ProductRepository {
         .await?;
 
         let order = params.order.as_deref().unwrap_or("created_at DESC");
+        let order = crate::types::validate_order_param(order).map_err(AppError::InvalidData)?;
         let query_sql = format!(
             "SELECT * FROM products WHERE status = 'published' AND deleted_at IS NULL ORDER BY {} LIMIT $1 OFFSET $2",
             order
@@ -231,25 +245,33 @@ impl ProductRepository {
         .ok_or_else(|| AppError::NotFound(format!("Product with id {} was not found", id)))?;
 
         let handle = input.handle.as_deref().unwrap_or("");
+        let is_giftcard = input.is_giftcard;
+        let discountable = input.discountable;
         sqlx::query(
             r#"
             UPDATE products SET
                 title = COALESCE(NULLIF($1, ''), title),
                 handle = COALESCE(NULLIF($2, ''), handle),
                 description = COALESCE($3, description),
-                status = COALESCE(NULLIF($4, ''), status),
-                thumbnail = COALESCE($5, thumbnail),
-                metadata = COALESCE($6, metadata),
+                subtitle = COALESCE($4, subtitle),
+                status = COALESCE(NULLIF($5, ''), status),
+                thumbnail = COALESCE($6, thumbnail),
+                metadata = COALESCE($7, metadata),
+                is_giftcard = COALESCE($8, is_giftcard),
+                discountable = COALESCE($9, discountable),
                 updated_at = CURRENT_TIMESTAMP
-            WHERE id = $7
+            WHERE id = $10
             "#,
         )
         .bind(&input.title)
         .bind(handle)
         .bind(&input.description)
+        .bind(&input.subtitle)
         .bind(input.status.as_ref().map(|s| s.as_str()))
         .bind(&input.thumbnail)
         .bind(metadata_to_json(input.metadata.clone()))
+        .bind(is_giftcard)
+        .bind(discountable)
         .bind(id)
         .execute(&self.pool)
         .await
@@ -341,7 +363,27 @@ impl ProductRepository {
             AppError::NotFound(format!("Product with id {} was not found", product_id))
         })?;
 
-        if let Some(ref opts) = input.options {
+        let defined_options: Vec<String> = sqlx::query_scalar(
+            "SELECT title FROM product_options WHERE product_id = $1 AND deleted_at IS NULL",
+        )
+        .bind(product_id)
+        .fetch_all(&mut *tx)
+        .await?;
+
+        if !defined_options.is_empty() {
+            let opts = input.options.as_ref().ok_or_else(|| {
+                AppError::InvalidData(
+                    "Variant must specify options for all product option titles".into(),
+                )
+            })?;
+            for opt_title in &defined_options {
+                if !opts.contains_key(opt_title) {
+                    return Err(AppError::InvalidData(format!(
+                        "Variant is missing option '{}'",
+                        opt_title
+                    )));
+                }
+            }
             Self::check_db_variant_option_combo(&mut tx, product_id, opts).await?;
         }
 
@@ -387,6 +429,7 @@ impl ProductRepository {
         .await?;
 
         let order = params.order.as_deref().unwrap_or("variant_rank ASC");
+        let order = crate::types::validate_order_param(order).map_err(AppError::InvalidData)?;
         let query_sql = format!(
             "SELECT * FROM product_variants WHERE product_id = $1 AND deleted_at IS NULL ORDER BY {} LIMIT $2 OFFSET $3",
             order
@@ -524,12 +567,14 @@ impl ProductRepository {
     ) -> Result<(String, ProductWithRelations), AppError> {
         let _product = self.find_by_id(product_id).await?;
 
+        let mut tx = self.pool.begin().await?;
+
         let result = sqlx::query(
             "UPDATE product_variants SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1 AND product_id = $2 AND deleted_at IS NULL",
         )
         .bind(variant_id)
         .bind(product_id)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
 
         if result.rows_affected() == 0 {
@@ -537,17 +582,26 @@ impl ProductRepository {
                 "SELECT 1 FROM product_variants WHERE id = $1 AND deleted_at IS NOT NULL",
             )
             .bind(variant_id)
-            .fetch_optional(&self.pool)
+            .fetch_optional(&mut *tx)
             .await?;
             if exists.is_some() {
+                tx.rollback().await?;
                 let parent = self.find_by_id_any(product_id).await?;
                 return Ok((variant_id.to_string(), parent));
             }
+            tx.rollback().await?;
             return Err(AppError::NotFound(format!(
                 "Variant with id {} was not found",
                 variant_id
             )));
         }
+
+        sqlx::query("DELETE FROM product_variant_option WHERE variant_id = $1")
+            .bind(variant_id)
+            .execute(&mut *tx)
+            .await?;
+
+        tx.commit().await?;
 
         let parent = self.find_by_id_any(product_id).await?;
         Ok((variant_id.to_string(), parent))
@@ -745,8 +799,6 @@ impl ProductRepository {
             options: options_with_values,
             variants: variants_with_options,
             images: vec![],
-            is_giftcard: false,
-            discountable: true,
         })
     }
 
