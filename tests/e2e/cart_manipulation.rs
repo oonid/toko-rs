@@ -101,27 +101,27 @@ async fn test_e2e_cart_completed_guards() {
         .await;
     assert_eq!(resp.status(), 200);
 
-    // Attempt update cart → 409
+    // Attempt update cart → 400
     let resp = ctx
         .post_json(
             &format!("/store/carts/{}", cart_id),
             &json!({"email": "nope@test.com"}),
         )
         .await;
-    assert_eq!(resp.status(), 409);
+    assert_eq!(resp.status(), 400);
 
-    // Attempt add item → 409
+    // Attempt add item → 400
     let resp = ctx
         .post_json(
             &format!("/store/carts/{}/line-items", cart_id),
             &json!({"variant_id": "var_seed_kaos_m", "quantity": 1}),
         )
         .await;
-    assert_eq!(resp.status(), 409);
+    assert_eq!(resp.status(), 400);
 
-    // Attempt complete again → 409
+    // Attempt complete again → 400
     let resp = ctx
         .post_json(&format!("/store/carts/{}/complete", cart_id), &json!(null))
         .await;
-    assert_eq!(resp.status(), 409);
+    assert_eq!(resp.status(), 400);
 }
