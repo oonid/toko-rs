@@ -2,7 +2,7 @@
 
 Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24}.md` and `docs/audit-correction.md` into a single reference. Every item is tagged with its source audit, status, and where it was fixed (or why it was deferred).
 
-**Last verified**: 2026-04-24 — 154 tests pass on SQLite (146 integration + 8 e2e), 154 on PostgreSQL, clippy clean, fmt clean.
+**Last verified**: 2026-04-24 — 192 tests pass on both SQLite and PostgreSQL, clippy clean on both features, fmt clean.
 
 ---
 
@@ -35,6 +35,7 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24}.m
 | 23 | T24 BUG-3 | `UpdateVariantInput.price` had no range validation — negative prices accepted | Added `#[validate(range(min = 0))]` | 24c |
 | 24 | T24 BUG-4 | `AddLineItemInput.variant_id` accepted empty string | Added `#[validate(length(min = 1))]` | 24d |
 | 25 | T24 BUG-5 | `UpdateLineItemInput.quantity` allowed 0 — meaningless zero-quantity items persisted | Changed to `range(min = 1)`; clients must use DELETE endpoint | 24e |
+| 26 | T25 BUG-1 | Order line item ID prefix `"oli"` should be `"ordli"` per Medusa convention | Changed prefix in `src/order/repository.rs` | 25a |
 
 ---
 
@@ -125,6 +126,7 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24}.m
 | 24 | T23 E2 | Cart state violations returned 409 (Conflict) — Medusa uses 400 (InvalidData) | Changed 8 locations from `AppError::Conflict` → `AppError::InvalidData` | 23g |
 | 25 | T23 D1 | `soft_delete_variant` left orphan `product_variant_option` pivot rows | Added `DELETE FROM product_variant_option WHERE variant_id = $1` + transaction | 23h |
 | 26 | T23 V1,V2 | `add_variant` had no option coverage check; `create_product` skipped check when `options` was `None` | Required `options` to cover ALL product option titles in both paths | 23i |
+| 27 | T25 HIGH-2 | No CHECK constraints on monetary/quantity columns — negative values accepted at DB level | Added `CHECK (price >= 0)`, `CHECK (quantity > 0)`, `CHECK (unit_price >= 0)`, `CHECK (amount >= 0)` to all relevant columns in both PG and SQLite migrations | 25c |
 
 ---
 
@@ -192,14 +194,14 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24}.m
 
 | Category | Count |
 |----------|-------|
-| Bugs fixed | 29 |
+| Bugs fixed | 30 |
 | Response shape fixes | 18 |
 | Input/validation fixes | 8 |
 | Error handling fixes | 11 |
-| Database schema fixes | 26 |
+| Database schema fixes | 28 |
 | Business logic fixes | 9 |
 | Config/infra fixes | 4 |
-| **Total fixes applied** | **105** |
+| **Total fixes applied** | **108** |
 | Deferred to P2 | 16 |
 | Known divergences (by design) | ~10 |
 

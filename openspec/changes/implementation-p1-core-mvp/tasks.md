@@ -900,32 +900,32 @@ Already present on both `UpdateProductInput` and `UpdateVariantInput`. No change
 
 **Audit report**: `docs/audit-p1-task25.md`
 **Date**: 2026-04-24
-**Status**: Findings identified, pending implementation.
+**Status**: Implementation complete. All 5 subtasks verified. 192 tests pass on both SQLite and PostgreSQL.
 
 ### 25a. Fix order line item ID prefix (BUG-1)
-- [ ] 25a.1 Change `"oli"` to `"ordli"` in `src/order/repository.rs`
-- [ ] 25a.2 Update any test assertions matching `"oli_"` prefix
-- [ ] 25a.3 Run full test suite
+- [x] 25a.1 Change `"oli"` to `"ordli"` in `src/order/repository.rs`
+- [x] 25a.2 No test assertions matched `"oli_"` prefix — no test changes needed
+- [x] 25a.3 Run full test suite — all pass
 
 ### 25b. Remove dead `quantity == 0` branch (HIGH-1)
-- [ ] 25b.1 Remove `if input.quantity == 0` branch from `update_line_item`
-- [ ] 25b.2 Run full test suite
+- [x] 25b.1 Remove `if input.quantity == 0` branch from `update_line_item`
+- [x] 25b.2 Run full test suite — all pass
 
 ### 25c. Add CHECK constraints on monetary/quantity columns (HIGH-2)
-- [ ] 25c.1 Add `CHECK (price >= 0)` to `product_variants.price` in both PG and SQLite
-- [ ] 25c.2 Add `CHECK (quantity > 0)` to `cart_line_items.quantity` and `order_line_items.quantity`
-- [ ] 25c.3 Add `CHECK (unit_price >= 0)` to both line item tables
-- [ ] 25c.4 Add `CHECK (amount >= 0)` to `payment_records.amount`
-- [ ] 25c.5 Run full test suite
+- [x] 25c.1 Add `CHECK (price >= 0)` to `product_variants.price` in both PG and SQLite
+- [x] 25c.2 Add `CHECK (quantity > 0)` to `cart_line_items.quantity` and `order_line_items.quantity`
+- [x] 25c.3 Add `CHECK (unit_price >= 0)` to both line item tables
+- [x] 25c.4 Add `CHECK (amount >= 0)` to `payment_records.amount`
+- [x] 25c.5 Run full test suite — all pass
 
 ### 25d. Read `is_tax_inclusive` from snapshot (MEDIUM-1)
-- [ ] 25d.1 Add `"is_tax_inclusive": false` to snapshot JSON
-- [ ] 25d.2 Update `from_items()` to read from snapshot with `false` default
-- [ ] 25d.3 Run full test suite
+- [x] 25d.1 Add `"is_tax_inclusive": false` to snapshot JSON in `src/cart/repository.rs`
+- [x] 25d.2 Update `from_items()` in cart and order models to read from snapshot with `false` default
+- [x] 25d.3 Run full test suite — all pass
 
 ### 25e. Verification pass
-- [ ] 25e.1 Run full test suite on SQLite
-- [ ] 25e.2 Run full test suite on PostgreSQL
-- [ ] 25e.3 Run `cargo clippy -- -D warnings` on both features
-- [ ] 25e.4 Run `cargo fmt --check`
-- [ ] 25e.5 Update `docs/audit-master-checklist.md`
+- [x] 25e.1 Run full test suite on SQLite — 192 pass (incl. 8 e2e)
+- [x] 25e.2 Run full test suite on PostgreSQL — 192 pass (incl. 8 e2e)
+- [x] 25e.3 Run `cargo clippy -- -D warnings` on both features — zero warnings
+- [x] 25e.4 Run `cargo fmt` — clean
+- [x] 25e.5 Update `docs/audit-master-checklist.md`
