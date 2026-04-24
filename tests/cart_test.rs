@@ -92,6 +92,80 @@ async fn test_store_create_cart_validation_failure() {
 }
 
 #[tokio::test]
+async fn test_cart_add_item_empty_variant_id_rejected() {
+    let (app, db) = common::setup_test_app().await;
+    seed_in_pool(&db.pool).await;
+
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            "/store/carts",
+            &json!({"currency_code": "idr"}),
+        ))
+        .await
+        .unwrap();
+    let cart_id = body_json(res).await["cart"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let res = app
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/line-items", cart_id),
+            &json!({"variant_id": "", "quantity": 1}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_cart_update_line_item_quantity_zero_rejected() {
+    let (app, db) = common::setup_test_app().await;
+    seed_in_pool(&db.pool).await;
+
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            "/store/carts",
+            &json!({"currency_code": "idr"}),
+        ))
+        .await
+        .unwrap();
+    let cart_id = body_json(res).await["cart"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/line-items", cart_id),
+            &json!({"variant_id": "var_1", "quantity": 2}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = body_json(res).await;
+    let items = body["cart"]["items"].as_array().unwrap();
+    let line_id = items[0]["id"].as_str().unwrap();
+
+    let res = app
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/line-items/{}", cart_id, line_id),
+            &json!({"quantity": 0}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
 async fn test_cart_full_flow() {
     let (app, db) = common::setup_test_app().await;
     let pool = db.pool.clone();
@@ -211,6 +285,7 @@ async fn test_cart_full_flow() {
     let cart_resp = body_json(res).await;
     let line_id2 = cart_resp["cart"]["items"][0]["id"].as_str().unwrap();
 
+    // 7. Update quantity to 0 is rejected — use DELETE instead
     let payload = json!({"quantity": 0});
     let res = app
         .clone()
@@ -221,9 +296,21 @@ async fn test_cart_full_flow() {
         ))
         .await
         .unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+
+    // Delete via DELETE endpoint
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::DELETE,
+            &format!("/store/carts/{}/line-items/{}", cart_id, line_id2),
+            &json!(null),
+        ))
+        .await
+        .unwrap();
     assert_eq!(res.status(), StatusCode::OK);
     let cart_resp = body_json(res).await;
-    assert_eq!(cart_resp["cart"]["items"].as_array().unwrap().len(), 0);
+    assert_eq!(cart_resp["parent"]["items"].as_array().unwrap().len(), 0);
 
     // 8. Add item to non-existent cart → 404
     let payload = json!({"variant_id": "var_1", "quantity": 1});
@@ -846,6 +933,83 @@ async fn test_cart_line_item_snapshot_fields_surface_top_level() {
     assert_eq!(item["variant_sku"], "SNAP-L");
     assert_eq!(item["product_handle"], "snap-product");
     assert_eq!(item["product_description"], "A nice product");
+}
+
+#[tokio::test]
+async fn test_cart_line_item_product_subtitle_surfaces() {
+    let (app, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+    sqlx::query("INSERT INTO products (id, title, handle, description, subtitle, status) VALUES ('prod_sub', 'Sub Product', 'sub-product', 'Desc', 'My Subtitle', 'published')")
+        .execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO product_variants (id, product_id, title, sku, price) VALUES ('var_sub', 'prod_sub', 'Small', 'SUB-S', 1000)")
+        .execute(&pool).await.unwrap();
+
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            "/store/carts",
+            &json!({"currency_code": "idr"}),
+        ))
+        .await
+        .unwrap();
+    let cart_id = body_json(res).await["cart"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/line-items", cart_id),
+            &json!({"variant_id": "var_sub", "quantity": 1}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = body_json(res).await;
+    let item = &body["cart"]["items"].as_array().unwrap()[0];
+    assert_eq!(item["product_subtitle"], "My Subtitle");
+}
+
+#[tokio::test]
+async fn test_cart_line_item_discountable_and_shipping_from_product() {
+    let (app, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+    sqlx::query("INSERT INTO products (id, title, handle, status, is_giftcard, discountable) VALUES ('prod_gc', 'Gift Card', 'gift-card', 'published', TRUE, FALSE)")
+        .execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO product_variants (id, product_id, title, sku, price) VALUES ('var_gc', 'prod_gc', '$25 Card', 'GC-25', 2500)")
+        .execute(&pool).await.unwrap();
+
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            "/store/carts",
+            &json!({"currency_code": "idr"}),
+        ))
+        .await
+        .unwrap();
+    let cart_id = body_json(res).await["cart"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/line-items", cart_id),
+            &json!({"variant_id": "var_gc", "quantity": 1}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = body_json(res).await;
+    let item = &body["cart"]["items"].as_array().unwrap()[0];
+    assert_eq!(item["is_discountable"], false);
+    assert_eq!(item["requires_shipping"], false);
 }
 
 #[tokio::test]
