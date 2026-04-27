@@ -1117,3 +1117,46 @@ Medusa's store query-config includes `product.collection_id` and `product.type_i
 - [x] 28d.3 Run full test suite on PostgreSQL — 213 pass
 - [x] 28d.4 Run `cargo clippy -- -D warnings` — clean
 - [x] 28d.5 Run `cargo fmt --check` — clean
+
+## Task 29: Checklist Re-Numbering & Redundant Test Annotation
+
+**Type**: Audit / Structural Cleanup
+**Priority**: MEDIUM
+**Status**: [x] Completed
+**Source**: `docs/audit-p1-task29.md`
+
+### Context
+
+After 12 sequential audits, the master checklist had accumulated 47 numbering collisions (Section 5 entries 21-29 colliding with Section 2), 2 stale entries (#82, #83 marked "Fixed" but still in deferred), 4 miscategorized entries in Section 5 (response shape, error handling, bug, validation entries placed under Database Schema), and an incorrect total count (claimed 116, actual 114). The test suite had ~30 clearly redundant tests (14%) across 11 files where the same scenario was tested by another test with equal or greater assertion coverage.
+
+### 29a. Re-number master checklist with globally unique prefixed IDs
+
+- [x] 29a.1 Rewrite `docs/audit-master-checklist.md` with category-prefixed IDs: B-1..B-32 (Bugs), S-1..S-25 (Response Shape), V-1..V-11 (Validation), E-1..E-12 (Error Handling), D-1..D-25 (Database Schema), L-1..L-9 (Business Logic), C-1..C-4 (Config/Infra)
+- [x] 29a.2 Move 4 miscategorized entries from old Section 5 to correct sections: S-25 (deleted_at visibility), E-12 (cart state 409→400), B-32 (orphan pivot rows), V-11 (option coverage)
+- [x] 29a.3 Move 4 entries from old Section 8 deferred to fix sections: S-24 (deleted_at skip), B-30 (affected-rows check), B-31 (orphan pivot rows), V-10 (deny_unknown_fields removed)
+- [x] 29a.4 Remove stale entries #82 and #83 (duplicates of B-26 and L-7, already fixed)
+- [x] 29a.5 Fix total count: 118 (was incorrectly 116) — 114 original + 4 moved from deferred
+- [x] 29a.6 Add superseded notes: B-6/L-2 superseded by E-12 (400 vs 409), C-2 superseded by E-12
+- [x] 29a.7 Add audit reversal chains table documenting 4 reversal chains
+- [x] 29a.8 Eliminate numbering collision note — all IDs now globally unique
+
+### 29b. Mark redundant tests with `// REDUNDANT:` comments
+
+- [x] 29b.1 Mark 6 redundant tests in `tests/product_test.rs` (error/response overlaps with contract_test)
+- [x] 29b.2 Mark 4 redundant tests in `tests/customer_test.rs` (error/shape overlaps with contract_test)
+- [x] 29b.3 Mark 4 redundant tests in `tests/cart_test.rs` (completed-cart guard overlaps with contract_test and e2e)
+- [x] 29b.4 Mark 5 redundant tests in `tests/order_test.rs` (error/shape overlaps with contract_test)
+- [x] 29b.5 Re-audit: remove 5 incorrect REDUNDANT annotations from `contract_test.rs` (variant validation tests test different error paths/endpoints; list/delete shape tests are canonical)
+- [x] 29b.6 Remove 1 incorrect REDUNDANT annotation from `cart_test.rs` (`test_cart_get_response_format` has unique completed_at/deleted_at assertions)
+- [x] 29b.7 Strengthen `test_contract_cart_response_shape` with `completed_at: null` and no `deleted_at` assertions
+- [x] 29b.8 Mark 2 redundant tests in `tests/seed_flow_test.rs` (flow overlaps with e2e and cart_test)
+- [x] 29b.9 Mark 1 redundant test in `tests/health_test.rs` (shape overlap with contract_test)
+- [x] 29b.10 Mark 8 redundant tests in `tests/e2e/` (E2E overlaps with integration tests)
+- [x] 29b.11 Final count: 30 correctly marked redundant (14% of 213 tests), 6 incorrect annotations removed
+
+### 29c. Documentation and verification
+
+- [x] 29c.1 Write `docs/audit-p1-task29.md` — full audit report
+- [x] 29c.2 Run full test suite on PostgreSQL — 213 pass
+- [x] 29c.3 Run `cargo clippy -- -D warnings` — clean
+- [x] 29c.4 Run `cargo fmt --check` — clean
