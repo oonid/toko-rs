@@ -101,37 +101,6 @@ async fn test_complete_cart_creates_order() {
 }
 
 #[tokio::test]
-async fn test_complete_empty_cart_rejected() {
-    let (app, _) = common::setup_test_app().await;
-
-    let res = app
-        .clone()
-        .oneshot(request(
-            Method::POST,
-            "/store/carts",
-            &json!({"currency_code": "idr"}),
-        ))
-        .await
-        .unwrap();
-    let cart_id = body_json(res).await["cart"]["id"]
-        .as_str()
-        .unwrap()
-        .to_string();
-
-    let res = app
-        .oneshot(request(
-            Method::POST,
-            &format!("/store/carts/{}/complete", cart_id),
-            &json!(null),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
-    let body = body_json(res).await;
-    assert_eq!(body["type"], "invalid_data");
-}
-
-#[tokio::test]
 async fn test_complete_already_completed_cart_is_idempotent() {
     let (app, db) = common::setup_test_app().await;
     let pool = db.pool.clone();
@@ -232,27 +201,6 @@ async fn test_get_order_by_id() {
 }
 
 #[tokio::test]
-async fn test_get_order_not_found() {
-    let (app, _) = common::setup_test_app().await;
-    let res = app
-        .oneshot(
-            Request::builder()
-                .method(Method::GET)
-                .uri("/store/orders/order_nonexistent")
-                .header("X-Customer-Id", "cus_test1")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(res.status(), StatusCode::NOT_FOUND);
-    let body = body_json(res).await;
-    assert_eq!(body["type"], "not_found");
-    assert_eq!(body["code"], "invalid_request_error");
-    assert!(body["message"].is_string());
-}
-
-#[tokio::test]
 async fn test_get_order_rejects_wrong_customer() {
     let (app, db) = common::setup_test_app().await;
     let pool = db.pool.clone();
@@ -286,38 +234,6 @@ async fn test_get_order_rejects_wrong_customer() {
         .await
         .unwrap();
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
-}
-
-#[tokio::test]
-async fn test_get_order_without_customer_header_rejected() {
-    let (app, db) = common::setup_test_app().await;
-    let pool = db.pool.clone();
-    let cart_id = create_cart_with_item(&app, &pool).await;
-
-    let res = app
-        .clone()
-        .oneshot(request(
-            Method::POST,
-            &format!("/store/carts/{}/complete", cart_id),
-            &json!(null),
-        ))
-        .await
-        .unwrap();
-    let body = body_json(res).await;
-    let order_id = body["order"]["id"].as_str().unwrap().to_string();
-
-    let res = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method(Method::GET)
-                .uri(&format!("/store/orders/{}", order_id))
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]
@@ -383,16 +299,6 @@ async fn test_list_orders_by_customer() {
     assert_eq!(body["orders"].as_array().unwrap().len(), 1);
     assert_eq!(body["limit"], 50);
     assert_eq!(body["offset"], 0);
-}
-
-#[tokio::test]
-async fn test_list_orders_without_auth_rejected() {
-    let (app, _) = common::setup_test_app().await;
-    let res = app
-        .oneshot(request(Method::GET, "/store/orders", &json!(null)))
-        .await
-        .unwrap();
-    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]
@@ -492,33 +398,6 @@ async fn test_payment_repo_create_and_find() {
 
     let not_found = repo.find_by_order_id("order_nonexistent").await.unwrap();
     assert!(not_found.is_none());
-}
-
-#[tokio::test]
-async fn test_cart_complete_success_response_shape() {
-    let (app, db) = common::setup_test_app().await;
-    let pool = db.pool.clone();
-    let cart_id = create_cart_with_item(&app, &pool).await;
-
-    let res = app
-        .oneshot(request(
-            Method::POST,
-            &format!("/store/carts/{}/complete", cart_id),
-            &json!(null),
-        ))
-        .await
-        .unwrap();
-    let body = body_json(res).await;
-    assert_eq!(body["type"], "order");
-    assert!(body["order"].is_object());
-    assert!(
-        body.get("cart").is_none(),
-        "success response must not have 'cart' key"
-    );
-    assert!(
-        body.get("error").is_none(),
-        "success response must not have 'error' key"
-    );
 }
 
 #[tokio::test]

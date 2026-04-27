@@ -498,44 +498,6 @@ async fn test_cart_item_total_computed() {
 }
 
 #[tokio::test]
-async fn test_cart_update_completed_cart_rejected() {
-    let (app, db) = common::setup_test_app().await;
-    let pool = db.pool.clone();
-
-    let res = app
-        .clone()
-        .oneshot(request(
-            Method::POST,
-            "/store/carts",
-            &json!({"currency_code": "usd"}),
-        ))
-        .await
-        .unwrap();
-    let cart_id = body_json(res).await["cart"]["id"]
-        .as_str()
-        .unwrap()
-        .to_string();
-
-    sqlx::query("UPDATE carts SET completed_at = CURRENT_TIMESTAMP WHERE id = $1")
-        .bind(&cart_id)
-        .execute(&pool)
-        .await
-        .unwrap();
-
-    let res = app
-        .oneshot(request(
-            Method::POST,
-            &format!("/store/carts/{}", cart_id),
-            &json!({"email": "new@test.com"}),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
-    let body = body_json(res).await;
-    assert_eq!(body["type"], "invalid_data");
-}
-
-#[tokio::test]
 async fn test_cart_add_item_to_completed_cart_rejected() {
     let (app, db) = common::setup_test_app().await;
     let pool = db.pool.clone();

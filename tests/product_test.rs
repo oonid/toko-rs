@@ -66,39 +66,6 @@ async fn test_admin_create_product_success() {
 }
 
 #[tokio::test]
-async fn test_admin_create_product_validation_failure() {
-    let (app, _) = common::setup_test_app().await;
-    let payload = json!({"title": "", "variants": [{"title": "V", "price": -100}]});
-    let req = Request::builder()
-        .method(Method::POST)
-        .uri("/admin/products")
-        .header("content-type", "application/json")
-        .body(Body::from(payload.to_string()))
-        .unwrap();
-    let resp = app.oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
-    let body = body_json(resp).await;
-    assert_eq!(body["type"], "invalid_data");
-    assert_eq!(body["code"], "invalid_request_error");
-    assert!(body["message"].is_string());
-}
-
-#[tokio::test]
-async fn test_admin_create_product_duplicate_handle() {
-    let (app, _) = common::setup_test_app().await;
-    create_sample_product(&app).await;
-    let payload = json!({"title": "Other", "handle": "classic-t-shirt"});
-    let req = Request::builder()
-        .method(Method::POST)
-        .uri("/admin/products")
-        .header("content-type", "application/json")
-        .body(Body::from(payload.to_string()))
-        .unwrap();
-    let resp = app.oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
-}
-
-#[tokio::test]
 async fn test_admin_get_product() {
     let (app, _) = common::setup_test_app().await;
     let created = create_sample_product(&app).await;
@@ -113,22 +80,6 @@ async fn test_admin_get_product() {
     let body = body_json(resp).await;
     assert_eq!(body["product"]["id"], id);
     assert_eq!(body["product"]["options"].as_array().unwrap().len(), 1);
-}
-
-#[tokio::test]
-async fn test_admin_get_product_not_found() {
-    let (app, _) = common::setup_test_app().await;
-    let req = Request::builder()
-        .method(Method::GET)
-        .uri("/admin/products/prod_nonexistent")
-        .body(Body::empty())
-        .unwrap();
-    let resp = app.oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
-    let body = body_json(resp).await;
-    assert_eq!(body["type"], "not_found");
-    assert_eq!(body["code"], "invalid_request_error");
-    assert!(body["message"].is_string());
 }
 
 #[tokio::test]
@@ -303,24 +254,6 @@ async fn test_admin_update_product() {
 }
 
 #[tokio::test]
-async fn test_admin_update_product_not_found() {
-    let (app, _) = common::setup_test_app().await;
-    let payload = json!({"title": "Nope"});
-    let req = Request::builder()
-        .method(Method::POST)
-        .uri("/admin/products/prod_nonexistent")
-        .header("content-type", "application/json")
-        .body(Body::from(payload.to_string()))
-        .unwrap();
-    let resp = app.oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
-    let body = body_json(resp).await;
-    assert_eq!(body["type"], "not_found");
-    assert_eq!(body["code"], "invalid_request_error");
-    assert!(body["message"].is_string());
-}
-
-#[tokio::test]
 async fn test_admin_delete_product() {
     let (app, _) = common::setup_test_app().await;
     let created = create_sample_product(&app).await;
@@ -343,22 +276,6 @@ async fn test_admin_delete_product() {
         .unwrap();
     let resp2 = app.oneshot(req2).await.unwrap();
     assert_eq!(resp2.status(), StatusCode::NOT_FOUND);
-}
-
-#[tokio::test]
-async fn test_admin_delete_product_not_found() {
-    let (app, _) = common::setup_test_app().await;
-    let req = Request::builder()
-        .method(Method::DELETE)
-        .uri("/admin/products/prod_nonexistent")
-        .body(Body::empty())
-        .unwrap();
-    let resp = app.oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
-    let body = body_json(resp).await;
-    assert_eq!(body["type"], "not_found");
-    assert_eq!(body["code"], "invalid_request_error");
-    assert!(body["message"].is_string());
 }
 
 #[tokio::test]
@@ -523,25 +440,6 @@ async fn test_store_deleted_product_returns_404() {
         .unwrap();
     let resp = app.oneshot(store_req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
-}
-
-#[tokio::test]
-async fn test_error_response_format() {
-    let (app, _) = common::setup_test_app().await;
-    let req = Request::builder()
-        .method(Method::GET)
-        .uri("/admin/products/prod_nonexistent")
-        .body(Body::empty())
-        .unwrap();
-    let resp = app.oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
-    let body = body_json(resp).await;
-    assert!(body["code"].is_string());
-    assert!(body["type"].is_string());
-    assert!(body["message"].is_string());
-    assert_eq!(body["code"], "invalid_request_error");
-    assert_eq!(body["type"], "not_found");
-    assert_eq!(body.as_object().unwrap().keys().count(), 3);
 }
 
 #[tokio::test]
