@@ -330,3 +330,105 @@ Medusa captures 20+ denormalized fields at add-time. toko-rs captures 3 in a JSO
 9. **S10**: Pagination limit 20 vs 50 — already documented
 10. **S5**: Validation error includes `code` — minor shape difference
 11. **PG 40001**: Serialization failure not mapped to Conflict — rare edge case
+
+---
+
+## Implementation Details
+
+## 18. Third Audit — P1 Compatibility Deep-Dive
+
+Completed 2026-04-10.
+
+**Audit source**: `docs/audit-p1-task18.md` findings S1–S19. Behavioral comparison of toko-rs P1 against Medusa route handlers, validators, workflows, models, and helpers.
+
+### 18a. Fix `load_relations` soft-delete filter (S1 — HIGH)
+
+**Before**: `load_relations` in `src/product/repository.rs:388-426` queried 4 child tables without `AND deleted_at IS NULL`. Soft-deleted variants, options, and option values leaked into every product response.
+
+**After**: Added `AND deleted_at IS NULL` to:
+- `product_options` query (line 390)
+- `product_option_values` query (line 399)
+- `product_variants` query (line 412)
+- `product_option_values` join in variant-option query (line 424)
+- `product_variants` rank query in `add_variant` (line 297)
+
+Note: `product_variant_option` (pivot) table has no `deleted_at` column — only the joined `product_option_values` is filtered.
+
+**Tests added**: `test_soft_deleted_variant_excluded_from_product`, `test_soft_deleted_option_excluded_from_product`
+
+### 18b. Make DELETE idempotent (S3 — HIGH)
+
+**Before**: `soft_delete` returned 404 on double-delete (already-soft-deleted product).
+
+**After**: When `rows_affected() == 0`, checks if product exists with `deleted_at IS NOT NULL`. If so, returns 200 with `{ id, object, deleted: true }` (idempotent). Only returns 404 for truly nonexistent products.
+
+**Tests added**: `test_double_delete_returns_ok`, `test_delete_nonexistent_returns_404`
+
+### 18c. Fix line item dedup to include metadata (S4 — MEDIUM)
+
+**Before**: `add_line_item` deduplicated solely by `variant_id`, merging quantities regardless of metadata.
+
+**After**: Fetches metadata from existing line item, compares via `serde_json::Value` equality. If metadata matches, merges quantity (existing behavior). If metadata differs, creates a new line item (matching Medusa's `getLineItemActionsStep` behavior).
+
+**Tests added**: `test_same_variant_different_metadata_creates_separate_items`, `test_same_variant_same_metadata_merges_quantity`
+
+### 18d. Add custom JSON rejection handler (S6 — MEDIUM)
+
+**Before**: No custom rejection handler for axum's `Json<T>` extractor. Malformed JSON and wrong types produced inconsistent error shapes (axum's default `{ "message": "..." }` format).
+
+**After**: Added `src/extract.rs` with a custom `Json<T>` extractor that wraps axum's rejection into `AppError::InvalidData` (400 for syntax errors) or `AppError::DuplicateError` (422 for data/semantic errors like wrong types, unknown fields, invalid enum values). Updated all 4 route files (product, cart, customer routes) to use `crate::extract::Json` for input extraction. Order routes don't accept JSON payloads — no change needed.
+
+**Tests added**: `test_malformed_json_returns_consistent_error`, `test_wrong_json_type_returns_consistent_error`
+
+### 18e. Map PG serialization failure to Conflict (error handler gap)
+
+**Before**: PG error code `40001` (serialization failure under concurrent transactions) was not mapped, surfacing as a generic `DatabaseError` (500).
+
+**After**: Added `is_serialization_failure()` helper to `src/db.rs`, added `40001` → `AppError::Conflict` mapping to `map_db_constraint()` in `src/error.rs`. PG: `"40001"`, SQLite: `""` (no equivalent, always false).
+
+### 18f. Fix `images` type to match Medusa shape (S7 — MEDIUM)
+
+**Before**: `ProductWithRelations.images` was `Vec<String>` — always empty `vec![]`.
+
+**After**: Added `ImageStub { url: String }` struct. Changed `images` field to `Vec<ImageStub>`. Matches Medusa's `BaseProductImage` shape (objects with properties, not plain strings). Empty array serializes identically — no API response change.
+
+### 18g. Document known P1 divergences
+
+Added to `design.md`:
+- Decision 12: `deny_unknown_fields` as intentional strict validation
+- Decision 13: Variant flat `price` field as toko-rs extension
+- Known divergences section: order line item prefix, validation error `code` field, pagination limit, images type, DELETE idempotency
+
+### Files Changed
+
+| # | File | Change |
+|---|---|---|
+| 18a | `src/product/repository.rs` | Added `AND deleted_at IS NULL` to 5 child-table queries in `load_relations` + rank query |
+| 18b | `src/product/repository.rs` | `soft_delete` — idempotent double-delete via existence check |
+| 18c | `src/cart/repository.rs` | `add_line_item` — metadata comparison in dedup logic |
+| 18d | `src/extract.rs` | NEW — custom `Json<T>` extractor wrapping axum rejections into `AppError` |
+| 18d | `src/product/routes.rs` | Input extraction changed to `crate::extract::Json` |
+| 18d | `src/cart/routes.rs` | Input extraction changed to `crate::extract::Json` |
+| 18d | `src/customer/routes.rs` | Input extraction changed to `crate::extract::Json` |
+| 18d | `src/lib.rs` | Added `pub mod extract` |
+| 18e | `src/db.rs` | Added `is_serialization_failure()` helper + code constant |
+| 18e | `src/error.rs` | `map_db_constraint()` maps `40001` → `Conflict` |
+| 18f | `src/product/models.rs` | Added `ImageStub` struct; changed `images: Vec<String>` → `Vec<ImageStub>` |
+| 18g | `design.md` | Decisions 12–13 + known divergences section |
+| — | `tests/product_test.rs` | +4 tests: soft-deleted variant/option, double-delete, nonexistent-delete |
+| — | `tests/cart_test.rs` | +2 tests: different metadata separate, same metadata merge |
+| — | `tests/contract_test.rs` | +2 tests: malformed JSON, wrong type |
+| — | `docs/audit-correction.md` | Added Task 18 section |
+
+### TDD Record (18)
+
+1. **RED** (18a): Added 2 tests for soft-deleted variant/option — failed because no filter existed.
+2. **GREEN** (18a): Added `AND deleted_at IS NULL` to all child-table queries. Tests passed.
+3. **RED** (18b): Added double-delete test — failed (returned 404).
+4. **GREEN** (18b): Added existence check for already-deleted products. Tests passed.
+5. **RED+GREEN** (18c): Added 2 tests for metadata dedup — different metadata creates separate, same metadata merges.
+6. **GREEN** (18d): Custom `Json` extractor, updated 3 route files, added 2 contract tests.
+7. **GREEN** (18e): Added serialization failure mapping.
+8. **GREEN** (18f): Changed images type to `Vec<ImageStub>`.
+9. **Verify**: 137 tests pass on both PG and SQLite, clippy clean on both feature sets.
+
