@@ -1016,3 +1016,53 @@ Already present on both `UpdateProductInput` and `UpdateVariantInput`. No change
 - [x] 26k.3 Run `cargo clippy -- -D warnings` on both features — clean
 - [x] 26k.4 Run `cargo fmt --check` — fixed and applied
 - [x] 26k.5 Update `docs/audit-master-checklist.md`
+
+## Task 27 — Test Contract Audit & Master Checklist Cleanup
+
+**Type**: Audit / Quality Gate
+**Priority**: HIGH
+**Status**: [x] Completed
+**Source**: `docs/audit-p1-task27.md`
+
+### Context
+
+Task 26 added 5 new tests and modified 197 total tests. An exploration audit of every test and the master checklist revealed structural issues: the tests are weaker contracts than they appear, and the checklist has accuracy problems from 11 sequential audits accumulating contradictions.
+
+### 27a. Fix misleading test names
+
+- [x] 27a.1 Rename `test_cart_update_line_item_quantity_zero_rejected` → `test_cart_update_line_item_quantity_zero_removes_item` (asserts 200 OK, not rejection)
+- [x] 27a.2 Rename `test_concurrent_cart_completion_only_one_succeeds` → `test_concurrent_cart_completion_is_idempotent` (both return 200 with same order)
+
+### 27b. Add missing contract assertions for T26 features
+
+- [x] 27b.1 Assert `options[0]["option"]["id"]` and `options[0]["option"]["title"]` in product variant shape test (nested option object — zero coverage)
+- [x] 27b.2 Assert `calculated_price["currency_code"]` in contract product shape test (added field — zero coverage)
+- [x] 27b.3 Assert `credit_line_total`, `credit_line_subtotal`, `credit_line_tax_total`, `discount_subtotal` in order/cart shape tests (added fields — zero coverage)
+- [x] 27b.4 Assert `cart_id` in order completion response (added field — zero coverage)
+- [x] 27b.5 Assert `shipping_address` and `billing_address` in order API response (only verified via raw SQL)
+- [x] 27b.6 Assert `email` propagation from cart to order in API response
+
+### 27c. Remove duplicate tests
+
+- [x] 27c.1 Remove `test_cart_completion_retry_returns_same_order` — functionally identical to `test_complete_already_completed_cart_is_idempotent`
+- [x] 27c.2 Remove `test_complete_empty_cart_returns_bad_request_format` — contract_test covers the error shape, order_test covers the behavior
+
+### 27d. Upgrade weak assertion tests (status-only)
+
+- [x] 27d.1 Add error body shape assertions to `test_store_create_cart_validation_failure`
+- [x] 27d.2 Add error body assertions to `test_admin_get_product_not_found`, `test_admin_delete_product_not_found`, `test_get_order_not_found` (and 6 other status-only tests)
+
+### 27e. Fix audit master checklist accuracy
+
+- [x] 27e.1 Added numbering collision note to Section 5 (future: globally unique prefixed IDs)
+- [x] 27e.2 Mark entry T24 BUG-5 (quantity range(min=1)) as `[REVERTED by T26 BUG-1]`
+- [x] 27e.3 Move #82 (ordli prefix) and #83 (pagination limit) — marked as fixed in deferred section
+- [x] 27e.4 Note entry #95 (deleted_at skip) — 2 of 9 were reversed by T23
+- [x] 27e.5 Recount total: actual is 111 rows, not 121 — fixed summary table
+- [x] 27e.6 Tag 10 non-P1 entries as `[INTERNAL]` (atomicity, indexes, feature flags, CORS, PG error codes)
+- [x] 27e.7 Added cross-reference note for Section 5 numbering collision with Section 2
+
+### 27f. Save audit report and verify
+
+- [x] 27f.1 Write full exploration findings to `docs/audit-p1-task27.md`
+- [x] 27f.2 Run full test suite on PostgreSQL — 188 pass (36 unit + 152 integration), clippy clean, fmt clean

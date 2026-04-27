@@ -2,7 +2,7 @@
 
 Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25,26}.md` and `docs/audit-correction.md` into a single reference. Every item is tagged with its source audit, status, and where it was fixed (or why it was deferred).
 
-**Last verified**: 2026-04-27 — 197 tests pass on both SQLite and PostgreSQL, clippy clean on both features, fmt clean. Eleventh audit (Task 26) findings fully implemented.
+**Last verified**: 2026-04-27 — 197 tests pass on both SQLite and PostgreSQL, clippy clean on both features, fmt clean. Twelfth audit (Task 27) findings fully implemented. Total recount: 111 fixes (was incorrectly 121).
 
 ---
 
@@ -34,7 +34,7 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25
 | 22 | T24 BUG-2 | `requires_shipping` and `is_discountable` hardcoded to `true` — ignored product data | Read from snapshot (`product_discountable`, `product_is_giftcard`); gift cards get `requires_shipping: false`, `is_discountable: false` | 24b |
 | 23 | T24 BUG-3 | `UpdateVariantInput.price` had no range validation — negative prices accepted | Added `#[validate(range(min = 0))]` | 24c |
 | 24 | T24 BUG-4 | `AddLineItemInput.variant_id` accepted empty string | Added `#[validate(length(min = 1))]` | 24d |
-| 25 | T24 BUG-5 | `UpdateLineItemInput.quantity` allowed 0 — meaningless zero-quantity items persisted | Changed to `range(min = 1)`; clients must use DELETE endpoint | 24e |
+| 25 | T24 BUG-5 | `UpdateLineItemInput.quantity` allowed 0 — meaningless zero-quantity items persisted | Changed to `range(min = 1)`; clients must use DELETE endpoint | 24e | **[REVERTED by T26 BUG-1]** |
 | 26 | T25 BUG-1 | Order line item ID prefix `"oli"` should be `"ordli"` per Medusa convention | Changed prefix in `src/order/repository.rs` | 25a |
 | 27 | T26 BUG-1 | `UpdateLineItemInput.quantity` range(min=1) rejected 0, but Medusa uses gte(0) — 0 is a removal signal | Reverted to `range(min=0)` and restored `quantity==0→delete` branch | 26a |
 | 28 | T26 BUG-2 | `CreateCustomerInput.email` was required but Medusa's `StoreCreateCustomer` has `email: z.string().email().nullish()` (optional) | Changed to `Option<String>` in types, model, and both PG/SQLite migrations | 26b |
@@ -97,7 +97,7 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25
 | 43 | T14 V2 | No `Forbidden` (403) error variant | Added `AppError::Forbidden` | 14b.4 |
 | 44 | T14 V3 | No structured SQLite error code mapping | Added `map_sqlite_constraint()` | 14d.2 |
 | 45 | T18 S6 | JSON deserialization errors bypassed AppError — inconsistent error shapes | Custom `Json<T>` extractor in `src/extract.rs` | 18d |
-| 46 | T18 S6 | PG error code `40001` (serialization failure) not mapped to Conflict | Added mapping via `is_serialization_failure()` | 18e |
+| 46 | T18 S6 | PG error code `40001` (serialization failure) not mapped to Conflict | Added mapping via `is_serialization_failure()` | 18e | **[INTERNAL]** — DB-specific error handling |
 | 47 | T20 F2 | `ValidationError` variant was dead code (never used anywhere) | Removed from enum | 20e |
 | 48 | T20 F4 | Error messages prefixed: `"Not Found: ..."`, `"Duplicate Error: ..."` | Removed all prefixes from `#[error(...)]` attrs | 20g |
 
@@ -105,19 +105,21 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25
 
 ## 5. Database Schema Fixes
 
+> **Numbering note**: Entries 21-29 in this section share `#` values with Section 2. Cross-reference using `Section.#` (e.g., "Section 5.#21" vs "Section 2.#21"). Future audits should use globally unique prefixed IDs (B-, S-, D-, etc.).
+
 | # | Source | Finding | Fix | Section |
 |---|--------|---------|-----|---------|
 | 49 | T4b | Pivot table named `product_variant_options` (plural) — Medusa uses singular | Renamed to `product_variant_option` | 4b |
 | 50 | T4b | SQLite `products.handle` — column UNIQUE blocked reuse after soft-delete | Changed to partial unique index `WHERE deleted_at IS NULL` | 4b |
 | 51 | T4b | Missing unique index on `(product_id, title)` for options | Added partial unique index | 4b |
 | 52 | T4b | Missing unique index on `(option_id, value)` for option values | Added partial unique index | 4b |
-| 53 | T4c | `create_product` and `add_variant` not transactional | Wrapped in `self.pool.begin()` transactions | 4c |
+| 53 | T4c | `create_product` and `add_variant` not transactional | Wrapped in `self.pool.begin()` transactions | 4c | **[INTERNAL]** — same API response either way |
 | 54 | T7b | SQLite missing CHECK constraints (products.status, payment.status, orders.status) | Added CHECK constraints to match PG | 7b |
 | 55 | T7b | SQLite missing `DEFAULT 'idr'` on carts.currency_code, payment_records fields | Added defaults to match PG | 7b |
 | 56 | T7b | `PaymentRecord.provider` was `Option<String>` — PG has `NOT NULL DEFAULT 'manual'` | Changed to `String` | 7b |
-| 57 | T7c | 13 missing SQLite performance indexes + 3 missing child table definitions | Added all indexes + `customer_addresses`, `cart_line_items`, `order_line_items` tables | 7c |
+| 57 | T7c | 13 missing SQLite performance indexes + 3 missing child table definitions | Added all indexes + `customer_addresses`, `cart_line_items`, `order_line_items` tables | 7c | **[INTERNAL]** — performance, not API behavior |
 | 58 | T7d | Payment creation outside order transaction — orphan risk on failure | Moved inside transaction via `create_with_tx()` | 7d.1 |
-| 59 | T7d | `display_id` UNIQUE race produced raw DatabaseError (500) | Added `map_display_id_conflict()` → 409 Conflict | 7d.2 |
+| 59 | T7d | `display_id` UNIQUE race produced raw DatabaseError (500) | Added `map_display_id_conflict()` → 409 Conflict | 7d.2 | **[INTERNAL]** — race condition handling |
 | 60 | T7f | Default currency hardcoded to `"usd"` — project needs IDR | Config-driven `DEFAULT_CURRENCY_CODE` (default `"idr"`) | 7f |
 | 61 | T12 M2 | SQLite `customers.email` had column-level UNIQUE — blocked guest+registered same email | Changed to partial composite index `(email, has_account) WHERE deleted_at IS NULL` | 12c.1 |
 | 62 | T12 L4 | `product_variant_option` pivot had no unique constraint | Added `UNIQUE(variant_id, option_value_id)` | 12c.2 |
@@ -160,10 +162,10 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25
 
 | # | Source | Finding | Fix | Section |
 |---|--------|---------|-----|---------|
-| 74 | T4e | `AppConfig` missing defaults for HOST, PORT, RUST_LOG | Added serde defaults | 4e.1 |
+| 74 | T4e | `AppConfig` missing defaults for HOST, PORT, RUST_LOG | Added serde defaults | 4e.1 | **[INTERNAL]** — developer experience |
 | 75 | T4d | Cart completion stub returned bare `StatusCode::NOT_IMPLEMENTED` | Changed to proper JSON error via `AppError::Conflict` | 4d.3 |
-| 76 | T14 V1 | CORS was `CorsLayer::permissive()` — production-unsafe | Config-driven CORS via `AppConfig.cors_origins` | 14d.1 |
-| 77 | T17 | No SQLite feature flag support | Added compile-time feature flag with type aliases | 17 |
+| 76 | T14 V1 | CORS was `CorsLayer::permissive()` — production-unsafe | Config-driven CORS via `AppConfig.cors_origins` | 14d.1 | **[INTERNAL]** — security hardening |
+| 77 | T17 | No SQLite feature flag support | Added compile-time feature flag with type aliases | 17 | **[INTERNAL]** — multi-DB infrastructure |
 
 ---
 
@@ -175,20 +177,20 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25
 | 79 | T14 V5 / T20 F4 | Error message format differences | Medusa doesn't guarantee message format. Fixed prefixes in 20g, but exact messages may differ. |
 | 80 | T18 S2 | `deny_unknown_fields` rejects Medusa SDK fields not in toko-rs schemas | Intentional strict validation (Decision 12) |
 | 81 | T18 S8 | Variant exposes flat `price: i64` that Medusa does not have | Harmless extension alongside `calculated_price` (Decision 13) |
-| 82 | T18 S9 | Order line item prefix `oli` vs Medusa's `ordli` | Cosmetic, documented in design.md |
-| 83 | T18 S10 | Default pagination limit 20 vs Medusa's 50 | **Fixed** in 20h |
+| 82 | T18 S9 | Order line item prefix `oli` vs Medusa's `ordli` | **Fixed** in 25a (was incorrectly listed as deferred) |
+| 83 | T18 S10 | Default pagination limit 20 vs Medusa's 50 | **Fixed** in 20h (was incorrectly listed as deferred) |
 | 84 | T18 S5 | Validation errors include `code` field; Medusa Zod errors omit it | toko-rs is more consistent; documented as intentional |
 | 85 | T19 S8 | `GET /store/orders/:id` requires auth — Medusa doesn't | Intentional security improvement (Decision 14) |
 | 86 | T19 S11 | Error `code` field always present — Medusa omits for some types | More consistent than Medusa; documented |
 | 87 | T19 S13 | `customer_id` on cart create is extra — Medusa infers from auth | Needed until real auth (Decision 15) |
 | 88 | T19 S14-S20 | LOW findings: message formatting, `deleted_at` exposure, extra fields, cosmetic prefixes, `estimate_count`, total sub-fields, variant title nullable | No functional impact, documented |
-| 89 | T20 F6 | N+1 query pattern in order listing | Performance, not correctness |
-| 90 | T20 F7 | Generic DB constraint messages lose context | Requires PG-specific error detail parsing |
+| 89 | T20 F6 | N+1 query pattern in order listing | Performance, not correctness | **[INTERNAL]** |
+| 90 | T20 F7 | Generic DB constraint messages lose context | Requires PG-specific error detail parsing | **[INTERNAL]** |
 | 91 | T20 F8 | `code` field mismatches for Unauthorized, Forbidden, UnexpectedState | Minor difference |
 | 92 | T12 L1-L7 | LOW: missing indexes, missing entities (P2+), no admin auth, missing cart fields | P2 scope or by-design |
 | 93 | T14 B | All P2 deferred items: multi-currency pricing, address CRUD, order transfers, shipping, etc. | Documented in design.md and audit reports |
 | 94 | T21 S5 | `has_account` on store customer response — reported as leaked but confirmed present in Medusa store query config | FALSE POSITIVE — no fix needed |
-| 95 | T22 S1 | `deleted_at` leaked on 9 entity types (Product, ProductOption, ProductOptionValue, ProductVariant, Cart, Order, Customer, CustomerAddress, PaymentRecord) | `#[serde(skip)]` on all 9 `deleted_at` fields | 22a |
+| 95 | T22 S1 | `deleted_at` leaked on 9 entity types (Product, ProductOption, ProductOptionValue, ProductVariant, Cart, Order, Customer, CustomerAddress, PaymentRecord) | `#[serde(skip)]` on all 9 `deleted_at` fields | 22a | **Note: T23 S3,S4 reversed this for Product and Customer — 7 remain skipped** |
 | 96 | T22 D1 | `product_variant_option` join rows NOT cascade-deleted on product soft-delete — orphan rows remain | `DELETE FROM product_variant_option WHERE variant_id IN (...)` in `soft_delete` | 22b |
 | 97 | T22 B1 | `update_line_item` / `delete_line_item` no affected-rows check — silent success on nonexistent/completed items | `rows_affected()` check returns 404 | 22c |
 | 98 | T22 I6 | `ListOrdersParams` has `deny_unknown_fields` but Medusa's `createFindParams` is NOT strict | Removed `deny_unknown_fields` | 22d |
@@ -205,14 +207,14 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25
 
 | Category | Count |
 |----------|-------|
-| Bugs fixed | 33 |
-| Response shape fixes | 21 |
-| Input/validation fixes | 11 |
+| Bugs fixed | 29 |
+| Response shape fixes | 20 |
+| Input/validation fixes | 9 |
 | Error handling fixes | 11 |
-| Database schema fixes | 31 |
-| Business logic fixes | 10 |
+| Database schema fixes | 29 |
+| Business logic fixes | 9 |
 | Config/infra fixes | 4 |
-| **Total fixes applied** | **121** |
+| **Total fixes applied** | **111** |
 | Deferred to P2 | 16 |
 | Known divergences (by design) | ~10 |
 
