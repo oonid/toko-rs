@@ -89,6 +89,10 @@ async fn test_store_create_cart_validation_failure() {
         .unwrap();
     let res = app.oneshot(request).await.unwrap();
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    let body = body_json(res).await;
+    assert_eq!(body["type"], "invalid_data");
+    assert_eq!(body["code"], "invalid_request_error");
+    assert!(body["message"].is_string());
 }
 
 #[tokio::test]
@@ -122,7 +126,7 @@ async fn test_cart_add_item_empty_variant_id_rejected() {
 }
 
 #[tokio::test]
-async fn test_cart_update_line_item_quantity_zero_rejected() {
+async fn test_cart_update_line_item_quantity_zero_removes_item() {
     let (app, db) = common::setup_test_app().await;
     seed_in_pool(&db.pool).await;
 

@@ -133,7 +133,16 @@ async fn test_contract_product_response_shape() {
                     "calculated_amount",
                     "original_amount",
                     "is_calculated_price_tax_inclusive",
+                    "currency_code",
                 ],
+            );
+            assert!(
+                v["calculated_price"]["currency_code"]
+                    .as_str()
+                    .unwrap()
+                    .len()
+                    >= 3,
+                "currency_code must be a non-empty string"
             );
         }
     }
@@ -284,6 +293,10 @@ async fn test_contract_cart_response_shape() {
             "original_shipping_tax_total",
             "gift_card_total",
             "gift_card_tax_total",
+            "credit_line_total",
+            "credit_line_subtotal",
+            "credit_line_tax_total",
+            "discount_subtotal",
             "created_at",
             "updated_at",
         ],
@@ -420,6 +433,10 @@ async fn test_contract_order_complete_response_shape() {
             "original_tax_total",
             "gift_card_total",
             "gift_card_tax_total",
+            "credit_line_total",
+            "credit_line_subtotal",
+            "credit_line_tax_total",
+            "discount_subtotal",
             "currency_code",
             "payment_status",
             "fulfillment_status",
@@ -432,6 +449,10 @@ async fn test_contract_order_complete_response_shape() {
     assert_eq!(body["order"]["fulfillment_status"], "not_fulfilled");
     assert!(body["order"]["fulfillments"].is_array());
     assert!(body["order"]["shipping_methods"].is_array());
+    assert!(
+        body["order"]["cart_id"].is_null() || body["order"]["cart_id"].is_string(),
+        "order must have cart_id field"
+    );
 }
 
 #[tokio::test]

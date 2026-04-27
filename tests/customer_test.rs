@@ -93,6 +93,10 @@ async fn test_register_customer_invalid_email() {
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = body_json(resp).await;
+    assert_eq!(body["type"], "invalid_data");
+    assert_eq!(body["code"], "invalid_request_error");
+    assert!(body["message"].is_string());
 }
 
 #[tokio::test]
