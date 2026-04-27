@@ -118,11 +118,15 @@ async fn test_contract_product_response_shape() {
             "images",
             "is_giftcard",
             "discountable",
+            "collection_id",
+            "type_id",
         ],
     );
     assert_eq!(p["images"].as_array().unwrap().len(), 0);
     assert_eq!(p["is_giftcard"], false);
     assert_eq!(p["discountable"], true);
+    assert!(p["collection_id"].is_null());
+    assert!(p["type_id"].is_null());
     if let Some(variants) = p["variants"].as_array() {
         if !variants.is_empty() {
             let v = &variants[0];
@@ -452,6 +456,27 @@ async fn test_contract_order_complete_response_shape() {
     assert!(
         body["order"]["cart_id"].is_null() || body["order"]["cart_id"].is_string(),
         "order must have cart_id field"
+    );
+    let items = body["order"]["items"].as_array().unwrap();
+    assert!(!items.is_empty(), "order must have line items");
+    let first_item = &items[0];
+    assert_has_fields(
+        first_item,
+        &[
+            "thumbnail",
+            "is_giftcard",
+            "is_discountable",
+            "is_tax_inclusive",
+            "requires_shipping",
+        ],
+    );
+    assert!(
+        first_item["thumbnail"].is_null() || first_item["thumbnail"].is_string(),
+        "line item thumbnail must be null or string"
+    );
+    assert!(
+        first_item["is_giftcard"].is_boolean(),
+        "line item is_giftcard must be boolean"
     );
 }
 

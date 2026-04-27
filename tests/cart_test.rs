@@ -927,6 +927,50 @@ async fn test_cart_line_item_snapshot_fields_surface_top_level() {
     assert_eq!(item["variant_sku"], "SNAP-L");
     assert_eq!(item["product_handle"], "snap-product");
     assert_eq!(item["product_description"], "A nice product");
+    assert!(
+        item["thumbnail"].is_null(),
+        "thumbnail should be null when product has no thumbnail"
+    );
+    assert_eq!(item["is_giftcard"], false);
+    assert_eq!(item["is_discountable"], true);
+    assert_eq!(item["requires_shipping"], true);
+}
+
+#[tokio::test]
+async fn test_cart_line_item_thumbnail_surfaces_from_product() {
+    let (app, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+    sqlx::query("INSERT INTO products (id, title, handle, status, thumbnail) VALUES ('prod_thumb', 'Thumb Product', 'thumb-product', 'published', 'https://img.test/thumb.jpg')")
+        .execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO product_variants (id, product_id, title, price) VALUES ('var_thumb', 'prod_thumb', 'V', 1000)")
+        .execute(&pool).await.unwrap();
+
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            "/store/carts",
+            &json!({"currency_code": "idr"}),
+        ))
+        .await
+        .unwrap();
+    let cart_id = body_json(res).await["cart"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let res = app
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/line-items", cart_id),
+            &json!({"variant_id": "var_thumb", "quantity": 1}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = body_json(res).await;
+    let item = &body["cart"]["items"].as_array().unwrap()[0];
+    assert_eq!(item["thumbnail"], "https://img.test/thumb.jpg");
 }
 
 #[tokio::test]

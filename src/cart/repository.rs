@@ -159,8 +159,9 @@ impl CartRepository {
                    p.id as product_id, p.title as product_title,
                    p.description as product_description, p.handle as product_handle,
                    p.subtitle as product_subtitle,
-                   p.discountable as product_discountable,
-                   p.is_giftcard as product_is_giftcard
+                    p.discountable as product_discountable,
+                    p.is_giftcard as product_is_giftcard,
+                    p.thumbnail as product_thumbnail
             FROM product_variants v
             JOIN products p ON p.id = v.product_id
             WHERE v.id = $1 AND v.deleted_at IS NULL AND p.deleted_at IS NULL
@@ -182,6 +183,7 @@ impl CartRepository {
         let product_subtitle: Option<String> = sqlx::Row::get(&row, "product_subtitle");
         let product_discountable: bool = sqlx::Row::get(&row, "product_discountable");
         let product_is_giftcard: bool = sqlx::Row::get(&row, "product_is_giftcard");
+        let product_thumbnail: Option<String> = sqlx::Row::get(&row, "product_thumbnail");
 
         let option_rows = sqlx::query(
             r#"
@@ -215,6 +217,7 @@ impl CartRepository {
             "product_handle": product_handle,
             "product_discountable": product_discountable,
             "product_is_giftcard": product_is_giftcard,
+            "product_thumbnail": product_thumbnail,
             "variant_title": variant_title,
             "variant_sku": variant_sku,
             "variant_option_values": variant_option_values,
