@@ -305,6 +305,14 @@ async fn test_contract_cart_response_shape() {
             "updated_at",
         ],
     );
+    assert!(
+        cart["completed_at"].is_null(),
+        "new cart completed_at must be null"
+    );
+    assert!(
+        cart.get("deleted_at").is_none(),
+        "cart must not expose deleted_at"
+    );
 }
 
 #[tokio::test]
