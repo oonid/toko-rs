@@ -261,3 +261,358 @@ Medusa carts include `region_id`, `sales_channel_id`, `locale`, `shipping_method
 | 12e.2 | Update integration tests for new error type values and response shapes |
 | 12e.3 | Verify `cargo test` passes, clippy clean |
 | 12e.4 | Update `docs/audit-correction.md` |
+
+---
+
+## Implementation Details
+
+## 12a. Post-Audit Response Shape Verification
+
+Completed 2026-04-09.
+
+**Audit source**: `docs/audit-p1-task12.md` — comprehensive comparison of toko-rs P1 implementation against Medusa vendor reference.
+
+### Context
+
+The audit report (`docs/audit-p1-task12.md`) identified three HIGH-severity response shape incompatibilities (H1, H2, H3). Upon inspection, all three were already correctly implemented in the codebase — the `tasks.md` had them as unchecked `[ ]` despite the code already matching Medusa's response shapes. This section documents the verification and strengthens the contract tests with negative assertions.
+
+### 12a.1: Line item DELETE response — `{ id, object, deleted, parent }`
+
+**Status**: Already implemented correctly.
+
+The `LineItemDeleteResponse` type in `src/cart/types.rs:42-48` already returns the Medusa-compatible shape:
+
+```rust
+pub struct LineItemDeleteResponse {
+    pub id: String,
+    pub object: String,        // "line-item"
+    pub deleted: bool,          // true
+    pub parent: CartWithItems,  // the updated cart
+}
+```
+
+The handler in `src/cart/routes.rs:74-85` constructs this correctly. The contract test `test_contract_line_item_delete_response_shape` verifies all 4 fields including nested `parent` shape.
+
+**Medusa reference**: `StoreLineItemDeleteResponse` = `DeleteResponseWithParent<"line-item", StoreCartResponse>` → `{ id, object: "line-item", deleted: true, parent: StoreCart }`.
+
+### 12a.2: Cart complete response — `{ type: "order", order }` only
+
+**Status**: Already implemented correctly. Strengthened with negative assertion.
+
+The `CartCompleteResponse` type in `src/order/types.rs:19-24` has exactly 2 fields:
+
+```rust
+pub struct CartCompleteResponse {
+    #[serde(rename = "type")]
+    pub response_type: String,  // "order"
+    pub order: OrderWithItems,
+}
+```
+
+No `payment` field exists. The audit report noted that a prior version had `payment` as a top-level field, but the current implementation does not.
+
+**Contract test strengthened**: `test_contract_order_complete_response_shape` now asserts:
+- Exactly 2 top-level keys (`type`, `order`)
+- `payment` key is NOT present
+
+**Medusa reference**: `StoreCompleteCartResponse` success case = `{ type: "order", order: StoreOrder }`. The error case `{ type: "cart", cart, error }` requires `payment_session` table (deferred to P2).
+
+### 12a.3: Order GET response — `{ order }` only
+
+**Status**: Already implemented correctly. Strengthened with negative assertion.
+
+The `OrderResponse` type in `src/order/types.rs:6-9` has exactly 1 field:
+
+```rust
+pub struct OrderResponse {
+    pub order: OrderWithItems,
+}
+```
+
+No `payment` field exists. The order object is a valid subset of Medusa's `StoreOrder` — missing optional fields (`payment_collections`, `fulfillments`, `shipping_methods`) that depend on deferred tables.
+
+**Contract test strengthened**: `test_contract_order_detail_response_shape` now asserts:
+- Exactly 1 top-level key (`order`)
+- `payment` key is NOT present
+
+**Medusa reference**: `StoreOrderResponse` = `{ order: StoreOrder }` where `payment_collections` is optional (`?`) on `StoreOrder`.
+
+### Files Changed
+
+| # | File | Change |
+|---|---|---|
+| 12a.1 | N/A | Already implemented — `LineItemDeleteResponse` in `src/cart/types.rs:42-48`, handler in `src/cart/routes.rs:74-85` |
+| 12a.2 | `tests/contract_test.rs` | Added negative assertion: cart complete response has exactly 2 keys, no `payment` |
+| 12a.3 | `tests/contract_test.rs` | Added negative assertion: order detail response has exactly 1 key, no `payment` |
+| — | `openspec/changes/implementation-p1-core-mvp/tasks.md` | Marked 12a.1–12a.3 as `[x]` |
+| — | `docs/audit-correction.md` | Added section 12a |
+
+### TDD Record (12a)
+
+1. **RED**: Added negative assertions to 2 contract tests (`test_contract_order_complete_response_shape`, `test_contract_order_detail_response_shape`) — assertions assert `payment` is absent and exact key count
+2. **GREEN**: Assertions pass immediately — code was already correct. No production code changes needed.
+3. **Verify**: 104 tests pass, clippy clean, zero warnings
+
+---
+
+## 12b. Post-Audit Error Handling Divergence Fixes
+
+Completed 2026-04-09.
+
+**Audit source**: `docs/audit-p1-task12.md` findings M1 and M4.
+
+### Context
+
+The audit identified two error handling divergences between toko-rs and Medusa:
+
+1. **M1**: `AppError::Conflict.error_type()` returned `"unexpected_state"` instead of `"conflict"`. Medusa's error handler (`error-handler.ts:47-49`) maps `MedusaError.Types.CONFLICT` to `type: "conflict"`. The previous audit (Task 7a.1) had intentionally changed FROM `"conflict"` TO `"unexpected_state"` based on the spec table, but direct comparison with Medusa's source shows the spec table was incorrect.
+
+2. **M4**: Empty cart completion returned `AppError::Conflict` (HTTP 409). An empty cart is an invalid request (client error), not a conflict (concurrent modification). Should be 400.
+
+### 12b.1: `AppError::Conflict.error_type()` — `"unexpected_state"` → `"conflict"`
+
+**Before:**
+```
+Conflict → 409, type: "unexpected_state", code: "invalid_state_error"
+```
+
+**After:**
+```
+Conflict → 409, type: "conflict", code: "invalid_state_error"
+```
+
+**Affected error sites** (all use `AppError::Conflict`):
+- `src/order/repository.rs:30` — cart already completed
+- `src/order/repository.rs:117` — display_id race condition
+- `src/cart/repository.rs:90` — cannot update completed cart
+- `src/cart/repository.rs:128` — cannot add item to completed cart
+
+**Medusa evidence**:
+- `vendor/medusa/packages/core/utils/src/common/errors.ts:16`: `CONFLICT: "conflict"`
+- `vendor/medusa/packages/core/framework/src/http/middlewares/error-handler.ts:47-49`: `case MedusaError.Types.CONFLICT: statusCode = 409; errObj.code = INVALID_STATE_ERROR;`
+
+### 12b.2: Empty cart completion — `Conflict` (409) → `InvalidData` (400)
+
+**Before:**
+```
+Empty cart completion → 409 Conflict, type: "unexpected_state", code: "invalid_state_error"
+```
+
+**After:**
+```
+Empty cart completion → 400 Bad Request, type: "invalid_data", code: "invalid_request_error"
+```
+
+An empty cart is semantically an invalid request — the client should not attempt to complete a cart with no items. A 409 Conflict implies concurrent modification or state race, which is not the case here.
+
+**Note**: Already-completed cart completion (line 30) and the completed-cart guards in cart repository remain as `AppError::Conflict` (409) — those are genuine state conflicts.
+
+### Updated Error Mapping Table (post 12b)
+
+| toko-rs Variant | HTTP Status | `type` | `code` |
+|---|---|---|---|
+| `NotFound` | 404 | `not_found` | `invalid_request_error` |
+| `InvalidData` | 400 | `invalid_data` | `invalid_request_error` |
+| `DuplicateError` | 422 | `duplicate_error` | `invalid_request_error` |
+| `Conflict` | 409 | **`conflict`** | `invalid_state_error` |
+| `Unauthorized` | 401 | `unauthorized` | `unknown_error` |
+| `UnexpectedState` | 500 | `unexpected_state` | `invalid_state_error` |
+| `DatabaseError` | 500 | `database_error` | `api_error` |
+| `MigrationError` | 500 | `database_error` | `api_error` |
+
+### Files Changed
+
+| # | File | Change |
+|---|---|---|
+| 12b.1 | `src/error.rs:58` | `error_type()` match arm: `"unexpected_state"` → `"conflict"` |
+| 12b.1 | `src/error.rs:170` | Unit test assertion updated |
+| 12b.1 | `tests/cart_test.rs:441` | Completed cart update: `"unexpected_state"` → `"conflict"` |
+| 12b.1 | `tests/contract_test.rs:689-694` | Completed cart contract: `"unexpected_state"` → `"conflict"` |
+| 12b.2 | `src/order/repository.rs:41` | `AppError::Conflict` → `AppError::InvalidData` |
+| 12b.2 | `tests/order_test.rs:127,129` | Empty cart: 409→400, `"unexpected_state"`→`"invalid_data"` |
+| 12b.2 | `tests/order_test.rs:364-393` | Renamed test + changed assertions: 409→400, `"unexpected_state"`→`"invalid_data"`, `"invalid_state_error"`→`"invalid_request_error"` |
+| 12b.2 | `tests/contract_test.rs:637-662` | Renamed test: `test_error_409_empty_cart_completion` → `test_error_400_empty_cart_completion`. Changed: 409→400, `"unexpected_state"`→`"invalid_data"`, `"invalid_state_error"`→`"invalid_request_error"` |
+| — | `openspec/changes/implementation-p1-core-mvp/tasks.md` | Marked 12b.1–12b.2 as `[x]` |
+| — | `docs/audit-correction.md` | Added section 12b |
+
+### TDD Record (12b)
+
+1. **RED**: Updated `src/error.rs:58` (production code for 12b.1 — single line, immediate effect). Updated all test assertions for both 12b.1 and 12b.2 in one pass. Ran `cargo test` — 1 failure confirmed (`test_error_400_empty_cart_completion` still getting 409 from production code).
+2. **GREEN**: Changed `src/order/repository.rs:41` from `AppError::Conflict` to `AppError::InvalidData`.
+3. **Verify**: 104 tests pass, clippy clean, zero warnings
+
+---
+
+## 12c. Post-Audit Database Schema Gap Fixes
+
+Completed 2026-04-09.
+
+**Audit source**: `docs/audit-p1-task12.md` findings M2, M3, L4.
+
+### 12c.1: SQLite `customers.email` uniqueness — column-level → partial composite index
+
+**Before (SQLite):**
+```sql
+email TEXT UNIQUE NOT NULL
+```
+
+**After (SQLite):**
+```sql
+email TEXT NOT NULL,
+-- ...
+CREATE UNIQUE INDEX uq_customers_email ON customers (email, has_account) WHERE deleted_at IS NULL;
+```
+
+Now matches the PG migration which has:
+```sql
+CONSTRAINT uq_customers_email UNIQUE (email, has_account) WHERE deleted_at IS NULL
+```
+
+**Why this matters**: Medusa allows the same email for both a guest and a registered customer (differentiated by `has_account`). The previous column-level `UNIQUE` blocked this. The partial composite index also excludes soft-deleted rows, allowing email reuse after deletion.
+
+**Medusa evidence**: `vendor/medusa/packages/modules/customer/src/models/customer.ts` defines `@Index({ name: "...", on: ["email", "has_account"], unique: true, where: "deleted_at IS NULL" })`.
+
+### 12c.2: `product_variant_option` pivot — composite unique constraint
+
+**Before (both PG and SQLite):**
+```sql
+CREATE TABLE product_variant_option (
+    id TEXT PRIMARY KEY,
+    variant_id TEXT NOT NULL REFERENCES product_variants(id) ON DELETE CASCADE,
+    option_value_id TEXT NOT NULL REFERENCES product_option_values(id) ON DELETE CASCADE
+);
+```
+
+**After (both PG and SQLite):**
+```sql
+CREATE TABLE product_variant_option (
+    id TEXT PRIMARY KEY,
+    variant_id TEXT NOT NULL REFERENCES product_variants(id) ON DELETE CASCADE,
+    option_value_id TEXT NOT NULL REFERENCES product_option_values(id) ON DELETE CASCADE,
+    CONSTRAINT uq_product_variant_option UNIQUE (variant_id, option_value_id)
+);
+```
+
+Prevents duplicate pivot rows where the same variant is bound to the same option value twice. The application code in `src/product/repository.rs` uses `resolve_variant_options_tx` which inserts one row per binding, but without this constraint a bug or race could produce duplicates.
+
+### 12c.3: `_sequences` table adopted for `display_id` generation
+
+**Before:**
+```sql
+SELECT COALESCE(MAX(display_id), 0) + 1 FROM orders
+```
+
+**After:**
+```sql
+UPDATE _sequences SET value = value + 1 WHERE name = 'order_display_id' RETURNING value
+```
+
+The `_sequences` table was created in migrations but never used — `create_from_cart` was using `MAX(display_id)+1` which has a race window between SELECT and INSERT under concurrent requests. The `map_display_id_conflict()` handler partially mitigated this by catching SQLite error code 2067, but produced a 409 error instead of seamless sequencing.
+
+The atomic `UPDATE ... RETURNING` runs inside the same transaction as the order INSERT — there is no gap between reading and writing the sequence value. Two concurrent transactions will serialize on the `_sequences` row lock (SQLite database-level locking), so the second transaction always sees the incremented value.
+
+**Files changed:**
+- `src/order/repository.rs:46-49` — replaced `SELECT COALESCE(MAX(display_id), 0) + 1 FROM orders` with `UPDATE _sequences SET value = value + 1 WHERE name = 'order_display_id' RETURNING value`
+
+**Note**: `map_display_id_conflict()` is retained as a safety net for the `display_id` UNIQUE constraint on the orders table.
+
+### Files Changed
+
+| # | File | Change |
+|---|---|---|
+| 12c.1 | `migrations/sqlite/002_customers.sql` | Removed column-level `UNIQUE`, added `CREATE UNIQUE INDEX uq_customers_email ON customers (email, has_account) WHERE deleted_at IS NULL` |
+| 12c.2 | `migrations/001_products.sql` | Added `CONSTRAINT uq_product_variant_option UNIQUE (variant_id, option_value_id)` to `product_variant_option` table |
+| 12c.2 | `migrations/sqlite/001_products.sql` | Same as PG |
+| 12c.3 | `migrations/004_orders.sql` | Removed `_sequences` table DDL and seed INSERT |
+| 12c.3 | `src/order/repository.rs:46-49` | Replaced `SELECT COALESCE(MAX(display_id), 0) + 1 FROM orders` with `UPDATE _sequences SET value = value + 1 WHERE name = 'order_display_id' RETURNING value` |
+| — | `openspec/changes/implementation-p1-core-mvp/tasks.md` | Marked 12c.1–12c.3 as `[x]` |
+| — | `docs/audit-correction.md` | Added section 12c |
+
+### TDD Record (12c)
+
+1. **RED**: N/A — migration-only changes; existing tests produce valid data. Constraints add safety net for edge cases not yet exercised by tests (guest+registered same email, duplicate pivot rows).
+2. **GREEN**: Applied all 3 migration fixes across 5 files.
+3. **Verify**: 104 tests pass, clippy clean, zero warnings
+
+---
+
+## 12d. Post-Audit Missing Index Additions
+
+Completed 2026-04-09.
+
+**Audit source**: `docs/audit-p1-task12.md` findings L1, L3.
+
+### Context
+
+The audit identified three missing performance indexes that Medusa defines on `cart_line_items` and `carts`. These indexes improve query performance when looking up line items by variant or product (used in `add_line_item`'s cross-cart variant lookup) and when filtering carts by currency.
+
+### Indexes Added
+
+| # | Index | Table | Columns | Partial? | Medusa Reference |
+|---|---|---|---|---|---|
+| 12d.1 | `idx_cart_line_items_variant_id` | `cart_line_items` | `(variant_id)` | `WHERE deleted_at IS NULL AND variant_id IS NOT NULL` | `IDX_line_item_variant_id` |
+| 12d.2 | `idx_cart_line_items_product_id` | `cart_line_items` | `(product_id)` | `WHERE deleted_at IS NULL AND product_id IS NOT NULL` | `IDX_line_item_product_id` |
+| 12d.3 | `idx_carts_currency_code` | `carts` | `(currency_code)` | `WHERE deleted_at IS NULL` | `IDX_cart_curency_code` |
+
+### Updated Cart Index Inventory (post 12d)
+
+| Index | PG | SQLite |
+|---|---|---|
+| `idx_carts_customer_id` partial | Yes | Yes |
+| `idx_cart_line_items_cart_id` partial | Yes | Yes |
+| `idx_cart_line_items_variant_id` partial | **Added** | **Added** |
+| `idx_cart_line_items_product_id` partial | **Added** | **Added** |
+| `idx_carts_currency_code` partial | **Added** | **Added** |
+
+### Files Changed
+
+| # | File | Change |
+|---|---|---|
+| 12d.1–12d.3 | `migrations/003_carts.sql` | Added 3 indexes |
+| 12d.1–12d.3 | `migrations/sqlite/003_carts.sql` | Added 3 indexes |
+| — | `openspec/changes/implementation-p1-core-mvp/tasks.md` | Marked 12d.1–12d.3 as `[x]` |
+| — | `docs/audit-correction.md` | Added section 12d |
+
+### TDD Record (12d)
+
+1. **RED**: N/A — migration-only changes; indexes improve performance without affecting query results.
+2. **GREEN**: Added 3 indexes to both PG and SQLite `003_carts.sql`.
+3. **Verify**: 104 tests pass, clippy clean, zero warnings
+
+---
+
+## 12e. Post-Audit Verification Pass
+
+Completed 2026-04-09.
+
+### Context
+
+After completing tasks 12a–12d, this section verifies that all contract and integration tests are consistent with the changes applied and that the test suite passes cleanly.
+
+### Verification Matrix
+
+| Change | Contract Test | Integration Test | Status |
+|---|---|---|---|
+| 12a.1 Line item DELETE `{id, object, deleted, parent}` | `test_contract_line_item_delete_response_shape` | `test_cart_full_flow` (step 5) | Consistent |
+| 12a.2 Cart complete `{type, order}` only | `test_contract_order_complete_response_shape` (2 keys, no `payment`) | `test_complete_cart_creates_order` | Consistent |
+| 12a.3 Order GET `{order}` only | `test_contract_order_detail_response_shape` (1 key, no `payment`) | `test_get_order_by_id` | Consistent |
+| 12b.1 Conflict `type: "conflict"` | `test_error_409_completed_cart_update` | `test_cart_update_completed_cart_rejected`, `test_cart_add_item_to_completed_cart_rejected`, `test_complete_already_completed_cart_rejected` | Consistent |
+| 12b.2 Empty cart → 400 `invalid_data` | `test_error_400_empty_cart_completion` | `test_complete_empty_cart_rejected`, `test_complete_empty_cart_returns_bad_request_format` | Consistent |
+| 12c.1 SQLite email partial index | Migration-only | N/A | No test change needed |
+| 12c.2 Pivot unique constraint | Migration-only | N/A | No test change needed |
+| 12c.3 `_sequences` adopted | N/A | `test_display_id_increments` | Consistent |
+| 12d.1–12d.3 Missing indexes | Migration-only | N/A | No test change needed |
+
+### Test Results
+
+- **104 tests pass** across 10 test suites (unit + integration)
+- **Clippy clean** — zero warnings with `-D warnings`
+- **No new test failures** introduced by 12a–12d
+
+### Files Changed
+
+| # | File | Change |
+|---|---|---|
+| — | `openspec/changes/implementation-p1-core-mvp/tasks.md` | Marked 12e.1–12e.4 as `[x]` |
+| — | `docs/audit-correction.md` | Added section 12e |
+
