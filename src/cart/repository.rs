@@ -27,8 +27,8 @@ impl CartRepository {
 
         let cart = sqlx::query_as::<_, Cart>(
             r#"
-            INSERT INTO carts (id, customer_id, email, currency_code, metadata)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO carts (id, customer_id, email, currency_code, shipping_address, billing_address, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING *
             "#,
         )
@@ -36,6 +36,8 @@ impl CartRepository {
         .bind(&input.customer_id)
         .bind(&input.email)
         .bind(&currency)
+        .bind(input.shipping_address.map(sqlx::types::Json))
+        .bind(input.billing_address.map(sqlx::types::Json))
         .bind(metadata_to_json(input.metadata))
         .fetch_one(&self.pool)
         .await?;
@@ -88,13 +90,17 @@ impl CartRepository {
                 email = COALESCE($1, email),
                 customer_id = COALESCE($2, customer_id),
                 metadata = COALESCE($3, metadata),
+                shipping_address = COALESCE($4, shipping_address),
+                billing_address = COALESCE($5, billing_address),
                 updated_at = CURRENT_TIMESTAMP
-            WHERE id = $4 AND deleted_at IS NULL AND completed_at IS NULL
+            WHERE id = $6 AND deleted_at IS NULL AND completed_at IS NULL
             "#,
         )
         .bind(&input.email)
         .bind(&input.customer_id)
         .bind(metadata_to_json(input.metadata))
+        .bind(input.shipping_address.map(sqlx::types::Json))
+        .bind(input.billing_address.map(sqlx::types::Json))
         .bind(cart_id)
         .execute(&self.pool)
         .await?;
@@ -293,6 +299,10 @@ impl CartRepository {
         line_id: &str,
         input: UpdateLineItemInput,
     ) -> Result<CartWithItems, AppError> {
+        if input.quantity == 0 {
+            return self.delete_line_item(cart_id, line_id).await;
+        }
+
         let cart =
             sqlx::query_as::<_, Cart>("SELECT * FROM carts WHERE id = $1 AND deleted_at IS NULL")
                 .bind(cart_id)

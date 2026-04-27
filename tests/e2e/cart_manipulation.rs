@@ -100,6 +100,8 @@ async fn test_e2e_cart_completed_guards() {
         .post_json(&format!("/store/carts/{}/complete", cart_id), &json!(null))
         .await;
     assert_eq!(resp.status(), 200);
+    let body = ctx.body(resp).await;
+    let order_id = body["order"]["id"].as_str().unwrap().to_string();
 
     // Attempt update cart → 400
     let resp = ctx
@@ -119,9 +121,11 @@ async fn test_e2e_cart_completed_guards() {
         .await;
     assert_eq!(resp.status(), 400);
 
-    // Attempt complete again → 400
+    // Attempt complete again → 200 (idempotent, returns same order)
     let resp = ctx
         .post_json(&format!("/store/carts/{}/complete", cart_id), &json!(null))
         .await;
-    assert_eq!(resp.status(), 400);
+    assert_eq!(resp.status(), 200);
+    let body = ctx.body(resp).await;
+    assert_eq!(body["order"]["id"], order_id);
 }

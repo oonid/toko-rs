@@ -7,7 +7,7 @@ pub struct Customer {
     pub id: String,
     pub first_name: Option<String>,
     pub last_name: Option<String>,
-    pub email: String,
+    pub email: Option<String>,
     pub phone: Option<String>,
     pub company_name: Option<String>,
     pub has_account: bool,

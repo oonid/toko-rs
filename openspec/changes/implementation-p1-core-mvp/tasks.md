@@ -929,3 +929,90 @@ Already present on both `UpdateProductInput` and `UpdateVariantInput`. No change
 - [x] 25e.3 Run `cargo clippy -- -D warnings` on both features — zero warnings
 - [x] 25e.4 Run `cargo fmt` — clean
 - [x] 25e.5 Update `docs/audit-master-checklist.md`
+
+---
+
+## Task 26: Eleventh Audit — P1 Medusa Compatibility Deep Audit (Post-108 Fixes)
+
+**Audit report**: `docs/audit-p1-task26.md`
+**Date**: 2026-04-26
+**Status**: Findings identified, pending implementation.
+
+### 26a. Revert quantity=0 removal — restore Medusa-compatible behavior (BUG-1)
+- [x] 26a.1 Revert `UpdateLineItemInput.quantity` from `range(min = 1)` back to `range(min = 0)`
+- [x] 26a.2 Restore `if input.quantity == 0 { return self.delete_line_item(...) }` branch in `update_line_item`
+- [x] 26a.3 Update `test_cart_full_flow` to use quantity=0 instead of DELETE
+- [x] 26a.4 Update test `test_cart_update_line_item_quantity_zero_rejected` to verify quantity=0 deletes item (renamed to `test_register_customer_without_email`)
+- [x] 26a.5 Run full test suite — 192 pass
+
+### 26b. Make `CreateCustomerInput.email` optional (BUG-2)
+- [x] 26b.1 Change `email: String` to `email: Option<String>` in `CreateCustomerInput`
+- [x] 26b.2 Update repository `create` to handle `None` (insert NULL)
+- [x] 26b.3 Changed `customers.email` from `NOT NULL` to nullable in both PG and SQLite migrations
+- [x] 26b.4 Changed `Customer.email` from `String` to `Option<String>` in model
+- [x] 26b.5 Updated test: `test_register_customer_missing_email` → `test_register_customer_without_email` (now succeeds)
+- [x] 26b.6 Run full test suite — 192 pass
+
+### 26c. Accept string "true"/"false" for `is_giftcard`/`discountable` (BUG-3)
+- [x] 26c.1 Add `bool_or_string::deserialize` helper in `src/types.rs`
+- [x] 26c.2 Apply to `is_giftcard` and `discountable` on `CreateProductInput` and `UpdateProductInput`
+- [x] 26c.3 Existing test `test_create_product_accepts_is_giftcard_and_discountable` verifies boolean input
+- [x] 26c.4 Existing test `test_update_product_accepts_is_giftcard_and_discountable` still works
+- [x] 26c.5 Run full test suite — 192 pass
+
+### 26d. Add nested `option` object to variant options (HIGH-1)
+- [x] 26d.1 Add `NestedOption { id: String, title: String }` struct to `src/product/models.rs`
+- [x] 26d.2 Add `option: NestedOption` (required, not Optional) to `VariantOptionValue`
+- [x] 26d.3 Remove flat `option_id` field — replaced by nested `option: { id, title }`
+- [x] 26d.4 Populate `option` from `load_variant_options` query (JOINs `product_options`)
+- [x] 26d.5 Existing tests still pass — they only assert `.value`, not `.option_id`
+- [x] 26d.6 Run full test suite — 192 tests pass, clippy clean
+
+### 26e. Add address fields to cart input types (HIGH-2)
+- [x] 26e.1 Add `shipping_address: Option<serde_json::Value>` to `CreateCartInput` and `UpdateCartInput`
+- [x] 26e.2 Add `billing_address: Option<serde_json::Value>` to both types
+- [x] 26e.3 Write address values to existing JSONB columns in repository (create + update queries)
+- [x] 26e.4 Add test: `test_cart_create_with_shipping_address`
+- [x] 26e.5 Add test: `test_cart_update_billing_address`
+- [x] 26e.6 Verify address preserved on cart→order completion (enhanced `test_cart_metadata_and_address_copied_to_order`)
+- [x] 26e.7 Run full test suite — 194 tests pass, clippy clean
+
+### 26f. Add cart completion idempotency check (HIGH-3)
+- [x] 26f.1 Add `cart_id TEXT UNIQUE` column to `orders` table in both PG and SQLite migrations (with index)
+- [x] 26f.2 Add `cart_id: Option<String>` to `Order` model
+- [x] 26f.3 In `create_from_cart`: after cart lock, query for existing order with `cart_id` before creating; also check when cart already completed
+- [x] 26f.4 If existing order found, return it instead of creating new one (both concurrent and sequential retry paths)
+- [x] 26f.5 Add test: `test_cart_completion_retry_returns_same_order` + updated `test_complete_already_completed_cart_is_idempotent` + updated concurrent test
+- [x] 26f.6 Run full test suite — 195 tests pass, clippy clean
+
+### 26g. Add `currency_code` to `CalculatedPrice` (MEDIUM-1)
+- [x] 26g.1 Add `currency_code: String` to `CalculatedPrice` in `src/product/models.rs`
+- [x] 26g.2 Populate from `ProductRepository.default_currency_code` (added field, wired from `db.rs`)
+- [x] 26g.3 Existing contract tests pass (currency_code appears in variant response)
+- [x] 26g.4 Run full test suite — 195 tests pass, clippy clean
+
+### 26h. Add `credit_line_*` fields and missing cart/order totals (MEDIUM-2, MEDIUM-5, MEDIUM-6)
+- [x] 26h.1 Add `credit_line_total`, `credit_line_subtotal`, `credit_line_tax_total` to `CartWithItems` (all default 0)
+- [x] 26h.2 Add `discount_subtotal`, `shipping_discount_total`, `original_shipping_discount_total` to `CartWithItems` (all default 0)
+- [x] 26h.3 Add same `credit_line_*` fields to `OrderWithItems`
+- [x] 26h.4 Add `discount_subtotal` to `OrderWithItems`
+- [x] 26h.5 Existing contract tests pass (new fields serialized in JSON responses)
+- [x] 26h.6 Run full test suite — 195 tests pass, clippy clean
+
+### 26i. Add `provider` index on `payment_records` (MEDIUM-7)
+- [x] 26i.1 Add `CREATE INDEX idx_payment_records_provider ON payment_records (provider)` to PG migration
+- [x] 26i.2 Add same to SQLite migration
+- [x] 26i.3 Run full test suite — 195 tests pass
+
+### 26j. Add `id` and `status` filters to `ListOrdersParams` (MEDIUM-9)
+- [x] 26j.1 Add `id: Option<String>` and `status: Option<String>` to `ListOrdersParams`
+- [x] 26j.2 Update `list_by_customer` repository query with dynamic WHERE clauses
+- [x] 26j.3 Add tests: `test_list_orders_filter_by_id`, `test_list_orders_filter_by_status`
+- [x] 26j.4 Run full test suite — 197 tests pass, clippy clean
+
+### 26k. Verification pass
+- [x] 26k.1 Run full test suite on SQLite — 197 passed, 0 failed
+- [x] 26k.2 Run full test suite on PostgreSQL — 197 passed, 0 failed
+- [x] 26k.3 Run `cargo clippy -- -D warnings` on both features — clean
+- [x] 26k.4 Run `cargo fmt --check` — fixed and applied
+- [x] 26k.5 Update `docs/audit-master-checklist.md`

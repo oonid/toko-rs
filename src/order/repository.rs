@@ -30,6 +30,24 @@ impl OrderRepository {
         .ok_or_else(|| AppError::NotFound("Cart not found".into()))?;
 
         if cart.completed_at.is_some() {
+            let existing: Option<Order> =
+                sqlx::query_as("SELECT * FROM orders WHERE cart_id = $1 AND deleted_at IS NULL")
+                    .bind(cart_id)
+                    .fetch_optional(&mut *tx)
+                    .await?;
+
+            if let Some(order) = existing {
+                let items = sqlx::query_as::<_, OrderLineItem>(
+                    "SELECT * FROM order_line_items WHERE order_id = $1 AND deleted_at IS NULL",
+                )
+                .bind(&order.id)
+                .fetch_all(&mut *tx)
+                .await?;
+
+                tx.commit().await?;
+                return Ok(OrderWithItems::from_items(order, items));
+            }
+
             return Err(AppError::InvalidData("Cart is already completed".into()));
         }
 
@@ -60,6 +78,29 @@ impl OrderRepository {
             ));
         }
 
+        let existing: Option<Order> =
+            sqlx::query_as("SELECT * FROM orders WHERE cart_id = $1 AND deleted_at IS NULL")
+                .bind(cart_id)
+                .fetch_optional(&mut *tx)
+                .await?;
+
+        if let Some(order) = existing {
+            let items = sqlx::query_as::<_, OrderLineItem>(
+                "SELECT * FROM order_line_items WHERE order_id = $1 AND deleted_at IS NULL",
+            )
+            .bind(&order.id)
+            .fetch_all(&mut *tx)
+            .await?;
+
+            sqlx::query("UPDATE carts SET completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = $1")
+                .bind(cart_id)
+                .execute(&mut *tx)
+                .await?;
+
+            tx.commit().await?;
+            return Ok(OrderWithItems::from_items(order, items));
+        }
+
         let display_id: (i64,) = sqlx::query_as(
             "UPDATE _sequences SET value = value + 1 WHERE name = 'order_display_id' RETURNING value",
         )
@@ -69,14 +110,15 @@ impl OrderRepository {
         let order_id = generate_entity_id("order");
         let order = sqlx::query_as::<_, Order>(
             r#"
-            INSERT INTO orders (id, display_id, customer_id, email, currency_code, status,
+            INSERT INTO orders (id, display_id, cart_id, customer_id, email, currency_code, status,
                                 shipping_address, billing_address, metadata)
-            VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7, $8)
+            VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, $8, $9)
             RETURNING *
             "#,
         )
         .bind(&order_id)
         .bind(display_id.0)
+        .bind(cart_id)
         .bind(&cart.customer_id)
         .bind(&cart.email)
         .bind(&cart.currency_code)
@@ -155,21 +197,59 @@ impl OrderRepository {
         customer_id: &str,
         params: &ListOrdersParams,
     ) -> Result<(Vec<OrderWithItems>, i64), AppError> {
-        let count: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM orders WHERE customer_id = $1 AND deleted_at IS NULL",
-        )
-        .bind(customer_id)
-        .fetch_one(&self.pool)
-        .await?;
+        let mut where_parts = vec![
+            "customer_id = $1".to_string(),
+            "deleted_at IS NULL".to_string(),
+        ];
+        let mut idx = 2u32;
 
-        let orders = sqlx::query_as::<_, Order>(
-            "SELECT * FROM orders WHERE customer_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT $2 OFFSET $3",
-        )
-        .bind(customer_id)
-        .bind(params.capped_limit())
-        .bind(params.offset)
-        .fetch_all(&self.pool)
-        .await?;
+        let id_filter = if let Some(ref id) = params.id {
+            where_parts.push(format!("id = ${}", idx));
+            idx += 1;
+            Some(id.clone())
+        } else {
+            None
+        };
+
+        let status_filter = if let Some(ref status) = params.status {
+            where_parts.push(format!("status = ${}", idx));
+            idx += 1;
+            Some(status.clone())
+        } else {
+            None
+        };
+
+        let where_sql = where_parts.join(" AND ");
+
+        let count_sql = format!("SELECT COUNT(*) FROM orders WHERE {}", where_sql);
+        let query_sql = format!(
+            "SELECT * FROM orders WHERE {} ORDER BY created_at DESC LIMIT ${} OFFSET ${}",
+            where_sql,
+            idx,
+            idx + 1
+        );
+
+        let mut count_q = sqlx::query_as::<_, (i64,)>(&count_sql);
+        count_q = count_q.bind(customer_id);
+        if let Some(ref v) = id_filter {
+            count_q = count_q.bind(v);
+        }
+        if let Some(ref v) = status_filter {
+            count_q = count_q.bind(v);
+        }
+        let count = count_q.fetch_one(&self.pool).await?;
+
+        let mut data_q = sqlx::query_as::<_, Order>(&query_sql);
+        data_q = data_q.bind(customer_id);
+        if let Some(ref v) = id_filter {
+            data_q = data_q.bind(v);
+        }
+        if let Some(ref v) = status_filter {
+            data_q = data_q.bind(v);
+        }
+        data_q = data_q.bind(params.capped_limit());
+        data_q = data_q.bind(params.offset);
+        let orders = data_q.fetch_all(&self.pool).await?;
 
         let mut result = Vec::with_capacity(orders.len());
         for order in orders {

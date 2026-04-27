@@ -13,3 +13,4 @@ CREATE TABLE payment_records (
 
 CREATE INDEX idx_payment_records_order_id ON payment_records (order_id);
 CREATE INDEX idx_payment_records_status ON payment_records (status);
+CREATE INDEX idx_payment_records_provider ON payment_records (provider);

@@ -65,7 +65,7 @@ async fn test_register_customer_duplicate_email() {
 }
 
 #[tokio::test]
-async fn test_register_customer_missing_email() {
+async fn test_register_customer_without_email() {
     let (app, _) = setup_test_app().await;
     let payload = json!({"first_name": "Budi"});
     let req = Request::builder()
@@ -75,10 +75,10 @@ async fn test_register_customer_missing_email() {
         .body(Body::from(payload.to_string()))
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
-    assert!(
-        resp.status() == StatusCode::BAD_REQUEST
-            || resp.status() == StatusCode::UNPROCESSABLE_ENTITY
-    );
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body["customer"]["first_name"], "Budi");
+    assert!(body["customer"]["email"].is_null());
 }
 
 #[tokio::test]

@@ -132,12 +132,12 @@ async fn test_complete_empty_cart_rejected() {
 }
 
 #[tokio::test]
-async fn test_complete_already_completed_cart_rejected() {
+async fn test_complete_already_completed_cart_is_idempotent() {
     let (app, db) = common::setup_test_app().await;
     let pool = db.pool.clone();
     let cart_id = create_cart_with_item(&app, &pool).await;
 
-    let res = app
+    let res1 = app
         .clone()
         .oneshot(request(
             Method::POST,
@@ -146,9 +146,13 @@ async fn test_complete_already_completed_cart_rejected() {
         ))
         .await
         .unwrap();
-    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res1.status(), StatusCode::OK);
+    let order_id1 = body_json(res1).await["order"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
-    let res = app
+    let res2 = app
         .oneshot(request(
             Method::POST,
             &format!("/store/carts/{}/complete", cart_id),
@@ -156,7 +160,15 @@ async fn test_complete_already_completed_cart_rejected() {
         ))
         .await
         .unwrap();
-    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(res2.status(), StatusCode::OK);
+    let order_id2 = body_json(res2).await["order"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_eq!(
+        order_id1, order_id2,
+        "idempotent retry should return same order"
+    );
 }
 
 #[tokio::test]
@@ -480,6 +492,8 @@ async fn test_payment_repo_create_and_find() {
         customer_id: None,
         email: None,
         currency_code: Some("idr".to_string()),
+        shipping_address: None,
+        billing_address: None,
         metadata: None,
     };
     let cart = cart_repo.create_cart(input).await.unwrap();
@@ -543,6 +557,7 @@ async fn test_cart_complete_error_response_type() {
             toko_rs::order::models::Order {
                 id: "order_test".into(),
                 display_id: 1,
+                cart_id: None,
                 customer_id: None,
                 email: None,
                 currency_code: "idr".into(),
@@ -683,13 +698,18 @@ async fn test_concurrent_cart_completion_only_one_succeeds() {
     let s1 = r1.status();
     let s2 = r2.status();
 
-    let rejected = StatusCode::BAD_REQUEST;
-    let one_ok =
-        (s1 == StatusCode::OK && s2 == rejected) || (s1 == rejected && s2 == StatusCode::OK);
     assert!(
-        one_ok,
-        "expected one 200 and one 400, got {} and {}",
-        s1, s2
+        s1 == StatusCode::OK && s2 == StatusCode::OK,
+        "both completions should succeed (idempotent), got {} and {}",
+        s1,
+        s2
+    );
+
+    let b1 = body_json(r1).await;
+    let b2 = body_json(r2).await;
+    assert_eq!(
+        b1["order"]["id"], b2["order"]["id"],
+        "both should return the same order"
     );
 
     let order_count: (i64,) =
@@ -701,6 +721,48 @@ async fn test_concurrent_cart_completion_only_one_succeeds() {
         order_count.0, 1,
         "only one order should be created for the cart"
     );
+}
+
+#[tokio::test]
+async fn test_cart_completion_retry_returns_same_order() {
+    let (app, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+    let cart_id = create_cart_with_item(&app, &pool).await;
+
+    let res1 = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/complete", cart_id),
+            &json!(null),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res1.status(), StatusCode::OK);
+    let body1 = body_json(res1).await;
+    let order_id1 = body1["order"]["id"].as_str().unwrap().to_string();
+
+    let res2 = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/complete", cart_id),
+            &json!(null),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res2.status(), StatusCode::OK);
+    let body2 = body_json(res2).await;
+    let order_id2 = body2["order"]["id"].as_str().unwrap().to_string();
+
+    assert_eq!(order_id1, order_id2, "retry should return the same order");
+
+    let order_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM orders WHERE cart_id = $1")
+        .bind(&cart_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(order_count.0, 1, "only one order should exist for the cart");
 }
 
 #[tokio::test]
@@ -776,6 +838,8 @@ async fn test_cart_metadata_and_address_copied_to_order() {
             &format!("/store/carts/{}", cart_id),
             &json!({
                 "metadata": {"order_note": "gift wrap please"},
+                "shipping_address": {"city": "Jakarta", "country_code": "id"},
+                "billing_address": {"city": "Bandung", "country_code": "id"},
             }),
         ))
         .await
@@ -823,4 +887,181 @@ async fn test_cart_metadata_and_address_copied_to_order() {
             .unwrap();
     let li_meta = line_item.0.unwrap().0;
     assert_eq!(li_meta["engraving"], "ABC");
+
+    let order_addr: (
+        Option<sqlx::types::Json<serde_json::Value>>,
+        Option<sqlx::types::Json<serde_json::Value>>,
+    ) = sqlx::query_as("SELECT shipping_address, billing_address FROM orders WHERE id = $1")
+        .bind(order_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let ship = order_addr.0.unwrap().0;
+    assert_eq!(ship["city"], "Jakarta");
+    let bill = order_addr.1.unwrap().0;
+    assert_eq!(bill["city"], "Bandung");
+}
+
+#[tokio::test]
+async fn test_list_orders_filter_by_id() {
+    let (app, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+
+    sqlx::query("INSERT INTO customers (id, first_name, email, has_account) VALUES ('cus_fid', 'Filter', 'fid@test.com', TRUE)")
+        .execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO products (id, title, handle, status) VALUES ('prod_fid', 'Filter', 'filter', 'published')")
+        .execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO product_variants (id, product_id, title, price) VALUES ('var_fid', 'prod_fid', 'V', 500)")
+        .execute(&pool).await.unwrap();
+
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            "/store/carts",
+            &json!({"currency_code": "idr", "customer_id": "cus_fid"}),
+        ))
+        .await
+        .unwrap();
+    let cart_id = body_json(res).await["cart"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    app.clone()
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/line-items", cart_id),
+            &json!({"variant_id": "var_fid", "quantity": 1}),
+        ))
+        .await
+        .unwrap();
+
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/complete", cart_id),
+            &json!(null),
+        ))
+        .await
+        .unwrap();
+    let order_id = body_json(res).await["order"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri(&format!("/store/orders?id={}", order_id))
+                .header("X-Customer-Id", "cus_fid")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = body_json(res).await;
+    assert_eq!(body["count"], 1);
+    assert_eq!(body["orders"].as_array().unwrap().len(), 1);
+    assert_eq!(body["orders"][0]["id"], order_id.as_str());
+
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri("/store/orders?id=nonexistent_id")
+                .header("X-Customer-Id", "cus_fid")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = body_json(res).await;
+    assert_eq!(body["count"], 0);
+    assert_eq!(body["orders"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn test_list_orders_filter_by_status() {
+    let (app, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+
+    sqlx::query("INSERT INTO customers (id, first_name, email, has_account) VALUES ('cus_fst', 'Status', 'fst@test.com', TRUE)")
+        .execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO products (id, title, handle, status) VALUES ('prod_fst', 'Status', 'status-test', 'published')")
+        .execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO product_variants (id, product_id, title, price) VALUES ('var_fst', 'prod_fst', 'V', 500)")
+        .execute(&pool).await.unwrap();
+
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            "/store/carts",
+            &json!({"currency_code": "idr", "customer_id": "cus_fst"}),
+        ))
+        .await
+        .unwrap();
+    let cart_id = body_json(res).await["cart"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    app.clone()
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/line-items", cart_id),
+            &json!({"variant_id": "var_fst", "quantity": 1}),
+        ))
+        .await
+        .unwrap();
+
+    app.clone()
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/complete", cart_id),
+            &json!(null),
+        ))
+        .await
+        .unwrap();
+
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri("/store/orders?status=pending")
+                .header("X-Customer-Id", "cus_fst")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = body_json(res).await;
+    assert_eq!(body["count"], 1);
+    assert_eq!(body["orders"][0]["status"], "pending");
+
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri("/store/orders?status=canceled")
+                .header("X-Customer-Id", "cus_fst")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = body_json(res).await;
+    assert_eq!(body["count"], 0);
+    assert_eq!(body["orders"].as_array().unwrap().len(), 0);
 }

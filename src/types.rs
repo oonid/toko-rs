@@ -85,6 +85,58 @@ pub fn default_limit() -> i64 {
     50
 }
 
+#[allow(dead_code)]
+pub mod bool_or_string {
+    use serde::de;
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<bool>, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct BoolOrString;
+
+        impl<'de> serde::de::Visitor<'de> for BoolOrString {
+            type Value = Option<bool>;
+
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str("a boolean, a string \"true\"/\"false\", or null")
+            }
+
+            fn visit_bool<E: de::Error>(self, v: bool) -> Result<Self::Value, E> {
+                Ok(Some(v))
+            }
+
+            fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+                match v {
+                    "true" => Ok(Some(true)),
+                    "false" => Ok(Some(false)),
+                    _ => Err(de::Error::custom(format!(
+                        "invalid boolean string: \"{}\"",
+                        v
+                    ))),
+                }
+            }
+
+            fn visit_none<E: de::Error>(self) -> Result<Self::Value, E> {
+                Ok(None)
+            }
+
+            fn visit_unit<E: de::Error>(self) -> Result<Self::Value, E> {
+                Ok(None)
+            }
+
+            fn visit_some<D2: serde::Deserializer<'de>>(
+                self,
+                deserializer: D2,
+            ) -> Result<Self::Value, D2::Error> {
+                deserializer.deserialize_any(self)
+            }
+        }
+
+        deserializer.deserialize_any(BoolOrString)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

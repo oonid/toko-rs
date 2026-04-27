@@ -10,6 +10,8 @@ pub struct CreateCartInput {
     pub email: Option<String>,
     #[validate(length(min = 3, max = 3))]
     pub currency_code: Option<String>,
+    pub shipping_address: Option<serde_json::Value>,
+    pub billing_address: Option<serde_json::Value>,
     pub metadata: Option<HashMap<String, serde_json::Value>>,
 }
 
@@ -19,6 +21,8 @@ pub struct UpdateCartInput {
     pub customer_id: Option<String>,
     #[validate(email)]
     pub email: Option<String>,
+    pub shipping_address: Option<serde_json::Value>,
+    pub billing_address: Option<serde_json::Value>,
     pub metadata: Option<HashMap<String, serde_json::Value>>,
 }
 
@@ -33,7 +37,7 @@ pub struct AddLineItemInput {
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct UpdateLineItemInput {
-    #[validate(range(min = 1, message = "Quantity must be at least 1"))]
+    #[validate(range(min = 0, message = "Quantity must be at least 0"))]
     pub quantity: i64,
     pub metadata: Option<HashMap<String, serde_json::Value>>,
 }
