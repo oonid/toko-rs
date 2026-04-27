@@ -61,6 +61,10 @@ pub struct CartLineItem {
     #[sqlx(skip)]
     pub variant_option_values: Option<serde_json::Value>,
     #[sqlx(skip)]
+    pub thumbnail: Option<String>,
+    #[sqlx(skip)]
+    pub is_giftcard: bool,
+    #[sqlx(skip)]
     pub item_total: i64,
     #[sqlx(skip)]
     pub item_subtotal: i64,
@@ -153,6 +157,14 @@ impl CartWithItems {
                     .and_then(|v| v.as_str())
                     .map(String::from);
                 item.variant_option_values = s.get("variant_option_values").cloned();
+                item.thumbnail = s
+                    .get("product_thumbnail")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                item.is_giftcard = s
+                    .get("product_is_giftcard")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
                 item.is_discountable = s
                     .get("product_discountable")
                     .and_then(|v| v.as_bool())

@@ -15,6 +15,10 @@ pub struct Product {
     pub metadata: Option<sqlx::types::Json<serde_json::Value>>,
     pub is_giftcard: bool,
     pub discountable: bool,
+    #[sqlx(skip)]
+    pub collection_id: Option<String>,
+    #[sqlx(skip)]
+    pub type_id: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub deleted_at: Option<DateTime<Utc>>,
