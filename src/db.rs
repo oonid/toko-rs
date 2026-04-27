@@ -169,6 +169,7 @@ pub(crate) fn serialization_failure_code() -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sqlx::error::DatabaseError;
 
     fn test_db_url() -> String {
         #[cfg(feature = "postgres")]
@@ -256,6 +257,35 @@ mod tests {
         assert!(!is_fk_violation(&err));
         assert!(!is_not_null_violation(&err));
         assert!(!is_serialization_failure(&err));
+    }
+
+    #[test]
+    fn test_test_db_error_trait_methods() {
+        let err = TestDbError {
+            code: Some("23505".into()),
+            message: "test error".into(),
+        };
+        assert!(err.constraint().is_none());
+        assert_eq!(err.kind(), sqlx::error::ErrorKind::Other);
+        let _: &(dyn std::error::Error + Send + Sync + 'static) = err.as_error();
+        let mut err2 = TestDbError {
+            code: None,
+            message: "m".into(),
+        };
+        let _: &mut (dyn std::error::Error + Send + Sync + 'static) = err2.as_error_mut();
+        let boxed: Box<TestDbError> = Box::new(err2);
+        let _: Box<dyn std::error::Error + Send + Sync + 'static> = boxed.into_error();
+    }
+
+    #[test]
+    fn test_test_db_error_display_and_debug() {
+        let err = TestDbError {
+            code: Some("x".into()),
+            message: "hello".into(),
+        };
+        assert_eq!(format!("{}", err), "hello");
+        let debug_str = format!("{:?}", err);
+        assert!(debug_str.contains("TestDbError"));
     }
 }
 

@@ -307,4 +307,28 @@ mod tests {
         let result = map_db_constraint(e);
         assert!(matches!(result, AppError::DatabaseError(_)));
     }
+
+    #[test]
+    fn test_map_db_constraint_unique_violation() {
+        use crate::db::{unique_violation_code, TestDbError};
+        let db_err = sqlx::Error::Database(Box::new(TestDbError {
+            code: Some(unique_violation_code().to_string()),
+            message: "dup".into(),
+            ..Default::default()
+        }));
+        let result = map_db_constraint(db_err);
+        assert!(matches!(result, AppError::DuplicateError(_)));
+    }
+
+    #[test]
+    fn test_map_db_constraint_fk_violation() {
+        use crate::db::{fk_violation_code, TestDbError};
+        let db_err = sqlx::Error::Database(Box::new(TestDbError {
+            code: Some(fk_violation_code().to_string()),
+            message: "fk".into(),
+            ..Default::default()
+        }));
+        let result = map_db_constraint(db_err);
+        assert!(matches!(result, AppError::NotFound(_)));
+    }
 }

@@ -158,4 +158,74 @@ mod tests {
         assert!(validate_order_param("nonexistent_column ASC").is_err());
         assert!(validate_order_param("created_at INVALID").is_err());
     }
+
+    #[test]
+    fn test_validate_order_param_single_column() {
+        assert_eq!(validate_order_param("created_at").unwrap(), "created_at");
+        assert_eq!(validate_order_param("title").unwrap(), "title");
+    }
+
+    #[test]
+    fn test_validate_order_param_empty_clause() {
+        assert!(validate_order_param("  ,  ").is_err());
+    }
+
+    #[test]
+    fn test_bool_or_string_from_bool() {
+        #[derive(Deserialize)]
+        struct Test {
+            #[serde(default, deserialize_with = "bool_or_string::deserialize")]
+            val: Option<bool>,
+        }
+        let t: Test = serde_json::from_str(r#"{"val": true}"#).unwrap();
+        assert_eq!(t.val, Some(true));
+        let t: Test = serde_json::from_str(r#"{"val": false}"#).unwrap();
+        assert_eq!(t.val, Some(false));
+    }
+
+    #[test]
+    fn test_bool_or_string_from_str() {
+        #[derive(Deserialize)]
+        struct Test {
+            #[serde(default, deserialize_with = "bool_or_string::deserialize")]
+            val: Option<bool>,
+        }
+        let t: Test = serde_json::from_str(r#"{"val": "true"}"#).unwrap();
+        assert_eq!(t.val, Some(true));
+        let t: Test = serde_json::from_str(r#"{"val": "false"}"#).unwrap();
+        assert_eq!(t.val, Some(false));
+    }
+
+    #[test]
+    fn test_bool_or_string_invalid_str() {
+        #[derive(Deserialize)]
+        struct Test {
+            #[serde(default, deserialize_with = "bool_or_string::deserialize")]
+            val: Option<bool>,
+        }
+        let result: Result<Test, _> = serde_json::from_str(r#"{"val": "yes"}"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_bool_or_string_null() {
+        #[derive(Deserialize)]
+        struct Test {
+            #[serde(default, deserialize_with = "bool_or_string::deserialize")]
+            val: Option<bool>,
+        }
+        let t: Test = serde_json::from_str(r#"{"val": null}"#).unwrap();
+        assert_eq!(t.val, None);
+    }
+
+    #[test]
+    fn test_bool_or_string_absent() {
+        #[derive(Deserialize)]
+        struct Test {
+            #[serde(default, deserialize_with = "bool_or_string::deserialize")]
+            val: Option<bool>,
+        }
+        let t: Test = serde_json::from_str(r#"{}"#).unwrap();
+        assert_eq!(t.val, None);
+    }
 }
