@@ -1,8 +1,8 @@
 # P1 Medusa Compatibility — Master Checklist
 
-Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24}.md` and `docs/audit-correction.md` into a single reference. Every item is tagged with its source audit, status, and where it was fixed (or why it was deferred).
+Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25,26}.md` and `docs/audit-correction.md` into a single reference. Every item is tagged with its source audit, status, and where it was fixed (or why it was deferred).
 
-**Last verified**: 2026-04-24 — 192 tests pass on both SQLite and PostgreSQL, clippy clean on both features, fmt clean.
+**Last verified**: 2026-04-27 — 197 tests pass on both SQLite and PostgreSQL, clippy clean on both features, fmt clean. Eleventh audit (Task 26) findings fully implemented.
 
 ---
 
@@ -36,6 +36,9 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24}.m
 | 24 | T24 BUG-4 | `AddLineItemInput.variant_id` accepted empty string | Added `#[validate(length(min = 1))]` | 24d |
 | 25 | T24 BUG-5 | `UpdateLineItemInput.quantity` allowed 0 — meaningless zero-quantity items persisted | Changed to `range(min = 1)`; clients must use DELETE endpoint | 24e |
 | 26 | T25 BUG-1 | Order line item ID prefix `"oli"` should be `"ordli"` per Medusa convention | Changed prefix in `src/order/repository.rs` | 25a |
+| 27 | T26 BUG-1 | `UpdateLineItemInput.quantity` range(min=1) rejected 0, but Medusa uses gte(0) — 0 is a removal signal | Reverted to `range(min=0)` and restored `quantity==0→delete` branch | 26a |
+| 28 | T26 BUG-2 | `CreateCustomerInput.email` was required but Medusa's `StoreCreateCustomer` has `email: z.string().email().nullish()` (optional) | Changed to `Option<String>` in types, model, and both PG/SQLite migrations | 26b |
+| 29 | T26 BUG-3 | `is_giftcard`/`discountable` only accepted JSON boolean, but Medusa uses `booleanString()` accepting `"true"`/`"false"` strings | Custom `bool_or_string::deserialize` serde deserializer with `deserialize_any` + `Visitor` | 26c |
 
 ---
 
@@ -60,6 +63,9 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24}.m
 | 30 | T19 S12 | Line-item snapshot fields not surfaced in response | Added top-level fields from snapshot JSON | 19k |
 | 31 | T20 F3 | Missing per-item totals on line items (`item_total`, `subtotal`, etc.) | 12 `#[sqlx(skip)]` fields per line item, computed in `from_items()` | 20f |
 | 32 | T21 S4 | Internal `snapshot` field leaked to API responses on cart and order line items | Added `#[serde(skip)]` to `snapshot` on `CartLineItem` and `OrderLineItem` | 21c |
+| 33 | T26 HIGH-1 | Variant options had flat `{id, value, option_id}` — Medusa nests as `{id, value, option: {id, title}}` | `NestedOption` struct + updated query to JOIN `product_options` | 26d |
+| 34 | T26 MEDIUM-1 | `CalculatedPrice` missing `currency_code` | Added `currency_code: String` field, populated from `ProductRepository.default_currency_code` | 26g |
+| 35 | T26 MEDIUM-2,5,6 | Missing `credit_line_*` totals and `discount_subtotal` on cart/order | Added 7 fields to `CartWithItems`, 4 fields to `OrderWithItems` (all default 0) | 26h |
 
 ---
 
@@ -74,6 +80,8 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24}.m
 | 36 | T20 F1a | `CreateProductInput` missing `is_giftcard`, `discountable`, `subtitle` | Added to create/update inputs | 20d |
 | 37 | T20 F1b | `CreateProductVariantInput` missing `variant_rank` | Added `variant_rank: Option<i64>` | 20d |
 | 38 | T21 I1 | `deny_unknown_fields` on 5 types that Medusa doesn't use `.strict()` on — SDK clients rejected | Removed from `CreateProductOptionInput`, `AddLineItemInput`, `UpdateLineItemInput`, `CreateCustomerInput`, `UpdateCustomerInput` | 21g |
+| 39 | T26 HIGH-2 | Cart create/update input types missing `shipping_address` and `billing_address` fields | Added `Option<serde_json::Value>` to both `CreateCartInput` and `UpdateCartInput` | 26e |
+| 40 | T26 MEDIUM-9 | `ListOrdersParams` missing `id` and `status` query filters | Added optional filters with dynamic WHERE clause construction | 26j |
 
 ---
 
@@ -127,6 +135,8 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24}.m
 | 25 | T23 D1 | `soft_delete_variant` left orphan `product_variant_option` pivot rows | Added `DELETE FROM product_variant_option WHERE variant_id = $1` + transaction | 23h |
 | 26 | T23 V1,V2 | `add_variant` had no option coverage check; `create_product` skipped check when `options` was `None` | Required `options` to cover ALL product option titles in both paths | 23i |
 | 27 | T25 HIGH-2 | No CHECK constraints on monetary/quantity columns — negative values accepted at DB level | Added `CHECK (price >= 0)`, `CHECK (quantity > 0)`, `CHECK (unit_price >= 0)`, `CHECK (amount >= 0)` to all relevant columns in both PG and SQLite migrations | 25c |
+| 28 | T26 HIGH-3 | No `cart_id` on orders — no idempotency protection for cart completion | Added `cart_id TEXT UNIQUE` column + index to orders in both PG and SQLite | 26f |
+| 29 | T26 MEDIUM-7 | Missing `provider` index on `payment_records` | Added `CREATE INDEX idx_payment_records_provider` to both migrations | 26i |
 
 ---
 
@@ -142,6 +152,7 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24}.m
 | 72 | T19 S7 | Missing `company_name` on customer | Added column, model, input fields, tests | 19g |
 | 73 | T20 F5 | Default pagination limit was 20 — Medusa uses 50 | Changed `default_limit()` to return 50 | 20h |
 | 74 | T21 B3 | Cart `update_cart`/`update_line_item`/`delete_line_item` UPDATE had no `completed_at IS NULL` guard — race condition with concurrent completion | Added `AND completed_at IS NULL` (or subquery equivalent) to all 3 UPDATE WHERE clauses | 21h |
+| 75 | T26 HIGH-3 | Cart completion not idempotent — retry created new order or returned error | Idempotency check: lookup existing order by `cart_id` before creating; returns existing order on retry | 26f |
 
 ---
 
@@ -194,14 +205,14 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24}.m
 
 | Category | Count |
 |----------|-------|
-| Bugs fixed | 30 |
-| Response shape fixes | 18 |
-| Input/validation fixes | 8 |
+| Bugs fixed | 33 |
+| Response shape fixes | 21 |
+| Input/validation fixes | 11 |
 | Error handling fixes | 11 |
-| Database schema fixes | 28 |
-| Business logic fixes | 9 |
+| Database schema fixes | 31 |
+| Business logic fixes | 10 |
 | Config/infra fixes | 4 |
-| **Total fixes applied** | **108** |
+| **Total fixes applied** | **121** |
 | Deferred to P2 | 16 |
 | Known divergences (by design) | ~10 |
 

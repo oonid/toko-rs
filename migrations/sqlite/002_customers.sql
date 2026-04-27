@@ -2,7 +2,7 @@ CREATE TABLE customers (
     id TEXT PRIMARY KEY,
     first_name TEXT,
     last_name TEXT,
-    email TEXT NOT NULL,
+    email TEXT,
     phone TEXT,
     company_name TEXT,
     has_account BOOLEAN NOT NULL DEFAULT FALSE,

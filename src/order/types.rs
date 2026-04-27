@@ -67,6 +67,8 @@ pub struct ListOrdersParams {
     pub offset: i64,
     #[serde(default = "types::default_limit")]
     pub limit: i64,
+    pub id: Option<String>,
+    pub status: Option<String>,
 }
 
 impl ListOrdersParams {

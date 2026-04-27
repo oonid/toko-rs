@@ -96,11 +96,18 @@ pub struct CalculatedPrice {
     pub calculated_amount: i64,
     pub original_amount: i64,
     pub is_calculated_price_tax_inclusive: bool,
+    pub currency_code: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct NestedOption {
+    pub id: String,
+    pub title: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct VariantOptionValue {
     pub id: String,
     pub value: String,
-    pub option_id: String,
+    pub option: NestedOption,
 }

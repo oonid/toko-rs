@@ -66,7 +66,7 @@ pub async fn create_db(
     };
 
     let repos = Repositories {
-        product: ProductRepository::new(pool.clone()),
+        product: ProductRepository::new(pool.clone(), default_currency_code.to_string()),
         cart: CartRepository::new(pool.clone(), default_currency_code.to_string()),
         customer: CustomerRepository::new(pool.clone()),
         order: OrderRepository::new(pool.clone()),

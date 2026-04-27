@@ -162,7 +162,9 @@ async fn test_cart_update_line_item_quantity_zero_rejected() {
         ))
         .await
         .unwrap();
-    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = body_json(res).await;
+    assert!(body["cart"]["items"].as_array().unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -285,7 +287,7 @@ async fn test_cart_full_flow() {
     let cart_resp = body_json(res).await;
     let line_id2 = cart_resp["cart"]["items"][0]["id"].as_str().unwrap();
 
-    // 7. Update quantity to 0 is rejected — use DELETE instead
+    // 7. Update quantity to 0 removes the item (Medusa-compatible)
     let payload = json!({"quantity": 0});
     let res = app
         .clone()
@@ -296,21 +298,9 @@ async fn test_cart_full_flow() {
         ))
         .await
         .unwrap();
-    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
-
-    // Delete via DELETE endpoint
-    let res = app
-        .clone()
-        .oneshot(request(
-            Method::DELETE,
-            &format!("/store/carts/{}/line-items/{}", cart_id, line_id2),
-            &json!(null),
-        ))
-        .await
-        .unwrap();
     assert_eq!(res.status(), StatusCode::OK);
     let cart_resp = body_json(res).await;
-    assert_eq!(cart_resp["parent"]["items"].as_array().unwrap().len(), 0);
+    assert_eq!(cart_resp["cart"]["items"].as_array().unwrap().len(), 0);
 
     // 8. Add item to non-existent cart → 404
     let payload = json!({"variant_id": "var_1", "quantity": 1});
@@ -1216,4 +1206,72 @@ async fn test_delete_nonexistent_line_item_returns_404() {
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
     let body = body_json(res).await;
     assert_eq!(body["type"], "not_found");
+}
+
+#[tokio::test]
+async fn test_cart_create_with_shipping_address() {
+    let (app, _) = common::setup_test_app().await;
+
+    let payload = json!({
+        "currency_code": "idr",
+        "shipping_address": {
+            "first_name": "John",
+            "last_name": "Doe",
+            "address_1": "123 Main St",
+            "city": "Jakarta",
+            "country_code": "id",
+            "postal_code": "10110"
+        }
+    });
+    let res = app
+        .oneshot(request(Method::POST, "/store/carts", &payload))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = body_json(res).await;
+    assert_eq!(body["cart"]["shipping_address"]["first_name"], "John");
+    assert_eq!(body["cart"]["shipping_address"]["city"], "Jakarta");
+    assert!(body["cart"]["billing_address"].is_null());
+}
+
+#[tokio::test]
+async fn test_cart_update_billing_address() {
+    let (app, _) = common::setup_test_app().await;
+
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            "/store/carts",
+            &json!({"currency_code": "idr"}),
+        ))
+        .await
+        .unwrap();
+    let cart_id = body_json(res).await["cart"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let res = app
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}", cart_id),
+            &json!({
+                "billing_address": {
+                    "first_name": "Jane",
+                    "last_name": "Smith",
+                    "address_1": "456 Oak Ave",
+                    "city": "Bandung",
+                    "country_code": "id",
+                    "postal_code": "40115"
+                }
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = body_json(res).await;
+    assert_eq!(body["cart"]["billing_address"]["first_name"], "Jane");
+    assert_eq!(body["cart"]["billing_address"]["city"], "Bandung");
+    assert!(body["cart"]["shipping_address"].is_null());
 }

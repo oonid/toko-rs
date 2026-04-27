@@ -37,7 +37,15 @@ pub struct CreateProductInput {
     pub description: Option<String>,
     pub status: Option<ProductStatus>,
     pub thumbnail: Option<String>,
+    #[serde(
+        default,
+        deserialize_with = "crate::types::bool_or_string::deserialize"
+    )]
     pub is_giftcard: Option<bool>,
+    #[serde(
+        default,
+        deserialize_with = "crate::types::bool_or_string::deserialize"
+    )]
     pub discountable: Option<bool>,
     pub metadata: Option<HashMap<String, serde_json::Value>>,
     #[validate(nested)]
@@ -75,7 +83,15 @@ pub struct UpdateProductInput {
     pub description: Option<String>,
     pub status: Option<ProductStatus>,
     pub thumbnail: Option<String>,
+    #[serde(
+        default,
+        deserialize_with = "crate::types::bool_or_string::deserialize"
+    )]
     pub is_giftcard: Option<bool>,
+    #[serde(
+        default,
+        deserialize_with = "crate::types::bool_or_string::deserialize"
+    )]
     pub discountable: Option<bool>,
     pub metadata: Option<HashMap<String, serde_json::Value>>,
 }

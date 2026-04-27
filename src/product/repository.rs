@@ -8,11 +8,15 @@ use crate::types::{generate_entity_id, generate_handle, metadata_to_json, FindPa
 #[derive(Clone)]
 pub struct ProductRepository {
     pool: DbPool,
+    default_currency_code: String,
 }
 
 impl ProductRepository {
-    pub fn new(pool: DbPool) -> Self {
-        Self { pool }
+    pub fn new(pool: DbPool, default_currency_code: String) -> Self {
+        Self {
+            pool,
+            default_currency_code,
+        }
     }
 
     pub async fn create_product(
@@ -451,6 +455,7 @@ impl ProductRepository {
                     calculated_amount: v.price,
                     original_amount: v.price,
                     is_calculated_price_tax_inclusive: false,
+                    currency_code: self.default_currency_code.clone(),
                 },
             });
         }
@@ -493,6 +498,7 @@ impl ProductRepository {
                 calculated_amount: variant.price,
                 original_amount: variant.price,
                 is_calculated_price_tax_inclusive: false,
+                currency_code: self.default_currency_code.clone(),
             },
             variant,
             options: opts,
@@ -658,19 +664,38 @@ impl ProductRepository {
         pool: &DbPool,
         variant_id: &str,
     ) -> Result<Vec<VariantOptionValue>, AppError> {
-        sqlx::query_as::<_, VariantOptionValue>(
+        let rows = sqlx::query(
             r#"
-            SELECT pov.id, pov.value, pov.option_id
+            SELECT pov.id, pov.value, po.id AS option_id, po.title AS option_title
             FROM product_variant_option pvo
             JOIN product_option_values pov ON pvo.option_value_id = pov.id
+            JOIN product_options po ON pov.option_id = po.id
             WHERE pvo.variant_id = $1
               AND pov.deleted_at IS NULL
+              AND po.deleted_at IS NULL
             "#,
         )
         .bind(variant_id)
         .fetch_all(pool)
         .await
-        .map_err(AppError::DatabaseError)
+        .map_err(AppError::DatabaseError)?;
+
+        let mut result = Vec::with_capacity(rows.len());
+        for row in &rows {
+            let id: String = sqlx::Row::get(row, "id");
+            let value: String = sqlx::Row::get(row, "value");
+            let option_id: String = sqlx::Row::get(row, "option_id");
+            let option_title: String = sqlx::Row::get(row, "option_title");
+            result.push(VariantOptionValue {
+                id,
+                value,
+                option: super::models::NestedOption {
+                    id: option_id,
+                    title: option_title,
+                },
+            });
+        }
+        Ok(result)
     }
 
     async fn insert_variant_tx(
@@ -790,6 +815,7 @@ impl ProductRepository {
                     calculated_amount: v.price,
                     original_amount: v.price,
                     is_calculated_price_tax_inclusive: false,
+                    currency_code: self.default_currency_code.clone(),
                 },
             });
         }

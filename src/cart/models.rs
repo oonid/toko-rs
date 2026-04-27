@@ -111,6 +111,12 @@ pub struct CartWithItems {
     pub original_shipping_tax_total: i64,
     pub gift_card_total: i64,
     pub gift_card_tax_total: i64,
+    pub credit_line_total: i64,
+    pub credit_line_subtotal: i64,
+    pub credit_line_tax_total: i64,
+    pub discount_subtotal: i64,
+    pub shipping_discount_total: i64,
+    pub original_shipping_discount_total: i64,
 }
 
 impl CartWithItems {
@@ -198,6 +204,12 @@ impl CartWithItems {
             original_shipping_tax_total: 0,
             gift_card_total: 0,
             gift_card_tax_total: 0,
+            credit_line_total: 0,
+            credit_line_subtotal: 0,
+            credit_line_tax_total: 0,
+            discount_subtotal: 0,
+            shipping_discount_total: 0,
+            original_shipping_discount_total: 0,
             items,
         }
     }
