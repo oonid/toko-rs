@@ -50,6 +50,19 @@ async fn test_admin_create_product_success() {
     let v0_opts = product["variants"][0]["options"].as_array().unwrap();
     assert_eq!(v0_opts.len(), 1);
     assert_eq!(v0_opts[0]["value"], "S");
+    assert!(
+        v0_opts[0]["option"].is_object(),
+        "variant option must have nested 'option' object"
+    );
+    assert!(
+        v0_opts[0]["option"]["id"].is_string(),
+        "variant option.option must have 'id'"
+    );
+    assert!(
+        v0_opts[0]["option"]["title"].is_string(),
+        "variant option.option must have 'title'"
+    );
+    assert_eq!(v0_opts[0]["option"]["title"], "Size");
 }
 
 #[tokio::test]
@@ -64,6 +77,10 @@ async fn test_admin_create_product_validation_failure() {
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = body_json(resp).await;
+    assert_eq!(body["type"], "invalid_data");
+    assert_eq!(body["code"], "invalid_request_error");
+    assert!(body["message"].is_string());
 }
 
 #[tokio::test]
@@ -108,6 +125,10 @@ async fn test_admin_get_product_not_found() {
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let body = body_json(resp).await;
+    assert_eq!(body["type"], "not_found");
+    assert_eq!(body["code"], "invalid_request_error");
+    assert!(body["message"].is_string());
 }
 
 #[tokio::test]
@@ -293,6 +314,10 @@ async fn test_admin_update_product_not_found() {
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let body = body_json(resp).await;
+    assert_eq!(body["type"], "not_found");
+    assert_eq!(body["code"], "invalid_request_error");
+    assert!(body["message"].is_string());
 }
 
 #[tokio::test]
@@ -330,6 +355,10 @@ async fn test_admin_delete_product_not_found() {
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let body = body_json(resp).await;
+    assert_eq!(body["type"], "not_found");
+    assert_eq!(body["code"], "invalid_request_error");
+    assert!(body["message"].is_string());
 }
 
 #[tokio::test]
@@ -367,6 +396,10 @@ async fn test_admin_add_variant_product_not_found() {
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let body = body_json(resp).await;
+    assert_eq!(body["type"], "not_found");
+    assert_eq!(body["code"], "invalid_request_error");
+    assert!(body["message"].is_string());
 }
 
 #[tokio::test]
@@ -383,6 +416,10 @@ async fn test_admin_add_variant_validation_failure() {
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = body_json(resp).await;
+    assert_eq!(body["type"], "invalid_data");
+    assert_eq!(body["code"], "invalid_request_error");
+    assert!(body["message"].is_string());
 }
 
 #[tokio::test]
@@ -803,6 +840,10 @@ async fn test_admin_get_variant_not_found() {
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let body = body_json(resp).await;
+    assert_eq!(body["type"], "not_found");
+    assert_eq!(body["code"], "invalid_request_error");
+    assert!(body["message"].is_string());
 }
 
 #[tokio::test]
@@ -957,6 +998,10 @@ async fn test_admin_delete_variant_not_found() {
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let body = body_json(resp).await;
+    assert_eq!(body["type"], "not_found");
+    assert_eq!(body["code"], "invalid_request_error");
+    assert!(body["message"].is_string());
 }
 
 #[tokio::test]
@@ -1102,6 +1147,10 @@ async fn test_admin_list_variants_product_not_found() {
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let body = body_json(resp).await;
+    assert_eq!(body["type"], "not_found");
+    assert_eq!(body["code"], "invalid_request_error");
+    assert!(body["message"].is_string());
 }
 
 #[tokio::test]
@@ -1291,4 +1340,45 @@ async fn test_product_is_giftcard_and_discountable_persist() {
     let body = body_json(res).await;
     assert_eq!(body["product"]["is_giftcard"], true);
     assert_eq!(body["product"]["discountable"], true);
+}
+
+#[tokio::test]
+async fn test_product_all_status_values() {
+    let (app, _) = common::setup_test_app().await;
+
+    for status in &["draft", "proposed", "published", "rejected"] {
+        let payload = json!({"title": format!("{} Product", status), "status": *status});
+        let req = Request::builder()
+            .method(Method::POST)
+            .uri("/admin/products")
+            .header("content-type", "application/json")
+            .body(Body::from(payload.to_string()))
+            .unwrap();
+        let res = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let body = body_json(res).await;
+        assert_eq!(body["product"]["status"], *status);
+    }
+}
+
+#[tokio::test]
+async fn test_product_bool_string_fields() {
+    let (app, _) = common::setup_test_app().await;
+
+    let payload = json!({
+        "title": "String Bool Product",
+        "is_giftcard": "true",
+        "discountable": "false"
+    });
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri("/admin/products")
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+    let res = app.oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = body_json(res).await;
+    assert_eq!(body["product"]["is_giftcard"], true);
+    assert_eq!(body["product"]["discountable"], false);
 }
