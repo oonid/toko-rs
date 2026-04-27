@@ -2,7 +2,7 @@
 
 Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25,26}.md` and `docs/audit-correction.md` into a single reference. Every item is tagged with its source audit, status, and where it was fixed (or why it was deferred).
 
-**Last verified**: 2026-04-27 — 197 tests pass on both SQLite and PostgreSQL, clippy clean on both features, fmt clean. Twelfth audit (Task 27) findings fully implemented. Total recount: 111 fixes (was incorrectly 121).
+**Last verified**: 2026-04-27 — 212 tests pass on PostgreSQL, clippy clean, fmt clean. Thirteenth audit (Task 28) findings catalogued. Total: 116 fixes (was 111).
 
 ---
 
@@ -66,6 +66,9 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25
 | 33 | T26 HIGH-1 | Variant options had flat `{id, value, option_id}` — Medusa nests as `{id, value, option: {id, title}}` | `NestedOption` struct + updated query to JOIN `product_options` | 26d |
 | 34 | T26 MEDIUM-1 | `CalculatedPrice` missing `currency_code` | Added `currency_code: String` field, populated from `ProductRepository.default_currency_code` | 26g |
 | 35 | T26 MEDIUM-2,5,6 | Missing `credit_line_*` totals and `discount_subtotal` on cart/order | Added 7 fields to `CartWithItems`, 4 fields to `OrderWithItems` (all default 0) | 26h |
+| 36 | T28 BUG | Line item `thumbnail` not captured in snapshot — cart/order items render without images | Added `p.thumbnail` to snapshot query + surface as `thumbnail` on `CartLineItem` and `OrderLineItem` | 28a |
+| 37 | T28 MEDIUM | Line item `is_giftcard` captured in snapshot but not surfaced as response field | Extract `product_is_giftcard` as `is_giftcard: bool` on both line item models | 28b |
+| 38 | T28 STUB | Product missing `collection_id` and `type_id` keys — Medusa frontend gets `undefined` not `null` | Added `#[sqlx(skip)]` nullable stubs, always `null` in P1 | 28c |
 
 ---
 
@@ -208,13 +211,13 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25
 | Category | Count |
 |----------|-------|
 | Bugs fixed | 29 |
-| Response shape fixes | 20 |
+| Response shape fixes | 23 |
 | Input/validation fixes | 9 |
 | Error handling fixes | 11 |
 | Database schema fixes | 29 |
 | Business logic fixes | 9 |
 | Config/infra fixes | 4 |
-| **Total fixes applied** | **111** |
+| **Total fixes applied** | **116** |
 | Deferred to P2 | 16 |
 | Known divergences (by design) | ~10 |
 

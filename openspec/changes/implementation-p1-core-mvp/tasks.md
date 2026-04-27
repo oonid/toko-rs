@@ -1066,3 +1066,54 @@ Task 26 added 5 new tests and modified 197 total tests. An exploration audit of 
 
 - [x] 27f.1 Write full exploration findings to `docs/audit-p1-task27.md`
 - [x] 27f.2 Run full test suite on PostgreSQL — 188 pass (36 unit + 152 integration), clippy clean, fmt clean
+
+## Task 28: Twelfth Audit — P1 Response Shape Gap Fixes
+
+**Type**: Audit / Compatibility Fix
+**Priority**: HIGH
+**Status**: [x] Completed
+**Source**: `docs/audit-p1-task28.md`
+
+### Context
+
+Comprehensive comparison of toko-rs response shapes against Medusa `vendor/medusa/` source (DML models, HTTP types, query-config defaults, store validators). 38 findings catalogued, triaged against P1 scope (core Browse→Cart→Checkout flow, no P2 modules). 2 confirmed P1 bugs plus 3 cheap nullable stubs that reduce frontend friction.
+
+### 28a. Surface line item `thumbnail` from snapshot (BUG — visible UI gap)
+
+Cart and order line items have no `thumbnail` field. Medusa's store cart query-config includes `items.thumbnail` — the Medusa storefront renders cart item images from this field. The product `thumbnail` is already in the DB; the snapshot query just doesn't capture it.
+
+- [x] 28a.1 Add `p.thumbnail` to the variant+product JOIN query in `src/cart/repository.rs` `add_line_item`
+- [x] 28a.2 Add `"product_thumbnail": product_thumbnail` to the snapshot JSON object
+- [x] 28a.3 Add `pub thumbnail: Option<String>` to `CartLineItem` in `src/cart/models.rs` (with `#[sqlx(skip)]`)
+- [x] 28a.4 Extract `thumbnail` from snapshot in `CartWithItems::from_items()`
+- [x] 28a.5 Add `pub thumbnail: Option<String>` to `OrderLineItem` in `src/order/models.rs` (with `#[sqlx(skip)]`)
+- [x] 28a.6 Extract `thumbnail` from snapshot in `OrderWithItems::from_items()`
+- [x] 28a.7 Add contract assertion: `items[0]["thumbnail"]` is present on cart response
+- [x] 28a.8 Add contract assertion: `items[0]["thumbnail"]` is present on order response
+
+### 28b. Surface line item `is_giftcard` from snapshot (free extraction)
+
+The snapshot already captures `product_is_giftcard` and uses it internally for `requires_shipping` logic. Medusa's `CartLineItem` and `OrderLineItem` models have `is_giftcard: boolean`. Surfacing it requires only extraction, no new capture.
+
+- [x] 28b.1 Add `pub is_giftcard: bool` to `CartLineItem` in `src/cart/models.rs` (with `#[sqlx(skip)]`, default `false`)
+- [x] 28b.2 Extract `is_giftcard` from `product_is_giftcard` snapshot key in `CartWithItems::from_items()`
+- [x] 28b.3 Add `pub is_giftcard: bool` to `OrderLineItem` in `src/order/models.rs` (with `#[sqlx(skip)]`, default `false`)
+- [x] 28b.4 Extract `is_giftcard` from snapshot in `OrderWithItems::from_items()`
+- [x] 28b.5 Add contract assertion: `items[0]["is_giftcard"]` is boolean on cart response
+
+### 28c. Add `collection_id` and `type_id` nullable stubs on Product (shape parity)
+
+Medusa's store query-config includes `product.collection_id` and `product.type_id`. The Medusa storefront reads these. No collection/type modules exist in P1, so always `null`. Adding as `#[sqlx(skip)]` stubs means Medusa frontend JS gets `null` instead of `undefined` — safer for conditional rendering.
+
+- [x] 28c.1 Add `pub collection_id: Option<String>` to `Product` in `src/product/models.rs` (with `#[sqlx(skip)]`, default `None`)
+- [x] 28c.2 Add `pub type_id: Option<String>` to `Product` in `src/product/models.rs` (with `#[sqlx(skip)]`, default `None`)
+- [x] 28c.3 Add contract assertion: `product["collection_id"]` is null in product response
+- [x] 28c.4 Add contract assertion: `product["type_id"]` is null in product response
+
+### 28d. Documentation and verification
+
+- [x] 28d.1 Write `docs/audit-p1-task28.md` — full audit report (38 findings, P1 triage, 5 fixes)
+- [x] 28d.2 Update `docs/audit-master-checklist.md` — add T28 entries
+- [x] 28d.3 Run full test suite on PostgreSQL — 213 pass
+- [x] 28d.4 Run `cargo clippy -- -D warnings` — clean
+- [x] 28d.5 Run `cargo fmt --check` — clean
