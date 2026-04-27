@@ -158,4 +158,13 @@ mod tests {
             None => std::env::remove_var("CORS_ORIGINS"),
         }
     }
+
+    #[test]
+    fn test_default_functions() {
+        assert_eq!(default_host(), "0.0.0.0");
+        assert_eq!(default_port(), 3000);
+        assert_eq!(default_rust_log(), "toko_rs=debug,tower_http=debug");
+        assert_eq!(default_currency_code(), "idr");
+        assert_eq!(default_cors_origins(), "*");
+    }
 }
