@@ -25,6 +25,19 @@ impl ProductStatus {
     }
 }
 
+// --- Image Input Types ---
+
+#[derive(Debug, Deserialize)]
+pub struct ImageInput {
+    pub url: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateImageInput {
+    pub id: Option<String>,
+    pub url: String,
+}
+
 // --- API Request Inputs ---
 
 #[derive(Debug, Deserialize, Validate)]
@@ -48,7 +61,7 @@ pub struct CreateProductInput {
     )]
     pub discountable: Option<bool>,
     pub metadata: Option<HashMap<String, serde_json::Value>>,
-    pub images: Option<Vec<String>>,
+    pub images: Option<Vec<ImageInput>>,
     #[validate(nested)]
     pub options: Option<Vec<CreateProductOptionInput>>,
     #[validate(nested)]
@@ -97,7 +110,7 @@ pub struct UpdateProductInput {
     )]
     pub discountable: Option<bool>,
     pub metadata: Option<HashMap<String, serde_json::Value>>,
-    pub images: Option<Vec<String>>,
+    pub images: Option<Vec<UpdateImageInput>>,
 }
 
 #[derive(Debug, Deserialize, Validate)]
