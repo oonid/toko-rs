@@ -1,8 +1,8 @@
 # P1 Medusa Compatibility — Master Checklist
 
-Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25,26,28}.md` into a single reference. Every item is tagged with its source audit, status, and where it was fixed (or why it was deferred).
+Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25,26,27,28,29,30}.md` into a single reference. Every item is tagged with its source audit, status, and where it was fixed (or why it was deferred). Tasks 27 and 29 were structural audits (checklist accuracy, re-numbering, redundant test annotation) — their impact is reflected in the checklist structure itself (prefixed IDs, reversal chains, corrected counts).
 
-**Last verified**: 2026-04-27 — 213 tests pass on PostgreSQL, clippy clean, fmt clean. Thirteenth audit (Task 28) findings catalogued. Total: 118 fixes across 7 categories.
+**Last verified**: 2026-04-28 — 205 tests pass on PostgreSQL, clippy clean, fmt clean. Latest audit: Task 30. Total: 127 fixes across 7 categories.
 
 ---
 
@@ -74,6 +74,11 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25
 | S-23 | T28 STUB | Product missing `collection_id` and `type_id` keys — Medusa frontend gets `undefined` not `null` | Added `#[sqlx(skip)]` nullable stubs, always `null` in P1 | 28c |
 | S-24 | T22 S1 | `deleted_at` leaked on 9 entity types | `#[serde(skip)]` on all 9 `deleted_at` fields | 22a | **Note: S-25 reversed this for Product and Customer — 7 remain skipped** |
 | S-25 | T23 S3,S4 | `deleted_at` hidden too broadly — Medusa admin product + store customer include it | Removed `#[serde(skip)]` from `Product` and `Customer`; kept on 7 other types | 23f |
+| S-26 | T30-1 | 5 Product Option CRUD endpoints entirely missing | Added GET/POST list+create, GET/POST/DELETE individual option endpoints (30 endpoint methods total) | 30a |
+| S-27 | T30-2 | Variant model missing `thumbnail` field | Added `thumbnail` column to `product_variants`, `ProductVariant` model, create/update inputs | 30c |
+| S-28 | T30-3,8 | Product images not persisted — `ImageStub { url }` only, no DB table, no input field | `ProductImage` model (id, url, product_id, rank), `product_images` table, `images` field on create/update inputs. **Supersedes S-5 and S-13 (ImageStub)** | 30b |
+| S-29 | T30-4 | Line item missing `compare_at_unit_price` field | Added nullable `compare_at_unit_price` to `CartLineItem`, `OrderLineItem`, both tables, order INSERT | 30d |
+| S-30 | T30-5 | Customer missing `created_by` field | Added `created_by TEXT` column to `customers`, `Customer` model. **Was X-7 (deferred), now fixed** | 30e |
 
 ---
 
@@ -92,6 +97,7 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25
 | V-9 | T26 MEDIUM-9 | `ListOrdersParams` missing `id` and `status` query filters | Added optional filters with dynamic WHERE clause construction | 26j |
 | V-10 | T22 I6 | `ListOrdersParams` has `deny_unknown_fields` but Medusa's `createFindParams` is NOT strict | Removed `deny_unknown_fields` | 22d |
 | V-11 | T23 V1,V2 | `add_variant` had no option coverage check; `create_product` skipped check when `options` was `None` | Required `options` to cover ALL product option titles in both paths | 23i |
+| V-12 | T30-7 | `UpdateCustomerInput` missing `email` field — customers cannot change email | Added `email: Option<String>` to `UpdateCustomerInput`, bound in repository UPDATE | 30f |
 
 ---
 
@@ -143,6 +149,9 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25
 | D-23 | T25 HIGH-2 | No CHECK constraints on monetary/quantity columns — negative values accepted at DB level | Added `CHECK` on all monetary columns in both PG and SQLite | 25c |
 | D-24 | T26 HIGH-3 | No `cart_id` on orders — no idempotency protection for cart completion | Added `cart_id TEXT UNIQUE` column + index to orders in both PG and SQLite | 26f |
 | D-25 | T26 MEDIUM-7 | Missing `provider` index on `payment_records` | Added `CREATE INDEX idx_payment_records_provider` to both migrations | 26i |
+| D-26 | T30-1,2,3 | No `product_images` table; variant missing `thumbnail` column | `CREATE TABLE product_images` (id, url, product_id, rank, timestamps); `ALTER TABLE product_variants ADD thumbnail` | 30a-c |
+| D-27 | T30-4 | Line items missing `compare_at_unit_price` column | Added `compare_at_unit_price BIGINT` to `cart_line_items` and `order_line_items` in both PG and SQLite | 30d |
+| D-28 | T30-5 | Customer missing `created_by` column | Added `created_by TEXT` to `customers` in both PG and SQLite | 30e |
 
 ---
 
@@ -175,7 +184,7 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25
 
 ## 8. Deferred / Known Divergences
 
-Entries moved from this section to fix sections: S-24 (was T22 S1), B-30 (was T22 B1), B-31 (was T22 D1), V-10 (was T22 I6), S-25 (was T23 S3,S4). Removed stale entries #82 and #83 (previously marked as "Fixed", duplicates of B-26 and L-7).
+Entries moved from this section to fix sections: S-24 (was T22 S1), B-30 (was T22 B1), B-31 (was T22 D1), V-10 (was T22 I6), S-25 (was T23 S3,S4), S-30 (was X-7/T22 D7), S-28 (supersedes X-8/T22 S7). Removed stale entries #82 and #83 (previously marked as "Fixed", duplicates of B-26 and L-7).
 
 ### Deferred to P2
 
@@ -183,13 +192,16 @@ Entries moved from this section to fix sections: S-24 (was T22 S1), B-30 (was T2
 |----|--------|---------|--------|
 | X-1 | T14 R6 | Cart complete has no error branch `{ type: "cart", cart, error }` | Requires `payment_session` table (P2). Dead code infrastructure exists. |
 | X-2 | T12 L1-L7 | LOW: missing indexes, missing entities (P2+), no admin auth, missing cart fields | P2 scope or by-design |
-| X-3 | T14 B | All P2 deferred items: multi-currency pricing, address CRUD, order transfers, shipping, etc. | Documented in design.md and audit reports |
+| X-3 | T14 B, T30-D1,2,4,6,7,10 | All P2 deferred items: multi-currency pricing, address CRUD, order transfers, shipping, variant inventory/logistics fields, product physical dimensions, product type/collection/tags, cart/order region_id/sales_channel_id/locale, line item product_type/product_collection | Documented in design.md and audit reports |
 | X-4 | T22 D2 | `product_variants.product_id` NOT NULL vs Medusa nullable | Arguably more correct |
 | X-5 | T22 D4 | `order_line_items.unit_price` NOT NULL vs Medusa nullable | Edge case |
 | X-6 | T22 D5 | `payment_records.status` uses different enum values than Medusa PaymentCollectionStatus | Architectural simplification |
-| X-7 | T22 D7 | Missing `created_by` on customer model | P2 audit trail |
-| X-8 | T22 S7 | ImageStub missing `id` and `rank` fields | P2 polish |
 | X-9 | T22 B4 | Customer `find_by_email` not implemented | Needed for proper duplicate detection |
+| X-10 | T30-D5 | Variant missing `images` relation (M2M via `ProductVariantProductImage`) | Requires variant-level image module (P2) |
+| X-11 | T30-D8 | Order missing `summary` computed wrapper (`{trial, pending_difference, current_order, original_order}`) | Requires pricing/tax/shipping computation (P2) |
+| X-12 | T30-D9 | Order missing `transactions`, `payment_collections` relations | Requires Payment module (P2) |
+| X-13 | T30-D14 | Product option values need separate update/delete within options | Complex nested update logic, deferrable |
+| X-14 | T30-6 | `CreateCustomerInput` should require `email` per Medusa workflow | DEFERRED — contradicts T26 (B-28) which explicitly made email optional to match Medusa Zod schema |
 
 ### Known Divergences (by design)
 
@@ -220,14 +232,14 @@ Entries moved from this section to fix sections: S-24 (was T22 S1), B-30 (was T2
 | Category | Count |
 |----------|-------|
 | Bugs fixed (B) | 32 |
-| Response shape fixes (S) | 25 |
-| Input/validation fixes (V) | 11 |
+| Response shape fixes (S) | 30 |
+| Input/validation fixes (V) | 12 |
 | Error handling fixes (E) | 12 |
-| Database schema fixes (D) | 25 |
+| Database schema fixes (D) | 28 |
 | Business logic fixes (L) | 9 |
 | Config/infra fixes (C) | 4 |
-| **Total fixes applied** | **118** |
-| Deferred to P2 | 9 |
+| **Total fixes applied** | **127** |
+| Deferred to P2 | 12 |
 | Known divergences (by design) | 10 |
 | False positive | 1 |
 | Internal (deferred) | 2 |
@@ -238,6 +250,9 @@ Entries moved from this section to fix sections: S-24 (was T22 S1), B-30 (was T2
 2. **S-24 → S-25**: `deleted_at` skip: added on 9 types (T22) → reversed for Product+Customer (T23)
 3. **B-26**: `ordli` prefix — old #82 in deferred was incorrect, fixed in T25
 4. **L-7**: pagination 50 — old #83 in deferred was incorrect, fixed in T20
+5. **S-5 → S-13 → S-28**: `images` field: empty array (T14) → `ImageStub { url }` (T18) → `ProductImage` model with persistence (T30)
+6. **X-7 → S-30**: `created_by` deferred (T22) → now fixed (T30)
+7. **X-8 → S-28**: `ImageStub` missing id/rank deferred (T22) → now fixed with `ProductImage` (T30)
 
 ### Superseded Entries
 
