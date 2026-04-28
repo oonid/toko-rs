@@ -28,6 +28,7 @@ pub struct CartLineItem {
     pub title: String,
     pub quantity: i64,
     pub unit_price: i64,
+    pub compare_at_unit_price: Option<i64>,
     pub variant_id: Option<String>,
     pub product_id: Option<String>,
     #[serde(skip)]
