@@ -5,14 +5,26 @@ Spec reference: `openspec/changes/implementation-p1-core-mvp/specs/foundation/sp
 ## Usage
 
 ```bash
-# Run seed against configured database
-cargo run -- --seed
+# Start PostgreSQL via Docker Compose
+docker compose up -d
 
-# Or via Makefile
-make seed
+# Run seed against configured database
+DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/toko cargo run -- --seed
+
+# Start the server
+DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/toko cargo run
+```
+
+Or via Makefile:
+
+```bash
+make seed   # seeds the database
+make dev    # starts the server
 ```
 
 The `--seed` CLI flag runs the seed function and exits. It does **not** start the HTTP server.
+
+The server listens on `http://localhost:3000` by default.
 
 ## Design Decisions
 
@@ -24,9 +36,9 @@ All seed entities use deterministic, fixed IDs (e.g., `prod_seed_kaos_polos`, `c
 
 The seed function uses raw SQL queries instead of calling repository methods. This follows the module boundary rule — `seed.rs` is shared infrastructure (like `db.rs`), not a domain module. It imports only `crate::db::AppDb` and `crate::error::AppError`. It avoids importing domain repositories while maintaining full control over the insert logic.
 
-### `INSERT OR IGNORE` for sub-entities
+### `INSERT ... ON CONFLICT DO NOTHING` for sub-entities
 
-Child records (options, option values, variants, variant-option bindings) use `INSERT OR IGNORE` since their existence is guaranteed by the parent check. Parent records (products, customers) use an explicit `SELECT COUNT(*)` check with tracing logs.
+Child records (options, option values, variants, variant-option bindings) use `ON CONFLICT (id) DO NOTHING` since their existence is guaranteed by the parent check. Parent records (products, customers) use an explicit `SELECT COUNT(*)` check with tracing logs.
 
 ### Incrementing variant_rank
 
@@ -61,22 +73,16 @@ Each product has:
 
 ### Customer (1)
 
-| ID | Name | Email | Phone |
-|---|---|---|---|
-| `cus_seed_budi` | Budi Santoso | budi@example.com | +6281234567890 |
+| ID | Name | Email | Phone | Company |
+|---|---|---|---|---|
+| `cus_seed_budi` | Budi Santoso | budi@example.com | +6281234567890 | Toko Budi Sejahtera |
 
 - `has_account = true`
 - Can be used with `X-Customer-Id: cus_seed_budi` header for order history endpoints
 
 ## Full Commerce Cycle (curl walkthrough)
 
-This section provides a complete, copy-paste-ready curl simulation of every step in a commerce lifecycle using the seed data. Start the server with seed data first:
-
-```bash
-DATABASE_URL=sqlite:toko.db cargo run -- --seed && DATABASE_URL=sqlite:toko.db cargo run
-```
-
-The server listens on `http://localhost:3000` by default.
+This section provides a complete, copy-paste-ready curl simulation of every step in a commerce lifecycle using the seed data. JSON responses show key fields — many endpoints return additional computed total fields not shown here for brevity.
 
 ### 0. Health check
 
@@ -109,13 +115,58 @@ curl -s http://localhost:3000/store/products | jq
       "id": "prod_seed_kaos_polos",
       "title": "Kaos Polos",
       "handle": "kaos-polos",
+      "description": "Kaos polos berbahan katun combed 30s, nyaman untuk sehari-hari.",
+      "subtitle": null,
       "status": "published",
+      "thumbnail": "https://example.com/kaos-polos.jpg",
+      "metadata": null,
+      "is_giftcard": false,
+      "discountable": true,
+      "collection_id": null,
+      "type_id": null,
+      "created_at": "2026-04-28T...",
+      "updated_at": "2026-04-28T...",
+      "deleted_at": null,
+      "options": [
+        {
+          "id": "opt_seed_kaos_size",
+          "product_id": "prod_seed_kaos_polos",
+          "title": "Ukuran",
+          "metadata": null,
+          "created_at": "...",
+          "updated_at": "...",
+          "values": [
+            { "id": "optval_seed_kaos_s_0", "option_id": "opt_seed_kaos_size", "value": "S", "metadata": null, "created_at": "...", "updated_at": "..." },
+            { "id": "optval_seed_kaos_s_1", "option_id": "opt_seed_kaos_size", "value": "M", "metadata": null, "created_at": "...", "updated_at": "..." },
+            { "id": "optval_seed_kaos_s_2", "option_id": "opt_seed_kaos_size", "value": "L", "metadata": null, "created_at": "...", "updated_at": "..." },
+            { "id": "optval_seed_kaos_s_3", "option_id": "opt_seed_kaos_size", "value": "XL", "metadata": null, "created_at": "...", "updated_at": "..." }
+          ]
+        }
+      ],
       "variants": [
-        { "id": "var_seed_kaos_s", "title": "Kaos Polos - S", "sku": "KAOS-P-S", "price": 75000 },
-        { "id": "var_seed_kaos_m", "title": "Kaos Polos - M", "sku": "KAOS-P-M", "price": 75000 },
-        { "id": "var_seed_kaos_l", "title": "Kaos Polos - L", "sku": "KAOS-P-L", "price": 80000 },
-        { "id": "var_seed_kaos_xl", "title": "Kaos Polos - XL", "sku": "KAOS-P-XL", "price": 80000 }
-      ]
+        {
+          "id": "var_seed_kaos_s",
+          "product_id": "prod_seed_kaos_polos",
+          "title": "Kaos Polos - S",
+          "sku": "KAOS-P-S",
+          "thumbnail": null,
+          "price": 75000,
+          "variant_rank": 0,
+          "metadata": null,
+          "created_at": "...",
+          "updated_at": "...",
+          "options": [
+            { "id": "optval_seed_kaos_s_0", "value": "S", "option": { "id": "opt_seed_kaos_size", "title": "Ukuran" } }
+          ],
+          "calculated_price": {
+            "calculated_amount": 75000,
+            "original_amount": 75000,
+            "is_calculated_price_tax_inclusive": false,
+            "currency_code": "idr"
+          }
+        }
+      ],
+      "images": []
     },
     {
       "id": "prod_seed_jeans_slim",
@@ -130,7 +181,7 @@ curl -s http://localhost:3000/store/products | jq
   ],
   "count": 3,
   "offset": 0,
-  "limit": 20
+  "limit": 50
 }
 ```
 
@@ -149,7 +200,17 @@ curl -s http://localhost:3000/store/products/prod_seed_kaos_polos | jq
     "title": "Kaos Polos",
     "handle": "kaos-polos",
     "description": "Kaos polos berbahan katun combed 30s, nyaman untuk sehari-hari.",
+    "subtitle": null,
     "status": "published",
+    "thumbnail": "https://example.com/kaos-polos.jpg",
+    "metadata": null,
+    "is_giftcard": false,
+    "discountable": true,
+    "collection_id": null,
+    "type_id": null,
+    "created_at": "...",
+    "updated_at": "...",
+    "deleted_at": null,
     "options": [
       {
         "id": "opt_seed_kaos_size",
@@ -163,9 +224,18 @@ curl -s http://localhost:3000/store/products/prod_seed_kaos_polos | jq
       }
     ],
     "variants": [
-      { "id": "var_seed_kaos_m", "title": "Kaos Polos - M", "sku": "KAOS-P-M", "price": 75000 },
-      ...
-    ]
+      {
+        "id": "var_seed_kaos_m",
+        "title": "Kaos Polos - M",
+        "sku": "KAOS-P-M",
+        "thumbnail": null,
+        "price": 75000,
+        "variant_rank": 1,
+        "options": [ { "id": "optval_seed_kaos_s_1", "value": "M", "option": { "id": "opt_seed_kaos_size", "title": "Ukuran" } } ],
+        "calculated_price": { "calculated_amount": 75000, "original_amount": 75000, "is_calculated_price_tax_inclusive": false, "currency_code": "idr" }
+      }
+    ],
+    "images": []
   }
 }
 ```
@@ -177,26 +247,24 @@ The customer decides to buy Kaos Polos size M. First, create a cart:
 ```bash
 curl -s -X POST http://localhost:3000/store/carts \
   -H 'Content-Type: application/json' \
-  -d '{"email": "buyer@example.com", "currency_code": "idr"}' | jq
+  -d '{"email": "buyer@example.com", "currency_code": "idr"}' | jq '.cart | {id, email, currency_code, items, item_total, total}'
 ```
 
 ```json
 {
-  "cart": {
-    "id": "cart_01JM...",
-    "email": "buyer@example.com",
-    "currency_code": "idr",
-    "items": [],
-    "item_total": 0,
-    "total": 0
-  }
+  "id": "cart_01KQ...",
+  "email": "buyer@example.com",
+  "currency_code": "idr",
+  "items": [],
+  "item_total": 0,
+  "total": 0
 }
 ```
 
 Save the `cart.id` value for the next steps.
 
 ```bash
-CART_ID="cart_01JM..."   # paste the actual id
+CART_ID="cart_01KQ..."   # paste the actual id
 ```
 
 ### Step 4: Add items to cart
@@ -206,30 +274,21 @@ Add Kaos Polos size M (variant `var_seed_kaos_m`, price Rp75,000) with quantity 
 ```bash
 curl -s -X POST http://localhost:3000/store/carts/$CART_ID/line-items \
   -H 'Content-Type: application/json' \
-  -d '{"variant_id": "var_seed_kaos_m", "quantity": 2}' | jq
+  -d '{"variant_id": "var_seed_kaos_m", "quantity": 2}' | jq '.cart.items[0] | {id, title, quantity, unit_price, compare_at_unit_price, variant_id, thumbnail, product_title, variant_sku, variant_option_values}'
 ```
 
 ```json
 {
-  "cart": {
-    "id": "cart_01JM...",
-    "items": [
-      {
-        "id": "citem_01JM...",
-        "variant_id": "var_seed_kaos_m",
-        "title": "Kaos Polos - M",
-        "quantity": 2,
-        "unit_price": 75000,
-        "snapshot": {
-          "product_title": "Kaos Polos",
-          "variant_title": "Kaos Polos - M",
-          "variant_sku": "KAOS-P-M"
-        }
-      }
-    ],
-    "item_total": 150000,
-    "total": 150000
-  }
+  "id": "cali_01KQ...",
+  "title": "Kaos Polos",
+  "quantity": 2,
+  "unit_price": 75000,
+  "compare_at_unit_price": null,
+  "variant_id": "var_seed_kaos_m",
+  "thumbnail": "https://example.com/kaos-polos.jpg",
+  "product_title": "Kaos Polos",
+  "variant_sku": "KAOS-P-M",
+  "variant_option_values": { "Ukuran": "M" }
 }
 ```
 
@@ -240,28 +299,22 @@ Add Sneakers size 41 (variant `var_seed_snkr_41`, price Rp450,000):
 ```bash
 curl -s -X POST http://localhost:3000/store/carts/$CART_ID/line-items \
   -H 'Content-Type: application/json' \
-  -d '{"variant_id": "var_seed_snkr_41", "quantity": 1}' | jq
+  -d '{"variant_id": "var_seed_snkr_41", "quantity": 1}' | jq '.cart | {item_total, total}'
 ```
 
 ```json
 {
-  "cart": {
-    "items": [
-      { "variant_id": "var_seed_kaos_m", "quantity": 2, "unit_price": 75000 },
-      { "variant_id": "var_seed_snkr_41", "quantity": 1, "unit_price": 450000 }
-    ],
-    "item_total": 600000,
-    "total": 600000
-  }
+  "item_total": 600000,
+  "total": 600000
 }
 ```
 
 ### Step 6: Update item quantity
 
-Change Kaos Polos from 2 to 3. Save the line item ID from step 5 first:
+Change Kaos Polos from 2 to 3. Save the line item ID from step 4 first:
 
 ```bash
-LINE_ID="citem_01JM..."   # the Kaos Polos line item id
+LINE_ID="cali_01KQ..."   # the Kaos Polos line item id
 
 curl -s -X POST http://localhost:3000/store/carts/$CART_ID/line-items/$LINE_ID \
   -H 'Content-Type: application/json' \
@@ -286,30 +339,66 @@ curl -s -X POST http://localhost:3000/store/carts/$CART_ID/complete | jq
 {
   "type": "order",
   "order": {
-    "id": "order_01JM...",
+    "id": "order_01KQ...",
     "display_id": 1,
-    "status": "pending",
+    "cart_id": "cart_01KQ...",
+    "customer_id": null,
+    "email": "buyer@example.com",
     "currency_code": "idr",
+    "status": "pending",
+    "shipping_address": null,
+    "billing_address": null,
+    "metadata": null,
+    "canceled_at": null,
+    "created_at": "...",
+    "updated_at": "...",
     "items": [
-      { "variant_id": "var_seed_kaos_m", "quantity": 3, "unit_price": 75000 },
-      { "variant_id": "var_seed_snkr_41", "quantity": 1, "unit_price": 450000 }
+      {
+        "id": "ordli_01KQ...",
+        "order_id": "order_01KQ...",
+        "title": "Kaos Polos",
+        "quantity": 3,
+        "unit_price": 75000,
+        "compare_at_unit_price": null,
+        "variant_id": "var_seed_kaos_m",
+        "product_id": "prod_seed_kaos_polos",
+        "metadata": null,
+        "requires_shipping": true,
+        "is_discountable": true,
+        "is_tax_inclusive": false,
+        "product_title": "Kaos Polos",
+        "product_handle": "kaos-polos",
+        "variant_sku": "KAOS-P-M",
+        "variant_title": "Kaos Polos - M",
+        "variant_option_values": { "Ukuran": "M" },
+        "thumbnail": "https://example.com/kaos-polos.jpg",
+        "is_giftcard": false
+      },
+      {
+        "id": "ordli_01KQ...",
+        "title": "Sneakers Classic",
+        "quantity": 1,
+        "unit_price": 450000,
+        "variant_id": "var_seed_snkr_41",
+        "product_id": "prod_seed_sneakers"
+      }
     ],
     "item_total": 675000,
-    "total": 675000
-  },
-  "payment": {
-    "id": "pay_01JM...",
-    "amount": 675000,
-    "currency_code": "idr",
-    "status": "pending"
+    "total": 675000,
+    "payment_status": "not_paid",
+    "fulfillment_status": "not_fulfilled",
+    "fulfillments": [],
+    "shipping_methods": []
   }
 }
 ```
 
+Note: Cart complete returns `{ type: "order", order: {...} }` only — no top-level `payment` field.
+
 Save the `order.id` for the next step:
 
 ```bash
-ORDER_ID="order_01JM..."
+ORDER_ID="order_01KQ..."
 ```
 
 ### Step 8: Register as a customer
@@ -319,25 +408,26 @@ A new customer signs up:
 ```bash
 curl -s -X POST http://localhost:3000/store/customers \
   -H 'Content-Type: application/json' \
-  -d '{"first_name": "Andi", "last_name": "Pratama", "email": "andi@example.com", "phone": "+6281234509876"}' | jq
+  -d '{"first_name": "Andi", "last_name": "Pratama", "email": "andi@example.com", "phone": "+6281234509876"}' | jq '.customer | {id, first_name, last_name, email, has_account, company_name, created_by, addresses}'
 ```
 
 ```json
 {
-  "customer": {
-    "id": "cus_01JM...",
-    "first_name": "Andi",
-    "last_name": "Pratama",
-    "email": "andi@example.com",
-    "has_account": true
-  }
+  "id": "cus_01KQ...",
+  "first_name": "Andi",
+  "last_name": "Pratama",
+  "email": "andi@example.com",
+  "has_account": true,
+  "company_name": null,
+  "created_by": null,
+  "addresses": []
 }
 ```
 
 Save the customer ID:
 
 ```bash
-CUS_ID="cus_01JM..."
+CUS_ID="cus_01KQ..."
 ```
 
 ### Step 9: Customer creates their own cart + order
@@ -351,7 +441,7 @@ curl -s -X POST http://localhost:3000/store/carts \
 ```
 
 ```bash
-CART_ID2="cart_01JM..."   # paste the actual id
+CART_ID2="cart_01KQ..."   # paste the actual id
 
 curl -s -X POST http://localhost:3000/store/carts/$CART_ID2/line-items \
   -H 'Content-Type: application/json' \
@@ -363,27 +453,14 @@ curl -s -X POST http://localhost:3000/store/carts/$CART_ID2/line-items \
 ```
 
 ```bash
-curl -s -X POST http://localhost:3000/store/carts/$CART_ID2/complete | jq
+curl -s -X POST http://localhost:3000/store/carts/$CART_ID2/complete | jq '{type, display_id: .order.display_id, item_total: .order.item_total}'
 ```
 
 ```json
 {
   "type": "order",
-  "order": {
-    "id": "order_01JM...",
-    "display_id": 2,
-    "items": [
-      { "variant_id": "var_seed_jeans_30", "quantity": 1, "unit_price": 250000 }
-    ],
-    "item_total": 250000,
-    "total": 250000
-  },
-  "payment": {
-    "id": "pay_01JM...",
-    "amount": 250000,
-    "currency_code": "idr",
-    "status": "pending"
-  }
+  "display_id": 2,
+  "item_total": 250000
 }
 ```
 
@@ -400,9 +477,10 @@ curl -s http://localhost:3000/store/orders \
 {
   "orders": [
     {
-      "id": "order_01JM...",
+      "id": "order_01KQ...",
       "display_id": 2,
       "status": "pending",
+      "currency_code": "idr",
       "items": [
         { "variant_id": "var_seed_jeans_30", "quantity": 1, "unit_price": 250000 }
       ],
@@ -411,42 +489,28 @@ curl -s http://localhost:3000/store/orders \
   ],
   "count": 1,
   "offset": 0,
-  "limit": 20
+  "limit": 50
 }
 ```
 
 ### Step 11: View a single order detail
 
 ```bash
-ORDER_ID2="order_01JM..."   # paste from step 10
+ORDER_ID2="order_01KQ..."   # paste from step 10
 
 curl -s http://localhost:3000/store/orders/$ORDER_ID2 \
-  -H 'X-Customer-Id: cus_seed_budi' | jq
+  -H 'X-Customer-Id: cus_seed_budi' | jq '.order | {id, display_id, status, item_total, total, payment_status, fulfillment_status}'
 ```
 
 ```json
 {
-  "order": {
-    "id": "order_01JM...",
-    "display_id": 2,
-    "status": "pending",
-    "items": [
-      {
-        "variant_id": "var_seed_jeans_30",
-        "title": "Jeans Slim - 30",
-        "quantity": 1,
-        "unit_price": 250000
-      }
-    ],
-    "item_total": 250000,
-    "total": 250000
-  },
-  "payment": {
-    "id": "pay_01JM...",
-    "amount": 250000,
-    "currency_code": "idr",
-    "status": "pending"
-  }
+  "id": "order_01KQ...",
+  "display_id": 2,
+  "status": "pending",
+  "item_total": 250000,
+  "total": 250000,
+  "payment_status": "not_paid",
+  "fulfillment_status": "not_fulfilled"
 }
 ```
 
@@ -456,20 +520,34 @@ curl -s http://localhost:3000/store/orders/$ORDER_ID2 \
 curl -s -X POST http://localhost:3000/store/customers/me \
   -H 'Content-Type: application/json' \
   -H 'X-Customer-Id: cus_seed_budi' \
-  -d '{"phone": "+6289999999999"}' | jq
+  -d '{"phone": "+6289999999999"}' | jq '.customer | {id, first_name, last_name, email, phone, has_account, company_name, created_by, addresses}'
 ```
 
 ```json
 {
-  "customer": {
-    "id": "cus_seed_budi",
-    "first_name": "Budi",
-    "last_name": "Santoso",
-    "email": "budi@example.com",
-    "phone": "+6289999999999",
-    "has_account": true
-  }
+  "id": "cus_seed_budi",
+  "first_name": "Budi",
+  "last_name": "Santoso",
+  "email": "budi@example.com",
+  "phone": "+6289999999999",
+  "has_account": true,
+  "company_name": "Toko Budi Sejahtera",
+  "created_by": null,
+  "addresses": []
 }
+```
+
+You can also update the email:
+
+```bash
+curl -s -X POST http://localhost:3000/store/customers/me \
+  -H 'Content-Type: application/json' \
+  -H 'X-Customer-Id: cus_seed_budi' \
+  -d '{"email": "budi.new@example.com"}' | jq '.customer.email'
+```
+
+```json
+"budi.new@example.com"
 ```
 
 ---
@@ -478,9 +556,9 @@ curl -s -X POST http://localhost:3000/store/customers/me \
 
 These endpoints manage the product catalog (admin-only, no auth in P1).
 
-### A1: Create a new product (draft)
+### A1: Create a new product (draft) with images
 
-Create a product with options and variants in one call:
+Create a product with options, variants, and images in one call:
 
 ```bash
 curl -s -X POST http://localhost:3000/admin/products \
@@ -488,45 +566,41 @@ curl -s -X POST http://localhost:3000/admin/products \
   -d '{
     "title": "Hoodie Oversize",
     "description": "Hoodie tebal bahan fleece, cocok untuk musim hujan.",
+    "images": ["https://example.com/hoodie-front.jpg", "https://example.com/hoodie-back.jpg"],
     "options": [{"title": "Ukuran", "values": ["M", "L", "XL"]}],
     "variants": [
-      {"title": "Hoodie - M", "sku": "HOD-M", "price": 185000, "options": {"Ukuran": "M"}},
+      {"title": "Hoodie - M", "sku": "HOD-M", "price": 185000, "thumbnail": "https://example.com/hoodie-m.jpg", "options": {"Ukuran": "M"}},
       {"title": "Hoodie - L", "sku": "HOD-L", "price": 185000, "options": {"Ukuran": "L"}},
       {"title": "Hoodie - XL", "sku": "HOD-XL", "price": 195000, "options": {"Ukuran": "XL"}}
     ]
-  }' | jq
+  }' | jq '.product | {id, title, handle, status, images, variants: [.variants[] | {title, sku, price, thumbnail, calculated_price}], options: [.options[] | {title, values: [.values[].value]}]}'
 ```
 
 ```json
 {
-  "product": {
-    "id": "prod_01JM...",
-    "title": "Hoodie Oversize",
-    "handle": "hoodie-oversize",
-    "status": "draft",
-    "options": [
-      {
-        "title": "Ukuran",
-        "values": [
-          { "value": "M" },
-          { "value": "L" },
-          { "value": "XL" }
-        ]
-      }
-    ],
-    "variants": [
-      { "id": "prodvar_01JM...", "title": "Hoodie - M", "sku": "HOD-M", "price": 185000 },
-      { "id": "prodvar_01JM...", "title": "Hoodie - L", "sku": "HOD-L", "price": 185000 },
-      { "id": "prodvar_01JM...", "title": "Hoodie - XL", "sku": "HOD-XL", "price": 195000 }
-    ]
-  }
+  "id": "prod_01KQ...",
+  "title": "Hoodie Oversize",
+  "handle": "hoodie-oversize",
+  "status": "draft",
+  "images": [
+    { "id": "img_01KQ...", "url": "https://example.com/hoodie-front.jpg", "rank": 0, "metadata": null, "created_at": "...", "updated_at": "..." },
+    { "id": "img_01KQ...", "url": "https://example.com/hoodie-back.jpg", "rank": 1, "metadata": null, "created_at": "...", "updated_at": "..." }
+  ],
+  "variants": [
+    { "title": "Hoodie - M", "sku": "HOD-M", "price": 185000, "thumbnail": "https://example.com/hoodie-m.jpg", "calculated_price": { "calculated_amount": 185000, "original_amount": 185000, "is_calculated_price_tax_inclusive": false, "currency_code": "idr" } },
+    { "title": "Hoodie - L", "sku": "HOD-L", "price": 185000, "thumbnail": null, "calculated_price": { "calculated_amount": 185000, "original_amount": 185000, "is_calculated_price_tax_inclusive": false, "currency_code": "idr" } },
+    { "title": "Hoodie - XL", "sku": "HOD-XL", "price": 195000, "thumbnail": null, "calculated_price": { "calculated_amount": 195000, "original_amount": 195000, "is_calculated_price_tax_inclusive": false, "currency_code": "idr" } }
+  ],
+  "options": [
+    { "title": "Ukuran", "values": ["M", "L", "XL"] }
+  ]
 }
 ```
 
 Note: New products are `draft` by default — not visible on `/store/products` until published.
 
 ```bash
-HOODIE_ID="prod_01JM..."
+HOODIE_ID="prod_01KQ..."
 ```
 
 ### A2: Create a simple product (no variants)
@@ -541,7 +615,7 @@ curl -s -X POST http://localhost:3000/admin/products \
 
 ```json
 {
-  "id": "prod_01JM...",
+  "id": "prod_01KQ...",
   "title": "Stiker Logo",
   "status": "draft",
   "variants": []
@@ -585,7 +659,7 @@ curl -s 'http://localhost:3000/admin/products?offset=3&limit=2' | jq '{count, ti
 ### A4: Get a single product (admin)
 
 ```bash
-curl -s http://localhost:3000/admin/products/$HOODIE_ID | jq '.product | {id, title, status, options, variants}'
+curl -s http://localhost:3000/admin/products/$HOODIE_ID | jq '.product | {id, title, status, options, variants, images}'
 ```
 
 ### A5: Publish a product
@@ -612,17 +686,22 @@ curl -s http://localhost:3000/store/products | jq '[.products[].title]'
 ["Kaos Polos", "Jeans Slim Fit", "Sneakers Classic", "Hoodie Oversize"]
 ```
 
-### A6: Partial update (change description only)
+### A6: Partial update (change description and images)
 
 ```bash
 curl -s -X POST http://localhost:3000/admin/products/$HOODIE_ID \
   -H 'Content-Type: application/json' \
-  -d '{"description": "Hoodie oversize bahan fleece premium, sangat hangat dan nyaman."}' | jq '.product.description'
+  -d '{"description": "Hoodie oversize bahan fleece premium.", "images": ["https://example.com/hoodie-v2.jpg"]}' | jq '.product | {description, images: [.images[].url]}'
 ```
 
 ```json
-"Hoodie oversize bahan fleece premium, sangat hangat dan nyaman."
+{
+  "description": "Hoodie oversize bahan fleece premium.",
+  "images": ["https://example.com/hoodie-v2.jpg"]
+}
 ```
+
+Note: Updating `images` replaces all existing images (soft-deletes old, inserts new).
 
 ### A7: Add a new variant to an existing product
 
@@ -631,7 +710,7 @@ Add size XXL to the hoodie after initial creation:
 ```bash
 curl -s -X POST http://localhost:3000/admin/products/$HOODIE_ID/variants \
   -H 'Content-Type: application/json' \
-  -d '{"title": "Hoodie - XXL", "sku": "HOD-XXL", "price": 205000, "options": {"Ukuran": "XXL"}}' | jq '{variant_count: (.product.variants | length), new_variant: (.product.variants[-1] | {title, sku, price})}'
+  -d '{"title": "Hoodie - XXL", "sku": "HOD-XXL", "price": 205000, "thumbnail": "https://example.com/hoodie-xxl.jpg", "options": {"Ukuran": "XXL"}}' | jq '{variant_count: (.product.variants | length), new_variant: (.product.variants[-1] | {title, sku, price, thumbnail})}'
 ```
 
 ```json
@@ -640,7 +719,8 @@ curl -s -X POST http://localhost:3000/admin/products/$HOODIE_ID/variants \
   "new_variant": {
     "title": "Hoodie - XXL",
     "sku": "HOD-XXL",
-    "price": 205000
+    "price": 205000,
+    "thumbnail": "https://example.com/hoodie-xxl.jpg"
   }
 }
 ```
@@ -653,7 +733,7 @@ curl -s -X DELETE http://localhost:3000/admin/products/$HOODIE_ID | jq
 
 ```json
 {
-  "id": "prod_01JM...",
+  "id": "prod_01KQ...",
   "object": "product",
   "deleted": true
 }
@@ -667,12 +747,6 @@ curl -s http://localhost:3000/admin/products/$HOODIE_ID | jq
 
 ```json
 { "code": "invalid_request_error", "type": "not_found", "message": "..." }
-```
-
-But you can still find it with the `with_deleted` flag:
-
-```bash
-curl -s 'http://localhost:3000/admin/products?with_deleted=true' | jq '.count'
 ```
 
 After deletion, the handle becomes available for reuse:
@@ -689,6 +763,104 @@ curl -s -X POST http://localhost:3000/admin/products \
 
 ---
 
+## Admin: Option CRUD
+
+Product options can be managed independently of the parent product. These endpoints handle create, read, update, and delete for options.
+
+### AO1: List options for a product
+
+```bash
+curl -s http://localhost:3000/admin/products/prod_seed_kaos_polos/options | jq
+```
+
+```json
+{
+  "product_options": [
+    {
+      "id": "opt_seed_kaos_size",
+      "product_id": "prod_seed_kaos_polos",
+      "title": "Ukuran",
+      "metadata": null,
+      "created_at": "...",
+      "updated_at": "...",
+      "values": [
+        { "id": "optval_seed_kaos_s_2", "option_id": "opt_seed_kaos_size", "value": "L", "metadata": null, "created_at": "...", "updated_at": "..." },
+        { "id": "optval_seed_kaos_s_1", "option_id": "opt_seed_kaos_size", "value": "M", "metadata": null, "created_at": "...", "updated_at": "..." },
+        { "id": "optval_seed_kaos_s_0", "option_id": "opt_seed_kaos_size", "value": "S", "metadata": null, "created_at": "...", "updated_at": "..." },
+        { "id": "optval_seed_kaos_s_3", "option_id": "opt_seed_kaos_size", "value": "XL", "metadata": null, "created_at": "...", "updated_at": "..." }
+      ]
+    }
+  ],
+  "count": 1,
+  "offset": 0,
+  "limit": 50
+}
+```
+
+### AO2: Get a single option
+
+```bash
+curl -s http://localhost:3000/admin/products/prod_seed_kaos_polos/options/opt_seed_kaos_size | jq '.product_option | {id, title, values: [.values[].value]}'
+```
+
+```json
+{
+  "id": "opt_seed_kaos_size",
+  "title": "Ukuran",
+  "values": ["L", "M", "S", "XL"]
+}
+```
+
+### AO3: Create a new option on an existing product
+
+Add a "Color" option to Kaos Polos after initial creation:
+
+```bash
+curl -s -X POST http://localhost:3000/admin/products/prod_seed_kaos_polos/options \
+  -H 'Content-Type: application/json' \
+  -d '{"title": "Warna", "values": ["Hitam", "Putih"]}' | jq '.product.options[] | select(.title == "Warna") | {title, values: [.values[].value]}'
+```
+
+```json
+{
+  "title": "Warna",
+  "values": ["Hitam", "Putih"]
+}
+```
+
+Note: Returns `{ product: ProductWithRelations }` — the full updated product.
+
+### AO4: Update an option title
+
+```bash
+curl -s -X POST http://localhost:3000/admin/products/prod_seed_kaos_polos/options/opt_seed_kaos_size \
+  -H 'Content-Type: application/json' \
+  -d '{"title": "Ukuran (Size)"}' | jq '.product.options[] | select(.id == "opt_seed_kaos_size") | .title'
+```
+
+```json
+"Ukuran (Size)"
+```
+
+### AO5: Delete an option
+
+```bash
+OPT_ID=$(curl -s http://localhost:3000/admin/products/prod_seed_kaos_polos/options | jq -r '.product_options[0].id')
+
+curl -s -X DELETE http://localhost:3000/admin/products/prod_seed_kaos_polos/options/$OPT_ID | jq
+```
+
+```json
+{
+  "id": "opt_seed_kaos_size",
+  "object": "product_option",
+  "deleted": true,
+  "parent": { "id": "prod_seed_kaos_polos", "title": "Kaos Polos", ... }
+}
+```
+
+---
+
 ## Cart: Advanced Operations
 
 ### C1: Retrieve a cart (GET)
@@ -696,23 +868,18 @@ curl -s -X POST http://localhost:3000/admin/products \
 After creating a cart in Step 3, retrieve it later:
 
 ```bash
-curl -s http://localhost:3000/store/carts/$CART_ID | jq
+curl -s http://localhost:3000/store/carts/$CART_ID | jq '.cart | {id, email, currency_code, items, item_total, total, completed_at}'
 ```
 
 ```json
 {
-  "cart": {
-    "id": "cart_01JM...",
-    "email": "buyer@example.com",
-    "currency_code": "idr",
-    "items": [],
-    "item_total": 0,
-    "total": 0,
-    "created_at": "2026-04-09T12:00:00",
-    "updated_at": "2026-04-09T12:00:00",
-    "completed_at": null,
-    "deleted_at": null
-  }
+  "id": "cart_01KQ...",
+  "email": "buyer@example.com",
+  "currency_code": "idr",
+  "items": [],
+  "item_total": 0,
+  "total": 0,
+  "completed_at": null
 }
 ```
 
@@ -735,14 +902,17 @@ curl -s -X POST http://localhost:3000/store/carts/$CART_ID \
 
 ### C3: Remove a line item from the cart
 
-Remove an item without setting quantity to 0:
+Remove an item with DELETE:
 
 ```bash
-curl -s -X DELETE http://localhost:3000/store/carts/$CART_ID/line-items/$LINE_ID | jq '{item_count: (.cart.items | length), item_total: .cart.item_total}'
+curl -s -X DELETE http://localhost:3000/store/carts/$CART_ID/line-items/$LINE_ID | jq '{id: .id, object: .object, deleted: .deleted, item_count: (.cart.items | length), item_total: .cart.item_total}'
 ```
 
 ```json
 {
+  "id": "cali_01KQ...",
+  "object": "line-item",
+  "deleted": true,
   "item_count": 1,
   "item_total": 450000
 }
@@ -801,7 +971,7 @@ curl -s -X POST http://localhost:3000/store/carts \
 
 ```json
 {
-  "id": "cart_01JM...",
+  "id": "cart_01KQ...",
   "currency_code": "idr",
   "email": null
 }
@@ -831,21 +1001,20 @@ Retrieve the logged-in customer's profile using the `X-Customer-Id` header:
 
 ```bash
 curl -s http://localhost:3000/store/customers/me \
-  -H 'X-Customer-Id: cus_seed_budi' | jq
+  -H 'X-Customer-Id: cus_seed_budi' | jq '.customer | {id, first_name, last_name, email, phone, company_name, has_account, created_by, addresses}'
 ```
 
 ```json
 {
-  "customer": {
-    "id": "cus_seed_budi",
-    "first_name": "Budi",
-    "last_name": "Santoso",
-    "email": "budi@example.com",
-    "phone": "+6281234567890",
-    "has_account": true,
-    "created_at": "2026-04-09T00:00:00",
-    "updated_at": "2026-04-09T00:00:00"
-  }
+  "id": "cus_seed_budi",
+  "first_name": "Budi",
+  "last_name": "Santoso",
+  "email": "budi@example.com",
+  "phone": "+6281234567890",
+  "company_name": "Toko Budi Sejahtera",
+  "has_account": true,
+  "created_by": null,
+  "addresses": []
 }
 ```
 
@@ -864,6 +1033,19 @@ curl -s -X POST http://localhost:3000/store/customers/me \
   "last_name": "Santoso",
   "phone": "+628111222333"
 }
+```
+
+### CU3: Update email
+
+```bash
+curl -s -X POST http://localhost:3000/store/customers/me \
+  -H 'Content-Type: application/json' \
+  -H 'X-Customer-Id: cus_seed_budi' \
+  -d '{"email": "budi.new@example.com"}' | jq '.customer.email'
+```
+
+```json
+"budi.new@example.com"
 ```
 
 ---
@@ -950,7 +1132,7 @@ curl -s -X POST http://localhost:3000/store/carts \
 curl -s -X POST http://localhost:3000/store/carts/$CART_ID3/complete | jq
 ```
 ```json
-{ "code": "invalid_state_error", "type": "unexpected_state", "message": "Cannot complete an empty cart" }
+{ "code": "invalid_request_error", "type": "invalid_data", "message": "Cannot complete an empty cart" }
 ```
 
 **Missing auth header:**
@@ -1009,7 +1191,7 @@ curl -s -X POST http://localhost:3000/store/carts/$CART_ID \
   -d '{"email": "new@test.com"}' | jq
 ```
 ```json
-{ "code": "invalid_state_error", "type": "unexpected_state", "message": "Cart is already completed" }
+{ "code": "invalid_request_error", "type": "invalid_data", "message": "Cart is already completed" }
 ```
 
 **Already-completed cart cannot add items:**
@@ -1019,7 +1201,7 @@ curl -s -X POST http://localhost:3000/store/carts/$CART_ID/line-items \
   -d '{"variant_id": "var_seed_kaos_m", "quantity": 1}' | jq
 ```
 ```json
-{ "code": "invalid_state_error", "type": "unexpected_state", "message": "Cart is already completed" }
+{ "code": "invalid_request_error", "type": "invalid_data", "message": "Cart is already completed" }
 ```
 
 **Cart cannot be completed twice:**
@@ -1027,7 +1209,7 @@ curl -s -X POST http://localhost:3000/store/carts/$CART_ID/line-items \
 curl -s -X POST http://localhost:3000/store/carts/$CART_ID/complete | jq
 ```
 ```json
-{ "code": "invalid_state_error", "type": "unexpected_state", "message": "Cart is already completed" }
+{ "code": "invalid_request_error", "type": "invalid_data", "message": "Cart is already completed" }
 ```
 
 **Nonexistent cart:**
@@ -1058,6 +1240,8 @@ curl -s http://localhost:3000/store/customers/me \
 
 ---
 
+## Reference Tables
+
 ### Variant ID reference for curl
 
 | Product | Size | Variant ID | SKU | Price (IDR) |
@@ -1076,10 +1260,43 @@ curl -s http://localhost:3000/store/customers/me \
 | Sneakers | 42 | `var_seed_snkr_42` | `SNKR-42` | 475,000 |
 | Sneakers | 43 | `var_seed_snkr_43` | `SNKR-43` | 475,000 |
 
----
-
 ### Customer ID reference for curl
 
 | Name | ID | Use with |
 |---|---|---|
 | Budi Santoso | `cus_seed_budi` | `X-Customer-Id` header for order endpoints, `customer_id` in cart creation |
+
+### Endpoint summary (30 methods)
+
+| Method | Path | Section |
+|---|---|---|
+| GET | `/health` | Step 0 |
+| GET | `/store/products` | Step 1 |
+| GET | `/store/products/{id}` | Step 2 |
+| POST | `/store/carts` | Step 3 |
+| GET | `/store/carts/{id}` | C1 |
+| POST | `/store/carts/{id}` | C2 |
+| POST | `/store/carts/{id}/line-items` | Step 4 |
+| POST | `/store/carts/{id}/line-items/{line_id}` | Step 6 |
+| DELETE | `/store/carts/{id}/line-items/{line_id}` | C3 |
+| POST | `/store/carts/{id}/complete` | Step 7 |
+| GET | `/store/orders` | Step 10 |
+| GET | `/store/orders/{id}` | Step 11 |
+| POST | `/store/customers` | Step 8 |
+| GET | `/store/customers/me` | CU1 |
+| POST | `/store/customers/me` | CU2 |
+| POST | `/admin/products` | A1 |
+| GET | `/admin/products` | A3 |
+| GET | `/admin/products/{id}` | A4 |
+| POST | `/admin/products/{id}` | A5 |
+| DELETE | `/admin/products/{id}` | A8 |
+| POST | `/admin/products/{id}/variants` | A7 |
+| GET | `/admin/products/{id}/variants` | (variant list) |
+| GET | `/admin/products/{id}/variants/{variant_id}` | (variant get) |
+| POST | `/admin/products/{id}/variants/{variant_id}` | (variant update) |
+| DELETE | `/admin/products/{id}/variants/{variant_id}` | (variant delete) |
+| GET | `/admin/products/{id}/options` | AO1 |
+| POST | `/admin/products/{id}/options` | AO3 |
+| GET | `/admin/products/{id}/options/{option_id}` | AO2 |
+| POST | `/admin/products/{id}/options/{option_id}` | AO4 |
+| DELETE | `/admin/products/{id}/options/{option_id}` | AO5 |
