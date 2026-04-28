@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use validator::Validate;
 
-use super::models::{ProductVariantWithOptions, ProductWithRelations};
+use super::models::{ProductOptionWithValues, ProductVariantWithOptions, ProductWithRelations};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -48,6 +48,7 @@ pub struct CreateProductInput {
     )]
     pub discountable: Option<bool>,
     pub metadata: Option<HashMap<String, serde_json::Value>>,
+    pub images: Option<Vec<String>>,
     #[validate(nested)]
     pub options: Option<Vec<CreateProductOptionInput>>,
     #[validate(nested)]
@@ -67,11 +68,13 @@ pub struct CreateProductVariantInput {
     #[validate(length(min = 1, message = "Variant title cannot be empty"))]
     pub title: String,
     pub sku: Option<String>,
+    pub thumbnail: Option<String>,
     #[validate(range(min = 0, message = "Price cannot be negative"))]
     pub price: i64,
     pub variant_rank: Option<i64>,
     pub options: Option<HashMap<String, String>>,
     pub metadata: Option<HashMap<String, serde_json::Value>>,
+    pub images: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, Validate)]
@@ -94,13 +97,14 @@ pub struct UpdateProductInput {
     )]
     pub discountable: Option<bool>,
     pub metadata: Option<HashMap<String, serde_json::Value>>,
+    pub images: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, Validate)]
-#[serde(deny_unknown_fields)]
 pub struct UpdateVariantInput {
     pub title: Option<String>,
     pub sku: Option<String>,
+    pub thumbnail: Option<String>,
     #[validate(range(min = 0, message = "Price cannot be negative"))]
     pub price: Option<i64>,
     pub metadata: Option<HashMap<String, serde_json::Value>>,
@@ -147,4 +151,37 @@ pub struct DeleteResponse {
     pub id: String,
     pub object: String,
     pub deleted: bool,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct CreateOptionInput {
+    #[validate(length(min = 1, message = "Option title cannot be empty"))]
+    pub title: String,
+    pub values: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct UpdateOptionInput {
+    pub title: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ProductOptionResponse {
+    pub product_option: ProductOptionWithValues,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ProductOptionListResponse {
+    pub product_options: Vec<ProductOptionWithValues>,
+    pub count: i64,
+    pub offset: i64,
+    pub limit: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ProductOptionDeleteResponse {
+    pub id: String,
+    pub object: String,
+    pub deleted: bool,
+    pub parent: ProductWithRelations,
 }

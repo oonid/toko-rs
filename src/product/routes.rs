@@ -30,6 +30,16 @@ pub fn router() -> Router<AppState> {
                 .post(admin_update_variant)
                 .delete(admin_delete_variant),
         )
+        .route(
+            "/admin/products/{id}/options",
+            get(admin_list_options).post(admin_create_option),
+        )
+        .route(
+            "/admin/products/{id}/options/{option_id}",
+            get(admin_get_option)
+                .post(admin_update_option)
+                .delete(admin_delete_option),
+        )
         .route("/store/products", get(store_list_products))
         .route("/store/products/{id}", get(store_get_product))
 }
@@ -213,4 +223,92 @@ async fn store_get_product(
 ) -> Result<Json<ProductResponse>, AppError> {
     let product = state.repos.product.find_published_by_id(&id).await?;
     Ok(Json(ProductResponse { product }))
+}
+
+#[tracing::instrument(skip_all, fields(product_id = %product_id, offset = params.offset, limit = params.limit))]
+async fn admin_list_options(
+    State(state): State<AppState>,
+    Path(product_id): Path<String>,
+    Query(params): Query<FindParams>,
+) -> Result<Json<ProductOptionListResponse>, AppError> {
+    let (product_options, count) = state
+        .repos
+        .product
+        .list_options(&product_id, &params)
+        .await?;
+
+    Ok(Json(ProductOptionListResponse {
+        product_options,
+        count,
+        offset: params.offset,
+        limit: params.capped_limit(),
+    }))
+}
+
+#[tracing::instrument(skip_all, fields(product_id = %product_id))]
+async fn admin_create_option(
+    State(state): State<AppState>,
+    Path(product_id): Path<String>,
+    extract::Json(payload): extract::Json<CreateOptionInput>,
+) -> Result<Json<ProductResponse>, AppError> {
+    payload
+        .validate()
+        .map_err(|e| AppError::InvalidData(e.to_string()))?;
+
+    let product = state
+        .repos
+        .product
+        .create_option(&product_id, &payload)
+        .await?;
+    Ok(Json(ProductResponse { product }))
+}
+
+#[tracing::instrument(skip_all, fields(product_id = %product_id, option_id = %option_id))]
+async fn admin_get_option(
+    State(state): State<AppState>,
+    Path((product_id, option_id)): Path<(String, String)>,
+) -> Result<Json<ProductOptionResponse>, AppError> {
+    let product_option = state
+        .repos
+        .product
+        .get_option(&product_id, &option_id)
+        .await?;
+    Ok(Json(ProductOptionResponse { product_option }))
+}
+
+#[tracing::instrument(skip_all, fields(product_id = %product_id, option_id = %option_id))]
+async fn admin_update_option(
+    State(state): State<AppState>,
+    Path((product_id, option_id)): Path<(String, String)>,
+    extract::Json(payload): extract::Json<UpdateOptionInput>,
+) -> Result<Json<ProductResponse>, AppError> {
+    payload
+        .validate()
+        .map_err(|e| AppError::InvalidData(e.to_string()))?;
+
+    let product = state
+        .repos
+        .product
+        .update_option(&product_id, &option_id, &payload)
+        .await?;
+    Ok(Json(ProductResponse { product }))
+}
+
+#[tracing::instrument(skip_all, fields(product_id = %product_id, option_id = %option_id))]
+async fn admin_delete_option(
+    State(state): State<AppState>,
+    Path((product_id, option_id)): Path<(String, String)>,
+) -> Result<Json<ProductOptionDeleteResponse>, AppError> {
+    let (id, parent) = state
+        .repos
+        .product
+        .delete_option(&product_id, &option_id)
+        .await?;
+
+    Ok(Json(ProductOptionDeleteResponse {
+        id,
+        object: "product_option".to_string(),
+        deleted: true,
+        parent,
+    }))
 }

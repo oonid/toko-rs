@@ -133,6 +133,21 @@ impl ProductRepository {
             }
         }
 
+        if let Some(ref urls) = input.images {
+            for (i, url) in urls.iter().enumerate() {
+                let img_id = generate_entity_id("img");
+                sqlx::query(
+                    "INSERT INTO product_images (id, product_id, url, rank) VALUES ($1, $2, $3, $4)",
+                )
+                .bind(&img_id)
+                .bind(&product_id)
+                .bind(url)
+                .bind(i as i64)
+                .execute(&mut *tx)
+                .await?;
+            }
+        }
+
         tx.commit().await?;
         let loaded = self.load_relations(product).await?;
         Ok(loaded)
@@ -280,6 +295,27 @@ impl ProductRepository {
         .execute(&self.pool)
         .await
         .map_err(|e| Self::map_unique_violation(e, "Product", handle))?;
+
+        if let Some(ref urls) = input.images {
+            sqlx::query(
+                "UPDATE product_images SET deleted_at = CURRENT_TIMESTAMP WHERE product_id = $1 AND deleted_at IS NULL",
+            )
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+            for (i, url) in urls.iter().enumerate() {
+                let img_id = generate_entity_id("img");
+                sqlx::query(
+                    "INSERT INTO product_images (id, product_id, url, rank) VALUES ($1, $2, $3, $4)",
+                )
+                .bind(&img_id)
+                .bind(id)
+                .bind(url)
+                .bind(i as i64)
+                .execute(&self.pool)
+                .await?;
+            }
+        }
 
         self.find_by_id_any(id).await
     }
@@ -540,14 +576,16 @@ impl ProductRepository {
             UPDATE product_variants SET
                 title = COALESCE($1, title),
                 sku = COALESCE($2, sku),
-                price = COALESCE($3, price),
-                metadata = COALESCE($4, metadata),
+                thumbnail = COALESCE($3, thumbnail),
+                price = COALESCE($4, price),
+                metadata = COALESCE($5, metadata),
                 updated_at = CURRENT_TIMESTAMP
-            WHERE id = $5
+            WHERE id = $6
             "#,
         )
         .bind(&input.title)
         .bind(&input.sku)
+        .bind(&input.thumbnail)
         .bind(input.price)
         .bind(metadata_to_json(input.metadata.clone()))
         .bind(variant_id)
@@ -707,8 +745,8 @@ impl ProductRepository {
         let var_id = generate_entity_id("variant");
         sqlx::query_as::<_, ProductVariant>(
             r#"
-            INSERT INTO product_variants (id, product_id, title, sku, price, variant_rank, metadata)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            INSERT INTO product_variants (id, product_id, title, sku, thumbnail, price, variant_rank, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             RETURNING *
             "#,
         )
@@ -716,6 +754,7 @@ impl ProductRepository {
         .bind(product_id)
         .bind(&input.title)
         .bind(&input.sku)
+        .bind(&input.thumbnail)
         .bind(input.price)
         .bind(rank)
         .bind(metadata_to_json(input.metadata.clone()))
@@ -776,6 +815,234 @@ impl ProductRepository {
         Ok(())
     }
 
+    pub async fn list_options(
+        &self,
+        product_id: &str,
+        params: &FindParams,
+    ) -> Result<(Vec<ProductOptionWithValues>, i64), AppError> {
+        let _product = sqlx::query_as::<_, Product>(
+            "SELECT * FROM products WHERE id = $1 AND deleted_at IS NULL",
+        )
+        .bind(product_id)
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or_else(|| {
+            AppError::NotFound(format!("Product with id {} was not found", product_id))
+        })?;
+
+        let count: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM product_options WHERE product_id = $1 AND deleted_at IS NULL",
+        )
+        .bind(product_id)
+        .fetch_one(&self.pool)
+        .await?;
+
+        let options = sqlx::query_as::<_, ProductOption>(
+            "SELECT * FROM product_options WHERE product_id = $1 AND deleted_at IS NULL ORDER BY created_at ASC LIMIT $2 OFFSET $3",
+        )
+        .bind(product_id)
+        .bind(params.capped_limit())
+        .bind(params.offset)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut results = Vec::with_capacity(options.len());
+        for opt in &options {
+            let values = sqlx::query_as::<_, ProductOptionValue>(
+                "SELECT * FROM product_option_values WHERE option_id = $1 AND deleted_at IS NULL",
+            )
+            .bind(&opt.id)
+            .fetch_all(&self.pool)
+            .await?;
+            results.push(ProductOptionWithValues {
+                option: opt.clone(),
+                values,
+            });
+        }
+
+        Ok((results, count.0))
+    }
+
+    pub async fn get_option(
+        &self,
+        product_id: &str,
+        option_id: &str,
+    ) -> Result<ProductOptionWithValues, AppError> {
+        let _product = sqlx::query_as::<_, Product>(
+            "SELECT * FROM products WHERE id = $1 AND deleted_at IS NULL",
+        )
+        .bind(product_id)
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or_else(|| {
+            AppError::NotFound(format!("Product with id {} was not found", product_id))
+        })?;
+
+        let option = sqlx::query_as::<_, ProductOption>(
+            "SELECT * FROM product_options WHERE id = $1 AND product_id = $2 AND deleted_at IS NULL",
+        )
+        .bind(option_id)
+        .bind(product_id)
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or_else(|| {
+            AppError::NotFound(format!("Option with id {} was not found", option_id))
+        })?;
+
+        let values = sqlx::query_as::<_, ProductOptionValue>(
+            "SELECT * FROM product_option_values WHERE option_id = $1 AND deleted_at IS NULL",
+        )
+        .bind(&option.id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(ProductOptionWithValues { option, values })
+    }
+
+    pub async fn create_option(
+        &self,
+        product_id: &str,
+        input: &CreateOptionInput,
+    ) -> Result<ProductWithRelations, AppError> {
+        let _product = sqlx::query_as::<_, Product>(
+            "SELECT * FROM products WHERE id = $1 AND deleted_at IS NULL",
+        )
+        .bind(product_id)
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or_else(|| {
+            AppError::NotFound(format!("Product with id {} was not found", product_id))
+        })?;
+
+        let opt_id = generate_entity_id("opt");
+        sqlx::query_as::<_, ProductOption>(
+            "INSERT INTO product_options (id, product_id, title) VALUES ($1, $2, $3) RETURNING *",
+        )
+        .bind(&opt_id)
+        .bind(product_id)
+        .bind(&input.title)
+        .fetch_one(&self.pool)
+        .await?;
+
+        if let Some(values) = &input.values {
+            for val_str in values {
+                let val_id = generate_entity_id("optval");
+                sqlx::query_as::<_, ProductOptionValue>(
+                    "INSERT INTO product_option_values (id, option_id, value) VALUES ($1, $2, $3) RETURNING *",
+                )
+                .bind(&val_id)
+                .bind(&opt_id)
+                .bind(val_str)
+                .fetch_one(&self.pool)
+                .await?;
+            }
+        }
+
+        self.find_by_id_any(product_id).await
+    }
+
+    pub async fn update_option(
+        &self,
+        product_id: &str,
+        option_id: &str,
+        input: &UpdateOptionInput,
+    ) -> Result<ProductWithRelations, AppError> {
+        let _product = sqlx::query_as::<_, Product>(
+            "SELECT * FROM products WHERE id = $1 AND deleted_at IS NULL",
+        )
+        .bind(product_id)
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or_else(|| {
+            AppError::NotFound(format!("Product with id {} was not found", product_id))
+        })?;
+
+        let _existing = sqlx::query_as::<_, ProductOption>(
+            "SELECT * FROM product_options WHERE id = $1 AND product_id = $2 AND deleted_at IS NULL",
+        )
+        .bind(option_id)
+        .bind(product_id)
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or_else(|| {
+            AppError::NotFound(format!("Option with id {} was not found", option_id))
+        })?;
+
+        sqlx::query(
+            r#"
+            UPDATE product_options SET
+                title = COALESCE($1, title),
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = $2
+            "#,
+        )
+        .bind(&input.title)
+        .bind(option_id)
+        .execute(&self.pool)
+        .await?;
+
+        self.find_by_id_any(product_id).await
+    }
+
+    pub async fn delete_option(
+        &self,
+        product_id: &str,
+        option_id: &str,
+    ) -> Result<(String, ProductWithRelations), AppError> {
+        let _product = self.find_by_id(product_id).await?;
+
+        let mut tx = self.pool.begin().await?;
+
+        let result = sqlx::query(
+            "UPDATE product_options SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1 AND product_id = $2 AND deleted_at IS NULL",
+        )
+        .bind(option_id)
+        .bind(product_id)
+        .execute(&mut *tx)
+        .await?;
+
+        if result.rows_affected() == 0 {
+            let exists: Option<(i32,)> = sqlx::query_as(
+                "SELECT 1 FROM product_options WHERE id = $1 AND deleted_at IS NOT NULL",
+            )
+            .bind(option_id)
+            .fetch_optional(&mut *tx)
+            .await?;
+            if exists.is_some() {
+                tx.rollback().await?;
+                let parent = self.find_by_id_any(product_id).await?;
+                return Ok((option_id.to_string(), parent));
+            }
+            tx.rollback().await?;
+            return Err(AppError::NotFound(format!(
+                "Option with id {} was not found",
+                option_id
+            )));
+        }
+
+        sqlx::query(
+            r#"
+            DELETE FROM product_variant_option
+            WHERE option_value_id IN (SELECT id FROM product_option_values WHERE option_id = $1)
+            "#,
+        )
+        .bind(option_id)
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query(
+            "UPDATE product_option_values SET deleted_at = CURRENT_TIMESTAMP WHERE option_id = $1 AND deleted_at IS NULL",
+        )
+        .bind(option_id)
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+
+        let parent = self.find_by_id_any(product_id).await?;
+        Ok((option_id.to_string(), parent))
+    }
+
     async fn load_relations(&self, product: Product) -> Result<ProductWithRelations, AppError> {
         let options = sqlx::query_as::<_, ProductOption>(
             "SELECT * FROM product_options WHERE product_id = $1 AND deleted_at IS NULL",
@@ -820,11 +1087,18 @@ impl ProductRepository {
             });
         }
 
+        let images = sqlx::query_as::<_, ProductImage>(
+            "SELECT id, url, rank, metadata, created_at, updated_at, deleted_at FROM product_images WHERE product_id = $1 AND deleted_at IS NULL ORDER BY rank",
+        )
+        .bind(&product.id)
+        .fetch_all(&self.pool)
+        .await?;
+
         Ok(ProductWithRelations {
             product,
             options: options_with_values,
             variants: variants_with_options,
-            images: vec![],
+            images,
         })
     }
 
