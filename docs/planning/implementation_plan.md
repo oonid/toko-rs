@@ -4,11 +4,11 @@
 
 | Artifact | Content |
 |---|---|
-| [medusa_api_analysis.md](file:///home/o/.gemini/antigravity/brain/39dab0e5-2d05-4c4d-8aed-7c2d5f4626c5/medusa_api_analysis.md) | Medusa endpoint inventory & priority tiers |
-| [medusa_database_analysis.md](file:///home/o/.gemini/antigravity/brain/39dab0e5-2d05-4c4d-8aed-7c2d5f4626c5/medusa_database_analysis.md) | Full Medusa schema vs MVP trimming |
-| [toko_rs_final_schema.md](file:///home/o/.gemini/antigravity/brain/39dab0e5-2d05-4c4d-8aed-7c2d5f4626c5/toko_rs_final_schema.md) | 11-table schema, migrations, phase compatibility |
-| [toko_rs_crate_evaluation.md](file:///home/o/.gemini/antigravity/brain/39dab0e5-2d05-4c4d-8aed-7c2d5f4626c5/toko_rs_crate_evaluation.md) | 15 runtime deps, architectural patterns, Cargo.toml |
-| [toko_rs_api_contract.md](file:///home/o/.gemini/antigravity/brain/39dab0e5-2d05-4c4d-8aed-7c2d5f4626c5/toko_rs_api_contract.md) | 20 endpoint contracts, exact JSON shapes |
+| [medusa_api_analysis.md](medusa_api_analysis.md) | Medusa endpoint inventory & priority tiers |
+| [medusa_database_analysis.md](medusa_database_analysis.md) | Full Medusa schema vs MVP trimming |
+| [toko_rs_final_schema.md](toko_rs_final_schema.md) | 11-table schema, migrations, phase compatibility |
+| [toko_rs_crate_evaluation.md](toko_rs_crate_evaluation.md) | 15 runtime deps, architectural patterns, Cargo.toml |
+| [toko_rs_api_contract.md](toko_rs_api_contract.md) | 20 endpoint contracts, exact JSON shapes |
 
 | External Reference | Location | Purpose |
 |---|---|---|
@@ -100,7 +100,7 @@ toko-rs/
 
 ### 0.1 Git & Workspace Setup
 
-- [ ] Create project directory at `/home/o/.gemini/antigravity/scratch/toko-rs/`
+- [ ] Create project directory at `./toko-rs/`
 - [ ] `cargo init` — initialize Rust project
 - [ ] Create `.gitignore` (target/, .env, *.db)
 - [ ] Create `.rustfmt.toml` (max_width = 100, edition = 2024)
@@ -114,7 +114,7 @@ toko-rs/
 
 ### 0.3 Cargo.toml
 
-- [ ] Write full `Cargo.toml` per [toko_rs_crate_evaluation.md](file:///home/o/.gemini/antigravity/brain/39dab0e5-2d05-4c4d-8aed-7c2d5f4626c5/toko_rs_crate_evaluation.md)
+- [ ] Write full `Cargo.toml` per [toko_rs_crate_evaluation.md](toko_rs_crate_evaluation.md)
 - [ ] Verify: `cargo check` compiles with all 15 dependencies
 
 ### 0.4 Core Foundation Files
@@ -167,7 +167,7 @@ toko-rs/
 - [ ] **`migrations/003_carts.sql`** — carts, cart_line_items
 - [ ] **`migrations/004_orders.sql`** — orders, order_line_items
 - [ ] **`migrations/005_payments.sql`** — payment_records
-- [ ] All SQL per [toko_rs_final_schema.md](file:///home/o/.gemini/antigravity/brain/39dab0e5-2d05-4c4d-8aed-7c2d5f4626c5/toko_rs_final_schema.md)
+- [ ] All SQL per [toko_rs_final_schema.md](toko_rs_final_schema.md)
 - [ ] Verify: `cargo run` creates all 11 tables + 1 pivot in SQLite
 
 ### 0.6 Makefile
@@ -190,7 +190,7 @@ toko-rs/
 ## Phase 1-A — Product Module
 
 > **Reference**: `vendor/medusa/packages/modules/product/src/models/`
-> **Contract**: [toko_rs_api_contract.md](file:///home/o/.gemini/antigravity/brain/39dab0e5-2d05-4c4d-8aed-7c2d5f4626c5/toko_rs_api_contract.md) § Admin + Store Products
+> **Contract**: [toko_rs_api_contract.md](toko_rs_api_contract.md) § Admin + Store Products
 
 ### 1A.1 Models (`src/product/model.rs`)
 
@@ -247,7 +247,7 @@ toko-rs/
 - [ ] Integration test: Create product with options + variants → verify response shape
 - [ ] Integration test: Update product → verify updated fields
 - [ ] Integration test: Delete product → verify 404 on store, visible with `with_deleted`
-- [ ] Contract test: Response JSON matches [toko_rs_api_contract.md](file:///home/o/.gemini/antigravity/brain/39dab0e5-2d05-4c4d-8aed-7c2d5f4626c5/toko_rs_api_contract.md) shape
+- [ ] Contract test: Response JSON matches [toko_rs_api_contract.md](toko_rs_api_contract.md) shape
 
 **Phase 1-A gate**: All 8 product endpoints work. Admin can create/update/delete products. Store shows only published products.
 
@@ -256,7 +256,7 @@ toko-rs/
 ## Phase 1-B — Cart Module
 
 > **Reference**: `vendor/medusa/packages/modules/cart/src/models/`
-> **Contract**: [toko_rs_api_contract.md](file:///home/o/.gemini/antigravity/brain/39dab0e5-2d05-4c4d-8aed-7c2d5f4626c5/toko_rs_api_contract.md) § Store Carts
+> **Contract**: [toko_rs_api_contract.md](toko_rs_api_contract.md) § Store Carts
 
 ### 1B.1 Models (`src/cart/model.rs`)
 
@@ -313,7 +313,7 @@ toko-rs/
 ## Phase 1-C — Order Module
 
 > **Reference**: `vendor/medusa/packages/modules/order/src/models/`
-> **Contract**: [toko_rs_api_contract.md](file:///home/o/.gemini/antigravity/brain/39dab0e5-2d05-4c4d-8aed-7c2d5f4626c5/toko_rs_api_contract.md) § Store Orders + Cart Complete
+> **Contract**: [toko_rs_api_contract.md](toko_rs_api_contract.md) § Store Orders + Cart Complete
 
 ### 1C.1 Models (`src/order/model.rs`)
 
@@ -365,7 +365,7 @@ toko-rs/
 ## Phase 1-D — Customer Module
 
 > **Reference**: `vendor/medusa/packages/modules/customer/src/models/`
-> **Contract**: [toko_rs_api_contract.md](file:///home/o/.gemini/antigravity/brain/39dab0e5-2d05-4c4d-8aed-7c2d5f4626c5/toko_rs_api_contract.md) § Store Customers
+> **Contract**: [toko_rs_api_contract.md](toko_rs_api_contract.md) § Store Customers
 
 ### 1D.1 Models (`src/customer/model.rs`)
 
@@ -463,7 +463,7 @@ toko-rs/
 
 ### 1F.3 Smoke Test via curl
 
-- [ ] Run full Browse → Cart → Checkout flow using curl commands from [toko_rs_crate_evaluation.md](file:///home/o/.gemini/antigravity/brain/39dab0e5-2d05-4c4d-8aed-7c2d5f4626c5/toko_rs_crate_evaluation.md)
+- [ ] Run full Browse → Cart → Checkout flow using curl commands from [toko_rs_crate_evaluation.md](toko_rs_crate_evaluation.md)
 - [ ] Verify all 20 endpoints return correct JSON shapes
 
 **Phase 1-F gate**: `cargo run -- --seed && cargo run` starts a working e-commerce backend with sample data.
@@ -521,7 +521,7 @@ toko-rs/
 
 ### 1G.6 Contract Tests
 
-- [ ] Every endpoint response matches shape from [toko_rs_api_contract.md](file:///home/o/.gemini/antigravity/brain/39dab0e5-2d05-4c4d-8aed-7c2d5f4626c5/toko_rs_api_contract.md)
+- [ ] Every endpoint response matches shape from [toko_rs_api_contract.md](toko_rs_api_contract.md)
 - [ ] Use `assert-json-diff` to compare response structure
 - [ ] Error responses match MedusaError format
 
@@ -624,6 +624,6 @@ curl localhost:3000/store/orders/$ORDER_ID                      # View order
 
 ### Contract Validation
 
-- Each endpoint response checked against [toko_rs_api_contract.md](file:///home/o/.gemini/antigravity/brain/39dab0e5-2d05-4c4d-8aed-7c2d5f4626c5/toko_rs_api_contract.md) shapes
+- Each endpoint response checked against [toko_rs_api_contract.md](toko_rs_api_contract.md) shapes
 - Error responses match MedusaError format
 - Pagination follows Medusa convention (count/offset/limit)
