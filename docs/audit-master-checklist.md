@@ -1,8 +1,8 @@
 # P1 Medusa Compatibility — Master Checklist
 
-Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25,26,27,28,29,30}.md` into a single reference. Every item is tagged with its source audit, status, and where it was fixed (or why it was deferred). Tasks 27 and 29 were structural audits (checklist accuracy, re-numbering, redundant test annotation) — their impact is reflected in the checklist structure itself (prefixed IDs, reversal chains, corrected counts).
+Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25,26,27,28,29,30,31}.md` into a single reference. Every item is tagged with its source audit, status, and where it was fixed (or why it was deferred). Tasks 27 and 29 were structural audits (checklist accuracy, re-numbering, redundant test annotation) — their impact is reflected in the checklist structure itself (prefixed IDs, reversal chains, corrected counts).
 
-**Last verified**: 2026-04-28 — 205 tests pass on PostgreSQL, clippy clean, fmt clean. Latest audit: Task 30. Total: 127 fixes across 7 categories.
+**Last verified**: 2026-04-28 — 207 tests pass on PostgreSQL, clippy clean, fmt clean. Latest audit: Task 31. Total: 128 fixes across 7 categories.
 
 ---
 
@@ -79,6 +79,7 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25
 | S-28 | T30-3,8 | Product images not persisted — `ImageStub { url }` only, no DB table, no input field | `ProductImage` model (id, url, product_id, rank), `product_images` table, `images` field on create/update inputs. **Supersedes S-5 and S-13 (ImageStub)** | 30b |
 | S-29 | T30-4 | Line item missing `compare_at_unit_price` field | Added nullable `compare_at_unit_price` to `CartLineItem`, `OrderLineItem`, both tables, order INSERT | 30d |
 | S-30 | T30-5 | Customer missing `created_by` field | Added `created_by TEXT` column to `customers`, `Customer` model. **Was X-7 (deferred), now fixed** | 30e |
+| S-31 | T31-1 | Product images input format `Vec<String>` — Medusa SDK sends `{url: "..."}` objects | `ImageInput { url }` for create, `UpdateImageInput { id?, url }` for update. **Supersedes S-28 input format** | 31a |
 
 ---
 
@@ -97,7 +98,7 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25
 | V-9 | T26 MEDIUM-9 | `ListOrdersParams` missing `id` and `status` query filters | Added optional filters with dynamic WHERE clause construction | 26j |
 | V-10 | T22 I6 | `ListOrdersParams` has `deny_unknown_fields` but Medusa's `createFindParams` is NOT strict | Removed `deny_unknown_fields` | 22d |
 | V-11 | T23 V1,V2 | `add_variant` had no option coverage check; `create_product` skipped check when `options` was `None` | Required `options` to cover ALL product option titles in both paths | 23i |
-| V-12 | T30-7 | `UpdateCustomerInput` missing `email` field — customers cannot change email | Added `email: Option<String>` to `UpdateCustomerInput`, bound in repository UPDATE | 30f |
+| V-12 | T30-7 | `UpdateCustomerInput` missing `email` field — customers cannot change email | Added `email: Option<String>` to `UpdateCustomerInput`, bound in repository UPDATE | 30f | **T31 CORRECTION**: T30-7 referenced admin schema; Medusa `StoreUpdateCustomer` does NOT have `email`. Change is harmless (extra capability).** |
 
 ---
 
@@ -232,13 +233,13 @@ Entries moved from this section to fix sections: S-24 (was T22 S1), B-30 (was T2
 | Category | Count |
 |----------|-------|
 | Bugs fixed (B) | 32 |
-| Response shape fixes (S) | 30 |
+| Response shape fixes (S) | 31 |
 | Input/validation fixes (V) | 12 |
 | Error handling fixes (E) | 12 |
 | Database schema fixes (D) | 28 |
 | Business logic fixes (L) | 9 |
 | Config/infra fixes (C) | 4 |
-| **Total fixes applied** | **127** |
+| **Total fixes applied** | **128** |
 | Deferred to P2 | 12 |
 | Known divergences (by design) | 10 |
 | False positive | 1 |
@@ -253,6 +254,7 @@ Entries moved from this section to fix sections: S-24 (was T22 S1), B-30 (was T2
 5. **S-5 → S-13 → S-28**: `images` field: empty array (T14) → `ImageStub { url }` (T18) → `ProductImage` model with persistence (T30)
 6. **X-7 → S-30**: `created_by` deferred (T22) → now fixed (T30)
 7. **X-8 → S-28**: `ImageStub` missing id/rank deferred (T22) → now fixed with `ProductImage` (T30)
+8. **S-28 → S-31**: Images input `Vec<String>` (T30) → `Vec<ImageInput>` object format (T31)
 
 ### Superseded Entries
 
