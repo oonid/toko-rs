@@ -56,6 +56,7 @@ pub struct ProductVariant {
     pub product_id: String,
     pub title: String,
     pub sku: Option<String>,
+    pub thumbnail: Option<String>,
     pub price: i64,
     pub variant_rank: i64,
     #[serde(skip_deserializing)]
@@ -66,9 +67,17 @@ pub struct ProductVariant {
     pub deleted_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct ImageStub {
+#[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
+pub struct ProductImage {
+    pub id: String,
     pub url: String,
+    pub rank: i64,
+    #[serde(skip_deserializing)]
+    pub metadata: Option<sqlx::types::Json<serde_json::Value>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    #[serde(skip)]
+    pub deleted_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -77,7 +86,7 @@ pub struct ProductWithRelations {
     pub product: Product,
     pub options: Vec<ProductOptionWithValues>,
     pub variants: Vec<ProductVariantWithOptions>,
-    pub images: Vec<ImageStub>,
+    pub images: Vec<ProductImage>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
