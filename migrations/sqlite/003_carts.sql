@@ -18,6 +18,7 @@ CREATE TABLE cart_line_items (
     title TEXT NOT NULL,
     quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0),
     unit_price INTEGER NOT NULL CHECK (unit_price >= 0),
+    compare_at_unit_price INTEGER,
     variant_id TEXT REFERENCES product_variants(id) ON DELETE SET NULL,
     product_id TEXT REFERENCES products(id) ON DELETE SET NULL,
     snapshot JSON,

@@ -39,6 +39,7 @@ CREATE TABLE product_variants (
     product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
     sku TEXT,
+    thumbnail TEXT,
     price BIGINT NOT NULL DEFAULT 0 CHECK (price >= 0),
     variant_rank BIGINT NOT NULL DEFAULT 0,
     metadata JSONB,
@@ -63,3 +64,16 @@ CREATE UNIQUE INDEX uq_product_option_values_option_id_value ON product_option_v
 CREATE INDEX idx_product_variants_product_id ON product_variants (product_id) WHERE deleted_at IS NULL;
 CREATE UNIQUE INDEX uq_product_variants_sku ON product_variants (sku) WHERE deleted_at IS NULL AND sku IS NOT NULL;
 CREATE INDEX idx_product_variants_id_product_id ON product_variants (id, product_id) WHERE deleted_at IS NULL;
+
+CREATE TABLE product_images (
+    id TEXT PRIMARY KEY,
+    product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    url TEXT NOT NULL,
+    rank BIGINT NOT NULL DEFAULT 0,
+    metadata JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at TIMESTAMPTZ
+);
+
+CREATE INDEX idx_product_images_product_id ON product_images (product_id) WHERE deleted_at IS NULL;
