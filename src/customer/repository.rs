@@ -38,8 +38,8 @@ impl CustomerRepository {
         .map_err(|e| {
             if crate::db::is_unique_violation(&e) {
                 return AppError::DuplicateError(format!(
-                    "Customer with email '{:?}' already exists",
-                    input.email
+                    "Customer with email '{}' already exists",
+                    input.email.as_deref().unwrap_or("(none)")
                 ));
             }
             AppError::DatabaseError(e)
