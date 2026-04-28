@@ -55,7 +55,7 @@ impl CartRepository {
         .ok_or_else(|| AppError::NotFound("Cart not found".into()))?;
 
         let items = sqlx::query_as::<_, CartLineItem>(
-            r#"SELECT * FROM cart_line_items WHERE cart_id = $1 AND deleted_at IS NULL"#,
+            r#"SELECT * FROM cart_line_items WHERE cart_id = $1 AND deleted_at IS NULL ORDER BY created_at"#,
         )
         .bind(cart_id)
         .fetch_all(&self.pool)
