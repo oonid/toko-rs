@@ -1488,8 +1488,8 @@ async fn test_product_images_on_create() {
     let payload = json!({
         "title": "Image Product",
         "images": [
-            "https://example.com/img1.jpg",
-            "https://example.com/img2.jpg"
+            {"url": "https://example.com/img1.jpg"},
+            {"url": "https://example.com/img2.jpg"}
         ]
     });
     let req = Request::builder()
@@ -1527,7 +1527,7 @@ async fn test_product_images_on_update() {
     assert_eq!(created["product"]["images"].as_array().unwrap().len(), 0);
 
     let update_payload = json!({
-        "images": ["https://example.com/updated1.jpg", "https://example.com/updated2.jpg"]
+        "images": [{"url": "https://example.com/updated1.jpg"}, {"url": "https://example.com/updated2.jpg"}]
     });
     let req = Request::builder()
         .method(Method::POST)
@@ -1549,7 +1549,7 @@ async fn test_product_images_replace_on_update() {
     let (app, _) = common::setup_test_app().await;
     let payload = json!({
         "title": "Replace Images",
-        "images": ["https://example.com/old1.jpg", "https://example.com/old2.jpg"]
+        "images": [{"url": "https://example.com/old1.jpg"}, {"url": "https://example.com/old2.jpg"}]
     });
     let req = Request::builder()
         .method(Method::POST)
@@ -1565,7 +1565,7 @@ async fn test_product_images_replace_on_update() {
     let old_id = original_images[0]["id"].as_str().unwrap();
 
     let update_payload = json!({
-        "images": ["https://example.com/new1.jpg"]
+        "images": [{"url": "https://example.com/new1.jpg"}]
     });
     let req = Request::builder()
         .method(Method::POST)
@@ -1580,4 +1580,55 @@ async fn test_product_images_replace_on_update() {
     assert_eq!(images.len(), 1);
     assert_eq!(images[0]["url"], "https://example.com/new1.jpg");
     assert_ne!(images[0]["id"].as_str().unwrap(), old_id);
+}
+
+#[tokio::test]
+async fn test_product_images_plain_string_rejected() {
+    let (app, _) = common::setup_test_app().await;
+    let payload = json!({
+        "title": "Bad Images",
+        "images": ["https://example.com/img1.jpg"]
+    });
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri("/admin/products")
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_product_images_update_with_id_field() {
+    let (app, _) = common::setup_test_app().await;
+    let payload = json!({
+        "title": "Update Image ID",
+        "images": [{"url": "https://example.com/original.jpg"}]
+    });
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri("/admin/products")
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    let created = body_json(resp).await;
+    let id = created["product"]["id"].as_str().unwrap();
+
+    let update_payload = json!({
+        "images": [{"id": "img_ignore", "url": "https://example.com/replaced.jpg"}]
+    });
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(&format!("/admin/products/{}", id))
+        .header("content-type", "application/json")
+        .body(Body::from(update_payload.to_string()))
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    let images = body["product"]["images"].as_array().unwrap();
+    assert_eq!(images.len(), 1);
+    assert_eq!(images[0]["url"], "https://example.com/replaced.jpg");
 }
