@@ -1280,3 +1280,304 @@ async fn test_product_bool_string_fields() {
     assert_eq!(body["product"]["is_giftcard"], true);
     assert_eq!(body["product"]["discountable"], false);
 }
+
+#[tokio::test]
+async fn test_variant_thumbnail_crud() {
+    let (app, _) = common::setup_test_app().await;
+
+    let payload = json!({
+        "title": "Thumbnail Product",
+        "options": [{"title": "Size", "values": ["M"]}],
+        "variants": [
+            {
+                "title": "M",
+                "price": 1000,
+                "options": {"Size": "M"},
+                "thumbnail": "https://example.com/m.jpg"
+            }
+        ]
+    });
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri("/admin/products")
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = body_json(res).await;
+    let product_id = body["product"]["id"].as_str().unwrap();
+    let variant_id = body["product"]["variants"][0]["id"].as_str().unwrap();
+    assert_eq!(
+        body["product"]["variants"][0]["thumbnail"],
+        "https://example.com/m.jpg"
+    );
+
+    let update_payload = json!({
+        "thumbnail": "https://example.com/m-updated.jpg"
+    });
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(&format!(
+            "/admin/products/{}/variants/{}",
+            product_id, variant_id
+        ))
+        .header("content-type", "application/json")
+        .body(Body::from(update_payload.to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = body_json(res).await;
+    let updated = body["product"]["variants"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|v| v["id"] == variant_id)
+        .unwrap();
+    assert_eq!(updated["thumbnail"], "https://example.com/m-updated.jpg");
+}
+
+#[tokio::test]
+async fn test_admin_list_options() {
+    let (app, _) = common::setup_test_app().await;
+    let created = create_sample_product(&app).await;
+    let product_id = created["product"]["id"].as_str().unwrap();
+
+    let req = Request::builder()
+        .method(Method::GET)
+        .uri(&format!("/admin/products/{}/options", product_id))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    let options = body["product_options"].as_array().unwrap();
+    assert_eq!(options.len(), 1);
+    assert_eq!(body["count"], 1);
+    assert_eq!(body["offset"], 0);
+    assert!(body["limit"].is_number());
+    assert!(options[0]["id"].as_str().unwrap().starts_with("opt_"));
+    assert_eq!(options[0]["title"], "Size");
+    assert!(options[0]["values"].is_array());
+    assert_eq!(options[0]["values"].as_array().unwrap().len(), 3);
+}
+
+#[tokio::test]
+async fn test_admin_create_option() {
+    let (app, _) = common::setup_test_app().await;
+    let payload = json!({"title": "Simple Product"});
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri("/admin/products")
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    let created = body_json(resp).await;
+    let product_id = created["product"]["id"].as_str().unwrap();
+    assert_eq!(created["product"]["options"].as_array().unwrap().len(), 0);
+
+    let opt_payload = json!({"title": "Color", "values": ["Red", "Blue"]});
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(&format!("/admin/products/{}/options", product_id))
+        .header("content-type", "application/json")
+        .body(Body::from(opt_payload.to_string()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    let options = body["product"]["options"].as_array().unwrap();
+    assert_eq!(options.len(), 1);
+    assert_eq!(options[0]["title"], "Color");
+    assert_eq!(options[0]["values"].as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn test_admin_get_option() {
+    let (app, _) = common::setup_test_app().await;
+    let created = create_sample_product(&app).await;
+    let product_id = created["product"]["id"].as_str().unwrap();
+    let option_id = created["product"]["options"][0]["id"].as_str().unwrap();
+
+    let req = Request::builder()
+        .method(Method::GET)
+        .uri(&format!(
+            "/admin/products/{}/options/{}",
+            product_id, option_id
+        ))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body["product_option"]["id"], option_id);
+    assert_eq!(body["product_option"]["title"], "Size");
+    assert!(body["product_option"]["values"].is_array());
+    assert_eq!(
+        body["product_option"]["values"].as_array().unwrap().len(),
+        3
+    );
+}
+
+#[tokio::test]
+async fn test_admin_update_option() {
+    let (app, _) = common::setup_test_app().await;
+    let created = create_sample_product(&app).await;
+    let product_id = created["product"]["id"].as_str().unwrap();
+    let option_id = created["product"]["options"][0]["id"].as_str().unwrap();
+
+    let payload = json!({"title": "Shirt Size"});
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(&format!(
+            "/admin/products/{}/options/{}",
+            product_id, option_id
+        ))
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    let opt = body["product"]["options"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|o| o["id"] == option_id)
+        .unwrap();
+    assert_eq!(opt["title"], "Shirt Size");
+}
+
+#[tokio::test]
+async fn test_admin_delete_option() {
+    let (app, _) = common::setup_test_app().await;
+    let created = create_sample_product(&app).await;
+    let product_id = created["product"]["id"].as_str().unwrap();
+    let option_id = created["product"]["options"][0]["id"].as_str().unwrap();
+
+    let req = Request::builder()
+        .method(Method::DELETE)
+        .uri(&format!(
+            "/admin/products/{}/options/{}",
+            product_id, option_id
+        ))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body["id"], option_id);
+    assert_eq!(body["object"], "product_option");
+    assert_eq!(body["deleted"], true);
+    assert!(body["parent"]["id"].is_string());
+
+    let get_req = Request::builder()
+        .method(Method::GET)
+        .uri(&format!("/admin/products/{}", product_id))
+        .body(Body::empty())
+        .unwrap();
+    let get_resp = app.oneshot(get_req).await.unwrap();
+    let get_body = body_json(get_resp).await;
+    assert_eq!(get_body["product"]["options"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn test_product_images_on_create() {
+    let (app, _) = common::setup_test_app().await;
+    let payload = json!({
+        "title": "Image Product",
+        "images": [
+            "https://example.com/img1.jpg",
+            "https://example.com/img2.jpg"
+        ]
+    });
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri("/admin/products")
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    let images = body["product"]["images"].as_array().unwrap();
+    assert_eq!(images.len(), 2);
+    assert!(images[0]["id"].as_str().unwrap().starts_with("img_"));
+    assert_eq!(images[0]["url"], "https://example.com/img1.jpg");
+    assert_eq!(images[0]["rank"], 0);
+    assert!(images[1]["id"].as_str().unwrap().starts_with("img_"));
+    assert_eq!(images[1]["url"], "https://example.com/img2.jpg");
+    assert_eq!(images[1]["rank"], 1);
+}
+
+#[tokio::test]
+async fn test_product_images_on_update() {
+    let (app, _) = common::setup_test_app().await;
+    let payload = json!({"title": "No Images Yet"});
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri("/admin/products")
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    let created = body_json(resp).await;
+    let id = created["product"]["id"].as_str().unwrap();
+    assert_eq!(created["product"]["images"].as_array().unwrap().len(), 0);
+
+    let update_payload = json!({
+        "images": ["https://example.com/updated1.jpg", "https://example.com/updated2.jpg"]
+    });
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(&format!("/admin/products/{}", id))
+        .header("content-type", "application/json")
+        .body(Body::from(update_payload.to_string()))
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    let images = body["product"]["images"].as_array().unwrap();
+    assert_eq!(images.len(), 2);
+    assert_eq!(images[0]["url"], "https://example.com/updated1.jpg");
+    assert_eq!(images[1]["url"], "https://example.com/updated2.jpg");
+}
+
+#[tokio::test]
+async fn test_product_images_replace_on_update() {
+    let (app, _) = common::setup_test_app().await;
+    let payload = json!({
+        "title": "Replace Images",
+        "images": ["https://example.com/old1.jpg", "https://example.com/old2.jpg"]
+    });
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri("/admin/products")
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    let created = body_json(resp).await;
+    let id = created["product"]["id"].as_str().unwrap();
+    let original_images = created["product"]["images"].as_array().unwrap();
+    assert_eq!(original_images.len(), 2);
+    let old_id = original_images[0]["id"].as_str().unwrap();
+
+    let update_payload = json!({
+        "images": ["https://example.com/new1.jpg"]
+    });
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(&format!("/admin/products/{}", id))
+        .header("content-type", "application/json")
+        .body(Body::from(update_payload.to_string()))
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    let images = body["product"]["images"].as_array().unwrap();
+    assert_eq!(images.len(), 1);
+    assert_eq!(images[0]["url"], "https://example.com/new1.jpg");
+    assert_ne!(images[0]["id"].as_str().unwrap(), old_id);
+}
