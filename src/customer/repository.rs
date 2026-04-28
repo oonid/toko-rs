@@ -21,8 +21,8 @@ impl CustomerRepository {
         let id = generate_entity_id("cus");
         let customer = sqlx::query_as::<_, Customer>(
             r#"
-            INSERT INTO customers (id, first_name, last_name, email, phone, company_name, has_account, metadata)
-            VALUES ($1, $2, $3, $4, $5, $6, TRUE, $7)
+            INSERT INTO customers (id, first_name, last_name, email, phone, company_name, has_account, created_by, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6, TRUE, NULL, $7)
             RETURNING *
             "#,
         )
@@ -72,15 +72,17 @@ impl CustomerRepository {
             UPDATE customers SET
                 first_name = COALESCE($1, first_name),
                 last_name = COALESCE($2, last_name),
-                phone = COALESCE($3, phone),
-                company_name = COALESCE($4, company_name),
-                metadata = COALESCE($5, metadata),
+                email = COALESCE($3, email),
+                phone = COALESCE($4, phone),
+                company_name = COALESCE($5, company_name),
+                metadata = COALESCE($6, metadata),
                 updated_at = CURRENT_TIMESTAMP
-            WHERE id = $6 AND deleted_at IS NULL
+            WHERE id = $7 AND deleted_at IS NULL
             "#,
         )
         .bind(&input.first_name)
         .bind(&input.last_name)
+        .bind(&input.email)
         .bind(&input.phone)
         .bind(&input.company_name)
         .bind(metadata_to_json(input.metadata.clone()))
