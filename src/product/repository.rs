@@ -133,15 +133,15 @@ impl ProductRepository {
             }
         }
 
-        if let Some(ref urls) = input.images {
-            for (i, url) in urls.iter().enumerate() {
+        if let Some(ref images) = input.images {
+            for (i, img) in images.iter().enumerate() {
                 let img_id = generate_entity_id("img");
                 sqlx::query(
                     "INSERT INTO product_images (id, product_id, url, rank) VALUES ($1, $2, $3, $4)",
                 )
                 .bind(&img_id)
                 .bind(&product_id)
-                .bind(url)
+                .bind(&img.url)
                 .bind(i as i64)
                 .execute(&mut *tx)
                 .await?;
@@ -296,21 +296,21 @@ impl ProductRepository {
         .await
         .map_err(|e| Self::map_unique_violation(e, "Product", handle))?;
 
-        if let Some(ref urls) = input.images {
+        if let Some(ref images) = input.images {
             sqlx::query(
                 "UPDATE product_images SET deleted_at = CURRENT_TIMESTAMP WHERE product_id = $1 AND deleted_at IS NULL",
             )
             .bind(id)
             .execute(&self.pool)
             .await?;
-            for (i, url) in urls.iter().enumerate() {
+            for (i, img) in images.iter().enumerate() {
                 let img_id = generate_entity_id("img");
                 sqlx::query(
                     "INSERT INTO product_images (id, product_id, url, rank) VALUES ($1, $2, $3, $4)",
                 )
                 .bind(&img_id)
                 .bind(id)
-                .bind(url)
+                .bind(&img.url)
                 .bind(i as i64)
                 .execute(&self.pool)
                 .await?;
