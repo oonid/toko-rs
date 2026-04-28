@@ -199,12 +199,12 @@ mod tests {
     #[test]
     fn test_bool_or_string_invalid_str() {
         #[derive(Deserialize)]
+        #[allow(dead_code)]
         struct Test {
             #[serde(default, deserialize_with = "bool_or_string::deserialize")]
             val: Option<bool>,
         }
-        let result: Result<Test, _> = serde_json::from_str(r#"{"val": "yes"}"#);
-        assert!(result.is_err());
+        assert!(serde_json::from_str::<Test>(r#"{"val": "yes"}"#).is_err());
     }
 
     #[test]
