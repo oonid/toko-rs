@@ -11,6 +11,7 @@ pub struct Customer {
     pub phone: Option<String>,
     pub company_name: Option<String>,
     pub has_account: bool,
+    pub created_by: Option<String>,
     #[serde(skip_deserializing)]
     pub metadata: Option<sqlx::types::Json<serde_json::Value>>,
     pub created_at: DateTime<Utc>,

@@ -19,6 +19,8 @@ pub struct CreateCustomerInput {
 pub struct UpdateCustomerInput {
     pub first_name: Option<String>,
     pub last_name: Option<String>,
+    #[validate(email(message = "Invalid email format"))]
+    pub email: Option<String>,
     pub phone: Option<String>,
     pub company_name: Option<String>,
     pub metadata: Option<HashMap<String, serde_json::Value>>,
