@@ -566,8 +566,8 @@ curl -s -X POST http://localhost:3000/admin/products \
   -d '{
     "title": "Hoodie Oversize",
     "description": "Hoodie tebal bahan fleece, cocok untuk musim hujan.",
-    "images": ["https://example.com/hoodie-front.jpg", "https://example.com/hoodie-back.jpg"],
-    "options": [{"title": "Ukuran", "values": ["M", "L", "XL"]}],
+    "images": [{"url": "https://example.com/hoodie-front.jpg"}, {"url": "https://example.com/hoodie-back.jpg"}],
+    "options": [{"title": "Ukuran", "values": ["M", "L", "XL", "XXL"]}],
     "variants": [
       {"title": "Hoodie - M", "sku": "HOD-M", "price": 185000, "thumbnail": "https://example.com/hoodie-m.jpg", "options": {"Ukuran": "M"}},
       {"title": "Hoodie - L", "sku": "HOD-L", "price": 185000, "options": {"Ukuran": "L"}},
@@ -691,7 +691,7 @@ curl -s http://localhost:3000/store/products | jq '[.products[].title]'
 ```bash
 curl -s -X POST http://localhost:3000/admin/products/$HOODIE_ID \
   -H 'Content-Type: application/json' \
-  -d '{"description": "Hoodie oversize bahan fleece premium.", "images": ["https://example.com/hoodie-v2.jpg"]}' | jq '.product | {description, images: [.images[].url]}'
+  -d '{"description": "Hoodie oversize bahan fleece premium.", "images": [{"url": "https://example.com/hoodie-v2.jpg"}]}' | jq '.product | {description, images: [.images[].url]}'
 ```
 
 ```json
