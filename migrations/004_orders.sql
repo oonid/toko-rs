@@ -28,6 +28,7 @@ CREATE TABLE order_line_items (
     title TEXT NOT NULL,
     quantity BIGINT NOT NULL CHECK (quantity > 0),
     unit_price BIGINT NOT NULL CHECK (unit_price >= 0),
+    compare_at_unit_price BIGINT,
     variant_id TEXT REFERENCES product_variants(id) ON DELETE SET NULL,
     product_id TEXT REFERENCES products(id) ON DELETE SET NULL,
     snapshot JSONB,

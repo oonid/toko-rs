@@ -6,6 +6,7 @@ CREATE TABLE customers (
     phone TEXT,
     company_name TEXT,
     has_account BOOLEAN NOT NULL DEFAULT FALSE,
+    created_by TEXT,
     metadata JSONB,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
