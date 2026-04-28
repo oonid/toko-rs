@@ -134,9 +134,9 @@ impl OrderRepository {
             let item_id = generate_entity_id("ordli");
             let item = sqlx::query_as::<_, OrderLineItem>(
                 r#"
-                INSERT INTO order_line_items (id, order_id, title, quantity, unit_price,
+                INSERT INTO order_line_items (id, order_id, title, quantity, unit_price, compare_at_unit_price,
                                                variant_id, product_id, snapshot, metadata)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
                 RETURNING *
                 "#,
             )
@@ -145,6 +145,7 @@ impl OrderRepository {
             .bind(&ci.title)
             .bind(ci.quantity)
             .bind(ci.unit_price)
+            .bind(ci.compare_at_unit_price)
             .bind(&ci.variant_id)
             .bind(&ci.product_id)
             .bind(&ci.snapshot)
