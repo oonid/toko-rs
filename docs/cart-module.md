@@ -103,3 +103,48 @@ order module (Phase 1-C) during cart-to-order conversion.
 | `test_cart_update_completed_cart_rejected` | Completed cart update → 409 |
 | `test_cart_add_item_to_completed_cart_rejected` | Completed cart add item → 409 |
 | `test_cart_get_response_format` | Contract: all fields present with correct types |
+
+---
+
+## Implementation History (from audit-correction.md)
+
+## 4d. Cart Module Pre-existing Fixes
+
+### 4d.1: Computed `item_total` and `total` fields
+
+The cart spec requires `item_total = sum(quantity * unit_price)` and `total = item_total` on
+every cart response. Added `item_total: i64` and `total: i64` to `CartWithItems`, computed in
+`get_cart()` and initialized to 0 in `create_cart()`.
+
+**Test:** `test_cart_item_total_computed` — creates cart (total=0), adds 3x$10 item
+(total=3000).
+
+### 4d.2: Completed-cart guard on `update_cart`
+
+`update_cart` now checks `completed_at IS NOT NULL` before applying mutations. Returns 409
+`Conflict` error.
+
+**Test:** `test_cart_update_completed_cart_rejected` — creates cart, sets `completed_at` via
+raw SQL, attempts update, asserts 409 with `type: "conflict"`.
+
+### 4d.3: Complete-cart stub returns JSON error
+
+Changed `store_complete_cart` from returning bare `StatusCode::NOT_IMPLEMENTED` to returning
+`AppError::Conflict("Cart completion is not yet implemented")`. This produces proper JSON:
+```json
+{"code": "invalid_state_error", "type": "conflict", "message": "Conflict: Cart completion is not yet implemented"}
+```
+
+### New `Conflict` error variant
+
+Added `AppError::Conflict(String)` to `src/error.rs`:
+- HTTP 409 Conflict
+- `type: "conflict"`
+- `code: "invalid_state_error"`
+
+This maps to Medusa's `"conflict"` error type (409 with `code: "invalid_state_error"`), used
+for QueryRunner conflicts and cart state conflicts.
+
+**Files changed:** `src/error.rs`, `src/cart/models.rs`, `src/cart/repository.rs`,
+`src/cart/routes.rs`, `tests/cart_test.rs`
+
