@@ -476,6 +476,7 @@ async fn test_contract_order_complete_response_shape() {
             "is_discountable",
             "is_tax_inclusive",
             "requires_shipping",
+            "compare_at_unit_price",
         ],
     );
     assert!(

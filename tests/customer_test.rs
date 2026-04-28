@@ -204,3 +204,47 @@ async fn test_customer_company_name_absent_when_not_set() {
     let body = body_json(resp).await;
     assert!(body["customer"]["company_name"].is_null());
 }
+
+#[tokio::test]
+async fn test_customer_created_by_field_present() {
+    let (app, _) = setup_test_app().await;
+    let payload = json!({"email": "cb@example.com", "first_name": "CB"});
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri("/store/customers")
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert!(body["customer"]["created_by"].is_null());
+}
+
+#[tokio::test]
+async fn test_customer_update_email() {
+    let (app, _) = setup_test_app().await;
+    let payload = json!({"email": "old@example.com", "first_name": "Email"});
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri("/store/customers")
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    let body = body_json(resp).await;
+    let customer_id = body["customer"]["id"].as_str().unwrap();
+
+    let update = json!({"email": "new@example.com"});
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri("/store/customers/me")
+        .header("content-type", "application/json")
+        .header("X-Customer-Id", customer_id)
+        .body(Body::from(update.to_string()))
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body["customer"]["email"], "new@example.com");
+}
