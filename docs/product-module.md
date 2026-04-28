@@ -118,3 +118,25 @@ Store endpoints filter by `status = 'published' AND deleted_at IS NULL`. Admin e
 - `test_store_list_published_only` — Draft excluded, published included
 - `test_store_get_published_product` — Draft → 404, published → 200
 - `test_store_deleted_product_returns_404` — Published+deleted → 404
+
+---
+
+## Implementation History (from audit-correction.md)
+
+## 4c. Product Repository Transactional Safety
+
+`create_product` and `add_variant` were inserting product + options + option values + variants
++ variant option bindings across multiple non-transactional queries. A failure mid-way (e.g.,
+duplicate SKU on variant #2) would leave partial data — a product with options but no variants.
+
+**Fix:** Wrapped both methods in `self.pool.begin()` transactions. Refactored `insert_variant`
+and `resolve_variant_options` from `&self` methods into static `fn(tx: &mut Transaction)` so
+they can run within the transaction context.
+
+**Files changed:**
+- `src/product/repository.rs` — `create_product` uses `tx`, `add_variant` uses `tx`, new `insert_variant_tx` and `resolve_variant_options_tx` static methods
+
+**Behavior:** No API-visible change — existing tests continue to pass. The fix prevents
+partial data on failure paths.
+
+---

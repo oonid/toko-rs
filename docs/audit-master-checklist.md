@@ -1,6 +1,6 @@
 # P1 Medusa Compatibility — Master Checklist
 
-Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25,26,28}.md` and `docs/audit-correction.md` into a single reference. Every item is tagged with its source audit, status, and where it was fixed (or why it was deferred).
+Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25,26,28}.md` into a single reference. Every item is tagged with its source audit, status, and where it was fixed (or why it was deferred).
 
 **Last verified**: 2026-04-27 — 213 tests pass on PostgreSQL, clippy clean, fmt clean. Thirteenth audit (Task 28) findings catalogued. Total: 118 fixes across 7 categories.
 

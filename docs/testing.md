@@ -206,3 +206,81 @@ Region Coverage: 90.30%
 ```
 
 Run with: `make cov` or `cargo llvm-cov --summary-only -- --test-threads=1`
+
+---
+
+## Implementation History (from audit-correction.md)
+
+### Changes
+
+E2E tests run against a live `axum::serve` instance using `reqwest::Client`. Each test gets a fresh server on a random port with a clean database seeded via `run_seed()`.
+
+### Files Created
+
+| File | Purpose |
+|------|---------|
+| `tests/e2e/main.rs` | Crate root with mod declarations |
+| `tests/e2e/common/mod.rs` | `E2eContext` struct, `setup_e2e()`, `clean_all_tables()`, `seed()`, testcontainers helper |
+| `tests/e2e/guest_checkout.rs` | 9-step guest browse → cart → checkout flow |
+| `tests/e2e/customer_lifecycle.rs` | 8-step register → profile → cart → order history |
+| `tests/e2e/admin_products.rs` | CRUD + variant validation |
+| `tests/e2e/cart_manipulation.rs` | Update/delete/guards |
+| `tests/e2e/errors_validation.rs` | Error response tests (404, 422, 400, 401) |
+| `tests/e2e/response_shapes.rs` | Contract shape verification |
+
+### Files Modified
+
+| Task | File | Change |
+|------|------|--------|
+| 16a.2 | `Cargo.toml` | Added `testcontainers` and `testcontainers-modules` to dev-deps |
+| 16a.3 | `docker-compose.yml` | Added `scripts/init-dbs.sh` for auto-creating `toko_test` and `toko_e2e` |
+| 16a.3 | `scripts/init-dbs.sh` | Init script for creating test databases |
+| 16a.4 | `Makefile` | Added `test-e2e`, `test-e2e-pg` targets; fixed `test-pg` to use `toko_test` |
+
+### Fixes Applied
+
+1. **Partial move error**: `setup_e2e()` used `match app_db` which moved the value. Fixed with `match &app_db` and `.clone()`.
+2. **Delete response shape**: `DELETE /store/carts/{id}/line-items/{line_id}` returns `LineItemDeleteResponse { id, object, deleted, parent }` — not `{ cart: { items: [] } }`. Test updated to use `body["parent"]["items"]`.
+3. **Unused pool warning**: `#[allow(dead_code)]` on `E2eContext` — the `pool` field is available for direct DB assertions.
+4. **Testcontainers support**: `E2E_DATABASE_URL=testcontainers://` triggers programmatic PG container creation.
+
+### Test Counts
+
+| Suite | Tests |
+|-------|-------|
+| Unit tests (lib) | 25 |
+| Integration tests | 92 |
+| E2E tests | 8 |
+| **Total** | **125** |
+
+All 125 tests pass against PostgreSQL 16, `--test-threads=1`, clippy clean.
+
+## 15-16 Verification Pass (2026-04-10)
+
+### Verification Method
+
+- All 6 PG migrations audited: BIGINT, CREATE UNIQUE INDEX ... WHERE, BOOLEAN, now() — all correct
+- All 5 repositories audited: $N placeholders, PgPool, PG error codes — all correct
+- `src/error.rs` `map_db_constraint()`: 23505/23503/23502 mapping verified
+- `src/seed.rs` all INSERT statements use `ON CONFLICT (id) DO NOTHING`
+- All 8 E2E tests verified against spec requirements
+- Full test suite: 125 tests pass, clippy clean
+
+### Fixes Applied During Verification
+
+| File | Change | Reason |
+|------|--------|--------|
+| `src/seed.rs` | Changed `seed_customer()` from `SELECT COUNT(*)` guard to `ON CONFLICT (id) DO NOTHING` | Consistency with all other seed INSERTs; eliminates theoretical TOCTOU race |
+
+### Test Coverage
+
+```
+Line Coverage: 92.12% (2233 lines, 176 missed)
+Region Coverage: 88.45%
+```
+
+Above 90% threshold. Low-coverage files:
+- `main.rs` (0%) — binary entry point, not testable
+- `payment/repository.rs` (43%) — `create()` standalone and `find_by_order_id()` are unused infrastructure for P2
+- `config.rs` (77%) — env var loading paths not exercised in unit tests
+

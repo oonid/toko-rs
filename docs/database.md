@@ -271,3 +271,76 @@ Type aliases (`DbPool`, `DbPoolOptions`, `DbDatabase`, `DbTransaction`) in `src/
 | Unique violation | `23505` | `2067` | `is_unique_violation()` |
 | FK violation | `23503` | `787` | `is_fk_violation()` |
 | Not-null violation | `23502` | `1299` | `is_not_null_violation()` |
+
+---
+
+## Implementation History (from audit-correction.md)
+
+## 4b. Database Schema Alignment with Medusa Models
+
+### Pivot table rename: `product_variant_options` → `product_variant_option`
+
+Medusa's `ProductVariant.options` relation declares `pivotTable: "product_variant_option"`
+(singular). toko-rs was using `product_variant_options` (plural).
+
+**Files changed:**
+- `migrations/001_products.sql` — CREATE TABLE name
+- `migrations/sqlite/001_products.sql` — CREATE TABLE name
+- `src/product/repository.rs:345` — INSERT INTO statement
+- `src/product/repository.rs:392` — SELECT JOIN statement
+
+### SQLite products.handle: column UNIQUE → partial unique index
+
+The PG migration correctly used a partial unique constraint:
+```sql
+CONSTRAINT uq_products_handle UNIQUE (handle) WHERE deleted_at IS NULL
+```
+
+The SQLite migration used a column-level `UNIQUE` which does not respect `deleted_at`:
+```sql
+handle TEXT NOT NULL UNIQUE,  -- blocks handle re-use after soft delete
+```
+
+**Fix:** Removed column-level UNIQUE, added partial unique index (supported by SQLite 3.8+):
+```sql
+handle TEXT NOT NULL,
+-- ...
+CREATE UNIQUE INDEX uq_products_handle ON products (handle) WHERE deleted_at IS NULL;
+```
+
+**Bug demonstrated:** `test_admin_create_product_reuse_handle_after_soft_delete` — create
+product → soft-delete → create new product with same title (handle auto-generated) → was
+returning 422, now returns 200.
+
+### Missing unique indexes on product_options and product_option_values
+
+Medusa defines two partial unique indexes that toko-rs was missing:
+
+| Medusa index name | Columns | Condition |
+|---|---|---|
+| `IDX_option_product_id_title_unique` | `(product_id, title)` | `WHERE deleted_at IS NULL` |
+| `IDX_option_value_option_id_unique` | `(option_id, value)` | `WHERE deleted_at IS NULL` |
+
+These prevent creating two options with the same title on one product, or two option values
+with the same value under one option. Added to both PG and SQLite migrations.
+
+### Complete index inventory (001_products)
+
+| Index | PG | SQLite | Medusa reference |
+|---|---|---|---|
+| `uq_products_handle` partial unique | `CONSTRAINT` | `CREATE UNIQUE INDEX` | `IDX_product_handle_unique` |
+| `uq_product_variants_sku` partial unique | `CONSTRAINT` | — (not added, SKU nullable) | `IDX_product_variant_sku_unique` |
+| `uq_product_options_product_id_title` partial unique | **Added** | **Added** | `IDX_option_product_id_title_unique` |
+| `uq_product_option_values_option_id_value` partial unique | **Added** | **Added** | `IDX_option_value_option_id_unique` |
+| `idx_products_status` partial | Yes | — (not needed for SQLite test perf) | `IDX_product_status` |
+| `idx_product_options_product_id` | Yes | — | performance index |
+| `idx_product_option_values_option_id` | Yes | — | performance index |
+| `idx_product_variants_product_id` partial | Yes | — | `IDX_product_variant_product_id` |
+
+### TDD Record (4b)
+
+1. **RED**: `test_admin_create_product_reuse_handle_after_soft_delete` — creates product, soft-deletes, creates again with same title. Failed: 422 (handle unique violation on SQLite)
+2. **GREEN**: Fixed all 3 migration issues in one pass — pivot rename, partial unique index, missing indexes. Also fixed 2 SQL references in repository.rs
+3. **Verify**: 52 tests pass (1 new), clippy clean
+
+---
