@@ -1260,3 +1260,23 @@ Images currently always return `[]`. No DB table, no input field. Medusa has `im
 | T30-D12 | currency_code hardcoded 'idr' in migration | Config |
 | T30-D13 | Store order GET auth vs Medusa's TODO unauthenticated | Auth |
 | T30-D14 | Product option value update/delete within option CRUD | Complex nested updates |
+
+## 9. Phase 8 — Task 31: P1 Full Re-Audit (DONE)
+
+### 31a. Fix images input format (T31-1 — HIGH)
+
+- [x] 31a.1 Add `ImageInput { url: String }` and `UpdateImageInput { id: Option<String>, url: String }` structs to `src/product/types.rs`
+- [x] 31a.2 Change `CreateProductInput.images` from `Option<Vec<String>>` to `Option<Vec<ImageInput>>`
+- [x] 31a.3 Change `UpdateProductInput.images` from `Option<Vec<String>>` to `Option<Vec<UpdateImageInput>>`
+- [x] 31a.4 Update repository `create_product` and `update` to extract `.url` from image input structs
+- [x] 31a.5 Update existing image tests to send `{"url": "..."}` object format
+- [x] 31a.6 Add test: plain string images rejected with 400
+- [x] 31a.7 Add test: update images with `id` field (ignored, Medusa SDK sends it)
+
+### 31b. Verification pass
+
+- [x] 31b.1 Run full test suite on PostgreSQL — 207 pass
+- [x] 31b.2 Run `cargo clippy -- -D warnings` — zero warnings
+- [x] 31b.3 Run `cargo fmt --check` — clean
+- [x] 31b.4 Write `docs/audit-p1-task31.md` audit report
+- [x] 31b.5 Update `docs/audit-master-checklist.md` with T31 entries
