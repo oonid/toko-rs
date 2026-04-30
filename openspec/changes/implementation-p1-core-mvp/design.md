@@ -8,7 +8,7 @@ toko-rs is a Rust single-binary headless e-commerce backend inspired by MedusaJS
 - **Validation schemas**: Zod validators in `vendor/medusa/packages/medusa/src/api/*/validators.ts` — used to derive Rust request validation.
 - **Route handlers**: Implementation patterns in `vendor/medusa/packages/medusa/src/api/*/route.ts` — used to understand response wrapping and error handling.
 
-**Current state**: All 19 P1 task groups are **complete**. 99 integration + 8 E2E tests passing (107 total), clippy clean, `cargo fmt` clean. 25+ endpoint methods across product (12), cart (7), order (3), customer (3), and health (1). Four audit passes completed (Tasks 16, 17, 18, 19) with all HIGH/MEDIUM findings resolved. Dual-database support (PostgreSQL + SQLite) via feature flags. Key features: soft-delete cascade, variant option uniqueness, line-item snapshot fields, admin variant CRUD, `company_name` on customers, `metadata` on product options/option_values, 6 additional DB indexes on orders/line_items. See `docs/audit-p1-task19.md` for the most recent compatibility audit against Medusa v2.
+**Current state**: All P1 task groups through Task 31 are **complete**. 207 integration tests passing, clippy clean, `cargo fmt` clean. ~94% line coverage. 35 endpoint methods across product (17: 5 product + 5 variant + 5 option + 2 store), cart (8: 7 store + 1 admin), order (5: 3 store + 2 admin), customer (5: 3 store + 2 admin), health (1). PostgreSQL primary with SQLite feature flag.
 
 **Medusa micro-kernel architecture reference**: MedusaJS separates its codebase into three layers (see `vendor/medusa/packages/`):
 
@@ -221,8 +221,8 @@ All input types use `#[serde(deny_unknown_fields)]`. Any field accepted by Medus
 
 - **Order line item prefix**: toko-rs uses `oli`, Medusa uses `ordli`. Cosmetic, no functional impact.
 - **Validation error `code` field**: toko-rs always includes `code` in error responses. Medusa's Zod validation errors omit `code` and return only `{ type, message }`. Low impact — both include `type: "invalid_data"`.
-- **Default pagination limit**: toko-rs defaults to 20, Medusa to 50. Clients that don't specify `limit` get fewer results per page.
-- **`images` type**: toko-rs uses `ImageStub { url: String }` objects matching Medusa's `BaseProductImage` shape. Currently always empty in P1.
+- **Default pagination limit**: toko-rs defaults to 50 (matches Medusa, fixed in T20).
+- **`images` type**: toko-rs uses `ProductImage { id, url, rank }` objects persisted in `product_images` table. Images accepted via `ImageInput { url }` (create) and `UpdateImageInput { id?, url }` (update).
 - **DELETE idempotency**: DELETE on already-deleted product returns 200 (matches Medusa). Previously returned 404.
 
 ### 14. `GET /store/orders/:id` requires `X-Customer-Id` header
@@ -232,3 +232,26 @@ Medusa allows unauthenticated access to `GET /store/orders/:id` (the order looku
 ### 15. `customer_id` in `CreateCartInput` as intentional P1 extension
 
 Medusa infers the customer from the session/auth context when creating a cart. Toko-rs accepts an optional `customer_id` field in the create-cart request body as a P1 workaround (no real auth yet). This field will be removed when proper authentication is implemented in P2 and the customer is inferred from the auth token instead.
+
+### 16. Admin customer list as Medusa parity
+
+Medusa has `GET /admin/customers` with filters (`q`, `email`, `first_name`, `last_name`, `has_account`) and `GET /admin/customers/:id`. Toko-rs implements the same endpoints with the same filter parameters and paginated list response (`{ customers, count, offset, limit }`). The `q` parameter performs free-text search across searchable fields (first_name, last_name, email, phone) matching Medusa's `searchable()` model annotation. A DB index on `phone` is added for query performance.
+
+**Medusa reference**: `vendor/medusa/packages/medusa/src/api/admin/customers/` — route handler, validators (`AdminCustomersParamsFields`), query-config. Customer model marks `phone` as `.searchable()`.
+
+### 17. Admin cart list as toko-rs extension
+
+Medusa does not have an admin cart list endpoint in this version — carts are transient objects that the frontend manages by ID. Toko-rs adds `GET /admin/carts` with filters (`id`, `customer_id`, `completed_at`) as an admin-only extension for operational visibility (e.g., viewing abandoned carts, debugging customer issues).
+
+This is documented as a known divergence (K-11). The endpoint follows the same pagination pattern as all other list endpoints.
+
+### 18. Simplified admin order cancel/complete
+
+Medusa has `POST /admin/orders/:id/cancel` and `POST /admin/orders/:id/complete` as admin-only endpoints. Toko-rs implements both with simplified logic:
+
+- **Cancel**: Validates order is not already canceled/completed, sets `status = 'canceled'` and `canceled_at = now()`, updates payment record status to `'canceled'`. No external payment provider calls, no fulfillment validation, no inventory reservation cleanup.
+- **Complete**: Validates order is in `pending` status, sets `status = 'completed'`.
+
+**Medusa comparison**: Medusa's cancel workflow (266 lines) involves 7 steps: validate, cancel/refund payments via external provider, remove inventory reservations, create credit lines, cancel payment collections, emit events. Toko-rs collapses this to 3 steps: validate, update order status, update payment status. This is sufficient for P1 where payments are manual records (no real provider).
+
+The payment `status` CHECK constraint is extended to include `'canceled'`.

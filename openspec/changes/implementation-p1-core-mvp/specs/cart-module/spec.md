@@ -80,3 +80,20 @@ The system SHALL provide `POST /store/carts/:id/complete` that converts a cart t
 #### Scenario: Complete already-completed cart
 - **WHEN** a POST request is sent to `/store/carts/:id/complete` for a cart where `completed_at IS NOT NULL`
 - **THEN** the system returns 409 with `{"type": "unexpected_state", "message": "..."}`
+
+### Requirement: Admin list carts
+The system SHALL provide `GET /admin/carts` that returns a paginated list of carts. Supports query filters: `id`, `customer_id`, plus pagination (`offset`, `limit`). Response follows the standard Medusa list pattern with `{ carts, count, offset, limit }`.
+
+**Note**: This is a toko-rs admin extension. Medusa does not have an admin cart list endpoint — carts are treated as transient objects managed by ID on the frontend. This endpoint provides operational visibility for debugging and abandoned cart inspection.
+
+#### Scenario: List all carts
+- **WHEN** a GET request is sent to `/admin/carts`
+- **THEN** the system returns 200 with `{"carts": [...], "count": N, "offset": 0, "limit": 50}`
+
+#### Scenario: Filter by customer_id
+- **WHEN** a GET request is sent to `/admin/carts?customer_id=cus_...`
+- **THEN** the system returns 200 with only carts belonging to that customer
+
+#### Scenario: Paginated results
+- **WHEN** a GET request is sent to `/admin/carts?offset=10&limit=5`
+- **THEN** the system returns 200 with at most 5 carts, starting from offset 10

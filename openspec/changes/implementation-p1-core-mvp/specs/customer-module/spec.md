@@ -36,3 +36,33 @@ The system SHALL provide `POST /store/customers/me` that updates first_name, las
 #### Scenario: Update without header
 - **WHEN** a POST request is sent to `/store/customers/me` without `X-Customer-Id` header
 - **THEN** the system returns 401 with `{"type": "unauthorized", "message": "..."}`
+
+### Requirement: Admin list customers
+The system SHALL provide `GET /admin/customers` that returns a paginated list of customers. Supports query filters: `q` (free-text search across first_name, last_name, email, phone), `email`, `first_name`, `last_name`, `has_account`, plus pagination (`offset`, `limit`). Response follows the standard Medusa list pattern.
+
+**Medusa reference**: `vendor/medusa/packages/medusa/src/api/admin/customers/route.ts` (GET handler), `validators.ts` (`AdminCustomersParamsFields`).
+
+#### Scenario: List all customers
+- **WHEN** a GET request is sent to `/admin/customers`
+- **THEN** the system returns 200 with `{"customers": [...], "count": N, "offset": 0, "limit": 50}`
+
+#### Scenario: Search customers by free text
+- **WHEN** a GET request is sent to `/admin/customers?q=budi`
+- **THEN** the system returns 200 with customers matching "budi" in first_name, last_name, email, or phone
+
+#### Scenario: Filter by email
+- **WHEN** a GET request is sent to `/admin/customers?email=budi@example.com`
+- **THEN** the system returns 200 with matching customers only
+
+### Requirement: Admin get customer
+The system SHALL provide `GET /admin/customers/:id` that returns a single customer by ID, including addresses.
+
+**Medusa reference**: `vendor/medusa/packages/medusa/src/api/admin/customers/[id]/route.ts`.
+
+#### Scenario: Get existing customer
+- **WHEN** a GET request is sent to `/admin/customers/:id` with a valid customer ID
+- **THEN** the system returns 200 with `{"customer": {"id": "cus_...", "email": "...", ...}}`
+
+#### Scenario: Get nonexistent customer
+- **WHEN** a GET request is sent to `/admin/customers/:id` with an invalid ID
+- **THEN** the system returns 404 with `{"type": "not_found", "message": "..."}`
