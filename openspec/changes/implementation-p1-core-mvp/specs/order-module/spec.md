@@ -43,3 +43,35 @@ Cart completion SHALL create the order, copy line items, create the payment reco
 #### Scenario: Empty cart completion returns conflict
 - **WHEN** a cart with no items is completed
 - **THEN** the system returns HTTP 409 with `{"code": "invalid_state_error", "type": "unexpected_state", "message": "Cannot complete an empty cart"}`
+
+### Requirement: Admin cancel order
+The system SHALL provide `POST /admin/orders/:id/cancel` that cancels a pending order. Sets `status = 'canceled'` and `canceled_at = now()` on the order, and updates the associated payment record status to `'canceled'`. Validates the order is not already canceled or completed.
+
+**Medusa reference**: `vendor/medusa/packages/medusa/src/api/admin/orders/[id]/cancel/route.ts`, `vendor/medusa/packages/core/core-flows/src/order/workflows/cancel-order.ts`.
+
+**P1 simplification**: Toko-rs does NOT call external payment providers, validate fulfillments, remove inventory reservations, or create credit lines. The cancel only updates order + payment status in the database.
+
+#### Scenario: Cancel a pending order
+- **WHEN** a POST request is sent to `/admin/orders/:id/cancel` for a pending order
+- **THEN** the system returns 200 with `{"order": {..., "status": "canceled", "canceled_at": "..."}}` and payment status is `"canceled"`
+
+#### Scenario: Cancel already canceled order
+- **WHEN** a POST request is sent to `/admin/orders/:id/cancel` for an already canceled order
+- **THEN** the system returns 400 with `{"type": "invalid_data", "message": "Order is already canceled"}`
+
+#### Scenario: Cancel completed order
+- **WHEN** a POST request is sent to `/admin/orders/:id/cancel` for a completed order
+- **THEN** the system returns 400 with `{"type": "invalid_data", "message": "..."}`
+
+### Requirement: Admin complete order
+The system SHALL provide `POST /admin/orders/:id/complete` that marks a pending order as completed. Sets `status = 'completed'`. Validates the order is in `pending` status.
+
+**Medusa reference**: `vendor/medusa/packages/medusa/src/api/admin/orders/[id]/complete/route.ts`.
+
+#### Scenario: Complete a pending order
+- **WHEN** a POST request is sent to `/admin/orders/:id/complete` for a pending order
+- **THEN** the system returns 200 with `{"order": {..., "status": "completed"}}`
+
+#### Scenario: Complete already completed order
+- **WHEN** a POST request is sent to `/admin/orders/:id/complete` for an already completed order
+- **THEN** the system returns 400 with `{"type": "invalid_data", "message": "..."}`

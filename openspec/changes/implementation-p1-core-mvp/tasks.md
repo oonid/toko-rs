@@ -1280,3 +1280,56 @@ Images currently always return `[]`. No DB table, no input field. Medusa has `im
 - [x] 31b.3 Run `cargo fmt --check` — clean
 - [x] 31b.4 Write `docs/audit-p1-task31.md` audit report
 - [x] 31b.5 Update `docs/audit-master-checklist.md` with T31 entries
+
+## Task 32: P1 Admin Extensions — Customer List, Cart List, Order Cancel/Complete
+
+**Type**: Feature / Medusa Parity
+**Priority**: HIGH
+**Status**: [ ] Pending
+
+### Context
+
+Three admin-only features needed for operational use of the MVP: finding customers by phone/email, viewing abandoned/active carts, and managing order lifecycle (cancel/complete). All three are admin-only endpoints (no auth in P1). Features 1 and 3 are Medusa parity; feature 2 is a toko-rs extension documented as K-11.
+
+### 32a. Admin customer list + get (Medusa parity)
+
+- [ ] 32a.1 Add `AdminCustomerListParams` to `src/customer/types.rs` — query params: `q` (free-text), `email`, `first_name`, `last_name`, `has_account`, `offset`, `limit`
+- [ ] 32a.2 Add `AdminCustomerListResponse { customers: Vec<CustomerWithAddresses>, count, offset, limit }` to `src/customer/types.rs`
+- [ ] 32a.3 Add `AdminCustomerResponse { customer: CustomerWithAddresses }` to `src/customer/types.rs`
+- [ ] 32a.4 Add `list(params: &AdminCustomerListParams)` to `src/customer/repository.rs` — dynamic WHERE for filters, `q` performs ILIKE/LIKE on first_name, last_name, email, phone
+- [ ] 32a.5 Add `find_by_id_admin(id: &str)` to `src/customer/repository.rs` — single customer by ID (reuse existing `wrap_with_addresses`)
+- [ ] 32a.6 Add admin routes to `src/customer/routes.rs` — `GET /admin/customers` (list), `GET /admin/customers/:id` (get)
+- [ ] 32a.7 Wire admin customer routes into `app_router` in `src/lib.rs`
+- [ ] 32a.8 Add migration: `CREATE INDEX idx_customers_phone ON customers (phone) WHERE deleted_at IS NULL` to both PG and SQLite
+- [ ] 32a.9 Add tests: list all, search by q, filter by email, get by id, get not found, pagination
+
+### 32b. Admin cart list (toko-rs extension — K-11)
+
+- [ ] 32b.1 Add `AdminCartListParams` to `src/cart/types.rs` — query params: `id`, `customer_id`, `offset`, `limit`
+- [ ] 32b.2 Add `AdminCartListResponse { carts: Vec<CartWithItems>, count, offset, limit }` to `src/cart/types.rs`
+- [ ] 32b.3 Add `list(params: &AdminCartListParams)` to `src/cart/repository.rs` — dynamic WHERE for filters, includes line items
+- [ ] 32b.4 Add admin route to `src/cart/routes.rs` — `GET /admin/carts` (list)
+- [ ] 32b.5 Wire admin cart route into `app_router` in `src/lib.rs`
+- [ ] 32b.6 Add tests: list all, filter by customer_id, pagination, includes line items
+
+### 32c. Admin order cancel (Medusa parity — simplified)
+
+- [ ] 32c.1 Add `cancel_order(id: &str)` to `src/order/repository.rs` — validate status is `pending`, set `status = 'canceled'` and `canceled_at = now()`
+- [ ] 32c.2 Add `cancel_by_order_id(order_id: &str)` to `src/payment/repository.rs` — set payment status to `'canceled'`
+- [ ] 32c.3 Add admin route to `src/order/routes.rs` — `POST /admin/orders/:id/cancel` — calls order cancel + payment cancel
+- [ ] 32c.4 Add migration: add `'canceled'` to `payment_records.status` CHECK constraint in both PG and SQLite migrations (if not already present)
+- [ ] 32c.5 Add tests: cancel pending order, cancel already canceled, cancel completed order, payment status updated
+
+### 32d. Admin order complete (Medusa parity — simplified)
+
+- [ ] 32d.1 Add `complete_order(id: &str)` to `src/order/repository.rs` — validate status is `pending`, set `status = 'completed'`
+- [ ] 32d.2 Add admin route to `src/order/routes.rs` — `POST /admin/orders/:id/complete`
+- [ ] 32d.3 Add tests: complete pending order, complete already completed order
+
+### 32e. Documentation and verification
+
+- [ ] 32e.1 Update `docs/audit-master-checklist.md` with T32 entries across all 6 dimensions
+- [ ] 32e.2 Run full test suite on PostgreSQL — all existing + new tests pass
+- [ ] 32e.3 Run `cargo clippy -- -D warnings` — zero warnings
+- [ ] 32e.4 Run `cargo fmt --check` — clean
+- [ ] 32e.5 Update `docs/seed-data.md` with curl examples for the 5 new endpoints

@@ -2,7 +2,7 @@
 
 Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25,26,27,28,29,30,31}.md` into a single reference. Every item is tagged with its source audit, status, and where it was fixed (or why it was deferred). Tasks 27 and 29 were structural audits (checklist accuracy, re-numbering, redundant test annotation) — their impact is reflected in the checklist structure itself (prefixed IDs, reversal chains, corrected counts).
 
-**Last verified**: 2026-04-28 — 207 tests pass on PostgreSQL, clippy clean, fmt clean. Latest audit: Task 31. Total: 128 fixes across 7 categories.
+**Last verified**: 2026-04-28 — 207 tests pass on PostgreSQL, clippy clean, fmt clean. Latest audit: Task 31. Total: 128 fixes + 5 planned (T32) across 7 categories.
 
 ---
 
@@ -80,6 +80,9 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25
 | S-29 | T30-4 | Line item missing `compare_at_unit_price` field | Added nullable `compare_at_unit_price` to `CartLineItem`, `OrderLineItem`, both tables, order INSERT | 30d |
 | S-30 | T30-5 | Customer missing `created_by` field | Added `created_by TEXT` column to `customers`, `Customer` model. **Was X-7 (deferred), now fixed** | 30e |
 | S-31 | T31-1 | Product images input format `Vec<String>` — Medusa SDK sends `{url: "..."}` objects | `ImageInput { url }` for create, `UpdateImageInput { id?, url }` for update. **Supersedes S-28 input format** | 31a |
+| S-32 | T32 | Admin customer list+get endpoints missing — Medusa has `GET /admin/customers` and `GET /admin/customers/:id` | Add 2 endpoints with list filters (`q`, `email`, `first_name`, `last_name`, `has_account`) and pagination | 32a | **[PLANNED]** |
+| S-33 | T32 | Admin cart list endpoint missing — no way to view abandoned/active carts | Add `GET /admin/carts` with `id`, `customer_id` filters. **toko-rs extension (K-11)** | 32b | **[PLANNED]** |
+| S-34 | T32 | Admin order cancel/complete missing — Medusa has `POST /admin/orders/:id/cancel` and `POST /admin/orders/:id/complete` | Add 2 endpoints. Simplified: no payment provider calls, no fulfillment checks | 32c,32d | **[PLANNED]** |
 
 ---
 
@@ -153,6 +156,8 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25
 | D-26 | T30-1,2,3 | No `product_images` table; variant missing `thumbnail` column | `CREATE TABLE product_images` (id, url, product_id, rank, timestamps); `ALTER TABLE product_variants ADD thumbnail` | 30a-c |
 | D-27 | T30-4 | Line items missing `compare_at_unit_price` column | Added `compare_at_unit_price BIGINT` to `cart_line_items` and `order_line_items` in both PG and SQLite | 30d |
 | D-28 | T30-5 | Customer missing `created_by` column | Added `created_by TEXT` to `customers` in both PG and SQLite | 30e |
+| D-29 | T32 | No index on `customers.phone` for admin search | Add `idx_customers_phone ON customers (phone) WHERE deleted_at IS NULL` to both PG and SQLite | 32a.8 | **[PLANNED]** |
+| D-30 | T32 | `payment_records.status` CHECK missing `'canceled'` — admin cancel cannot set status | Add `'canceled'` to status CHECK constraint in both PG and SQLite | 32c.4 | **[PLANNED]** |
 
 ---
 
@@ -169,6 +174,7 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25
 | L-7 | T20 F5 | Default pagination limit was 20 — Medusa uses 50 | Changed `default_limit()` to return 50 | 20h |
 | L-8 | T21 B3 | Cart `update_cart`/`update_line_item`/`delete_line_item` UPDATE had no `completed_at IS NULL` guard — race condition with concurrent completion | Added `AND completed_at IS NULL` to all 3 UPDATE WHERE clauses | 21h | **[Extends L-2]** |
 | L-9 | T26 HIGH-3 | Cart completion not idempotent — retry created new order or returned error | Idempotency check: lookup existing order by `cart_id` before creating; returns existing order on retry | 26f |
+| L-10 | T32 | Order cancel simplified — no payment provider calls, no fulfillment checks | P1: update order status + payment status only. Full workflow deferred to P2 | 32c,32d | **[PLANNED]** |
 
 ---
 
@@ -218,6 +224,7 @@ Entries moved from this section to fix sections: S-24 (was T22 S1), B-30 (was T2
 | K-8 | T19 S14-S20 | LOW findings: message formatting, `deleted_at` exposure, extra fields, cosmetic prefixes, `estimate_count`, total sub-fields, variant title nullable | No functional impact, documented |
 | K-9 | T20 F8 | `code` field mismatches for Unauthorized, Forbidden, UnexpectedState | Minor difference |
 | K-10 | T21 S5 | `has_account` on store customer response — confirmed present in Medusa store query config | FALSE POSITIVE — no fix needed |
+| K-11 | T32 | `GET /admin/carts` admin cart list — Medusa does not have this endpoint | toko-rs admin extension for operational visibility (Decision 17) |
 
 ### Internal (deferred — code quality, not P1 API behavior)
 
@@ -233,13 +240,13 @@ Entries moved from this section to fix sections: S-24 (was T22 S1), B-30 (was T2
 | Category | Count |
 |----------|-------|
 | Bugs fixed (B) | 32 |
-| Response shape fixes (S) | 31 |
+| Response shape fixes (S) | 34 (31 applied + 3 planned) |
 | Input/validation fixes (V) | 12 |
 | Error handling fixes (E) | 12 |
-| Database schema fixes (D) | 28 |
-| Business logic fixes (L) | 9 |
+| Database schema fixes (D) | 30 (28 applied + 2 planned) |
+| Business logic fixes (L) | 10 (9 applied + 1 planned) |
 | Config/infra fixes (C) | 4 |
-| **Total fixes applied** | **128** |
+| **Total** | **134 (128 applied + 6 planned)** |
 | Deferred to P2 | 12 |
 | Known divergences (by design) | 10 |
 | False positive | 1 |
