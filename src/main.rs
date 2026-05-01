@@ -20,7 +20,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
 
     let (state, app_db) =
-        build_app_state(&config.database_url, &config.default_currency_code).await?;
+        build_app_state(&config.database_url, &config.default_currency_code, config.invoice).await?;
     tracing::info!("Connected to database and migrations executed");
 
     if std::env::args().any(|arg| arg == "--seed") {

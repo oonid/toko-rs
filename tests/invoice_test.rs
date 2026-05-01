@@ -76,81 +76,20 @@ async fn create_order_for_invoice(app: &axum::Router, pool: &toko_rs::db::DbPool
         .to_string()
 }
 
-async fn seed_invoice_config(pool: &toko_rs::db::DbPool) {
-    sqlx::query(
-        "INSERT INTO invoice_config (id, company_name, company_address, company_phone, company_email) \
-         VALUES ('invcfg_seed', 'Toko Test', 'Jl. Test No. 1', '+628000000000', 'test@tokotest.com') \
-         ON CONFLICT (id) DO NOTHING",
-    )
-    .execute(pool)
-    .await
-    .unwrap();
+fn test_invoice_config() -> toko_rs::config::InvoiceConfig {
+    toko_rs::config::InvoiceConfig {
+        company_name: "Toko Test".to_string(),
+        company_address: "Jl. Test No. 1".to_string(),
+        company_phone: "+628000000000".to_string(),
+        company_email: "test@tokotest.com".to_string(),
+        company_logo: None,
+        notes: None,
+    }
 }
 
 #[tokio::test]
-async fn test_get_config_returns_404_when_empty() {
-    let (app, _db) = common::setup_test_app().await;
-
-    let req = Request::builder()
-        .uri("/admin/invoice-config")
-        .body(Body::empty())
-        .unwrap();
-    let resp = app.oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
-    let body = body_json(resp).await;
-    assert_eq!(body["type"], "not_found");
-}
-
-#[tokio::test]
-async fn test_create_config_via_upsert() {
-    let (app, _db) = common::setup_test_app().await;
-
-    let res = app
-        .oneshot(request(
-            Method::POST,
-            "/admin/invoice-config",
-            &json!({
-                "company_name": "Toko Sejahtera",
-                "company_address": "Jl. Merdeka No. 10, Jakarta",
-                "company_phone": "+6281234567890",
-                "company_email": "admin@tokosejahtera.com"
-            }),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(res.status(), StatusCode::OK);
-    let body = body_json(res).await;
-    assert_eq!(body["invoice_config"]["company_name"], "Toko Sejahtera");
-    assert_eq!(
-        body["invoice_config"]["company_address"],
-        "Jl. Merdeka No. 10, Jakarta"
-    );
-    assert_eq!(
-        body["invoice_config"]["company_phone"],
-        "+6281234567890"
-    );
-    assert_eq!(
-        body["invoice_config"]["company_email"],
-        "admin@tokosejahtera.com"
-    );
-    assert!(body["invoice_config"]["id"].is_string());
-    assert!(body["invoice_config"]["created_at"].is_string());
-}
-
-#[tokio::test]
-async fn test_get_config_after_create() {
-    let (app, _db) = common::setup_test_app().await;
-
-    let res = app
-        .clone()
-        .oneshot(request(
-            Method::POST,
-            "/admin/invoice-config",
-            &json!({"company_name": "Test Co", "company_address": "Addr", "company_phone": "123", "company_email": "a@b.com"}),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(res.status(), StatusCode::OK);
+async fn test_get_config_returns_env_values() {
+    let (app, _db) = common::setup_test_app_with_invoice(test_invoice_config()).await;
 
     let req = Request::builder()
         .uri("/admin/invoice-config")
@@ -159,44 +98,58 @@ async fn test_get_config_after_create() {
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
-    assert_eq!(body["invoice_config"]["company_name"], "Test Co");
+    assert_eq!(body["invoice_config"]["company_name"], "Toko Test");
+    assert_eq!(
+        body["invoice_config"]["company_address"],
+        "Jl. Test No. 1"
+    );
+    assert_eq!(body["invoice_config"]["company_phone"], "+628000000000");
+    assert_eq!(
+        body["invoice_config"]["company_email"],
+        "test@tokotest.com"
+    );
 }
 
 #[tokio::test]
-async fn test_update_config_partial() {
-    let (app, _db) = common::setup_test_app().await;
-
-    let res = app
-        .clone()
-        .oneshot(request(
-            Method::POST,
-            "/admin/invoice-config",
-            &json!({"company_name": "Old Name", "company_address": "Old Addr", "company_phone": "111", "company_email": "old@test.com"}),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(res.status(), StatusCode::OK);
+async fn test_post_config_returns_env_values_readonly() {
+    let (app, _db) = common::setup_test_app_with_invoice(test_invoice_config()).await;
 
     let res = app
         .oneshot(request(
             Method::POST,
             "/admin/invoice-config",
-            &json!({"company_name": "New Name", "notes": "Thank you for shopping"}),
+            &json!({
+                "company_name": "Ignored Name",
+                "company_address": "Ignored Addr",
+            }),
         ))
         .await
         .unwrap();
     assert_eq!(res.status(), StatusCode::OK);
     let body = body_json(res).await;
-    assert_eq!(body["invoice_config"]["company_name"], "New Name");
-    assert_eq!(body["invoice_config"]["company_address"], "Old Addr");
-    assert_eq!(body["invoice_config"]["notes"], "Thank you for shopping");
+    assert_eq!(body["invoice_config"]["company_name"], "Toko Test");
+    assert_eq!(body["invoice_config"]["company_address"], "Jl. Test No. 1");
+}
+
+#[tokio::test]
+async fn test_get_config_empty_when_not_configured() {
+    let (app, _db) = common::setup_test_app().await;
+
+    let req = Request::builder()
+        .uri("/admin/invoice-config")
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body["invoice_config"]["company_name"], "");
+    assert_eq!(body["invoice_config"]["company_email"], "");
 }
 
 #[tokio::test]
 async fn test_get_invoice_generates_on_the_fly() {
-    let (app, db) = common::setup_test_app().await;
+    let (app, db) = common::setup_test_app_with_invoice(test_invoice_config()).await;
     let pool = db.pool.clone();
-    seed_invoice_config(&pool).await;
     let order_id = create_order_for_invoice(&app, &pool).await;
 
     let resp = app
@@ -222,10 +175,7 @@ async fn test_get_invoice_generates_on_the_fly() {
     assert!(inv["order"]["id"].is_string());
     assert_eq!(inv["order"]["id"], order_id);
     assert_eq!(inv["issuer"]["company_name"], "Toko Test");
-    assert_eq!(
-        inv["issuer"]["company_email"],
-        "test@tokotest.com"
-    );
+    assert_eq!(inv["issuer"]["company_email"], "test@tokotest.com");
     assert!(inv["order"]["items"].is_array());
     assert_eq!(inv["order"]["items"].as_array().unwrap().len(), 1);
     assert_eq!(inv["order"]["items"][0]["quantity"], 3);
@@ -234,9 +184,8 @@ async fn test_get_invoice_generates_on_the_fly() {
 
 #[tokio::test]
 async fn test_get_invoice_number_matches_display_id() {
-    let (app, db) = common::setup_test_app().await;
+    let (app, db) = common::setup_test_app_with_invoice(test_invoice_config()).await;
     let pool = db.pool.clone();
-    seed_invoice_config(&pool).await;
     let order_id = create_order_for_invoice(&app, &pool).await;
 
     let resp = app
@@ -276,9 +225,7 @@ async fn test_get_invoice_returns_404_no_config() {
 
 #[tokio::test]
 async fn test_get_invoice_returns_404_nonexistent_order() {
-    let (app, db) = common::setup_test_app().await;
-    let pool = db.pool.clone();
-    seed_invoice_config(&pool).await;
+    let (app, _db) = common::setup_test_app_with_invoice(test_invoice_config()).await;
 
     let resp = app
         .oneshot(
@@ -294,9 +241,8 @@ async fn test_get_invoice_returns_404_nonexistent_order() {
 
 #[tokio::test]
 async fn test_get_invoice_includes_order_totals() {
-    let (app, db) = common::setup_test_app().await;
+    let (app, db) = common::setup_test_app_with_invoice(test_invoice_config()).await;
     let pool = db.pool.clone();
-    seed_invoice_config(&pool).await;
     let order_id = create_order_for_invoice(&app, &pool).await;
 
     let resp = app
@@ -317,27 +263,16 @@ async fn test_get_invoice_includes_order_totals() {
 
 #[tokio::test]
 async fn test_get_invoice_includes_issuer_logo_and_notes() {
-    let (app, db) = common::setup_test_app().await;
+    let config = toko_rs::config::InvoiceConfig {
+        company_name: "Logo Co".to_string(),
+        company_address: "Addr".to_string(),
+        company_phone: "123".to_string(),
+        company_email: "logo@co.com".to_string(),
+        company_logo: Some("https://example.com/logo.png".to_string()),
+        notes: Some("Payment due in 30 days".to_string()),
+    };
+    let (app, db) = common::setup_test_app_with_invoice(config).await;
     let pool = db.pool.clone();
-
-    let res = app
-        .clone()
-        .oneshot(request(
-            Method::POST,
-            "/admin/invoice-config",
-            &json!({
-                "company_name": "Logo Co",
-                "company_address": "Addr",
-                "company_phone": "123",
-                "company_email": "logo@co.com",
-                "company_logo": "https://example.com/logo.png",
-                "notes": "Payment due in 30 days"
-            }),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(res.status(), StatusCode::OK);
-
     let order_id = create_order_for_invoice(&app, &pool).await;
 
     let resp = app

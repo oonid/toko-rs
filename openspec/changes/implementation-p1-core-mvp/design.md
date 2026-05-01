@@ -8,7 +8,7 @@ toko-rs is a Rust single-binary headless e-commerce backend inspired by MedusaJS
 - **Validation schemas**: Zod validators in `vendor/medusa/packages/medusa/src/api/*/validators.ts` — used to derive Rust request validation.
 - **Route handlers**: Implementation patterns in `vendor/medusa/packages/medusa/src/api/*/route.ts` — used to understand response wrapping and error handling.
 
-**Current state**: All P1 task groups through Task 31 are **complete**. 207 integration tests passing, clippy clean, `cargo fmt` clean. ~94% line coverage. 35 endpoint methods across product (17: 5 product + 5 variant + 5 option + 2 store), cart (8: 7 store + 1 admin), order (5: 3 store + 2 admin), customer (5: 3 store + 2 admin), health (1). PostgreSQL primary with SQLite feature flag.
+**Current state**: All P1 task groups through Task 32 are **complete**. 191 integration tests passing, clippy clean, `cargo fmt` clean. 90.38% line coverage. 38 endpoint methods across product (17: 5 product + 5 variant + 5 option + 2 store), cart (8: 7 store + 1 admin), order (5: 3 store + 2 admin), customer (5: 3 store + 2 admin), invoice (3: admin), health (1). PostgreSQL primary with SQLite feature flag. 14 tables (after removing `idempotency_keys` and `invoice_config` in Task 33).
 
 **Medusa micro-kernel architecture reference**: MedusaJS separates its codebase into three layers (see `vendor/medusa/packages/`):
 
@@ -267,3 +267,26 @@ Medusa does not have a built-in invoice system. The Medusa documentation provide
 - **Future P2 path**: Add `invoices` table for generation history tracking, add PDF rendering via the same JSON structure, add store endpoints for customer download, subscribe to `order.placed` events for auto-generation.
 
 **Medusa reference**: `vendor/medusa/www/apps/resources/app/how-to-tutorials/tutorials/invoice-generator/page.mdx` — 2640-line tutorial with `Invoice`, `InvoiceConfig` data models, PDF generation via `pdfmake`, admin/store routes, event subscriptions.
+
+### 20. Invoice config as environment variables (not DB table)
+
+Medusa's invoice tutorial uses a `InvoiceConfig` data model persisted in the database. Toko-rs P1 stores this as environment variables instead because:
+- It is a single row of company information (name, address, phone, email, logo URL, footer notes)
+- It changes rarely (company rebrand) and does not need runtime editing via API
+- Eliminates a table + migration, simplifying the schema from 16 to 14 tables
+- `POST /admin/invoice-config` becomes read-only (returns current env config, no-op update)
+- `GET /admin/invoice-config` returns the config from env vars
+
+**Env vars**: `INVOICE_COMPANY_NAME`, `INVOICE_COMPANY_ADDRESS`, `INVOICE_COMPANY_PHONE`, `INVOICE_COMPANY_EMAIL`, `INVOICE_COMPANY_LOGO`, `INVOICE_NOTES` — all optional with empty-string defaults.
+
+**P2 consideration**: If multi-tenant deployments need per-tenant invoice config, reintroduce the `invoice_config` table with a `store_id` foreign key. The config struct interface remains the same — only the source changes from env vars to DB query.
+
+### 21. Order status fields derived from data (not hardcoded)
+
+Medusa's `StoreOrder` has three status fields: `status` (order lifecycle), `payment_status` (payment state), and `fulfillment_status` (shipping/delivery state). In toko-rs P1:
+
+- **`status`**: Persisted in `orders.status` column — set during checkout (`pending`), admin cancel (`canceled`), admin complete (`completed`). Matches Medusa's `OrderStatus` enum exactly.
+- **`payment_status`**: **Derived** from `payment_records.status` at query time. Mapping: `pending→"not_paid"`, `authorized→"authorized"`, `captured→"captured"`, `failed→"not_paid"`, `refunded→"refunded"`, `canceled→"canceled"`, no record→"not_paid"`. Not persisted — avoids data duplication.
+- **`fulfillment_status`**: **Derived** from `order.status` at query time. Mapping: `canceled→"canceled"`, else→"not_fulfilled"`. No fulfillments table exists in P1. When fulfillment module is added in P2, this becomes a persisted column.
+
+**`order_summary`**: Computed from `order.total` + `payment_records` at query time. Fields: `pending_difference`, `current_order_total`, `original_order_total`, `transaction_total`, `paid_total`, `refunded_total`, `accounting_total`. Not persisted — matches Medusa's REQUIRED `summary` field without a separate `order_summary` table.

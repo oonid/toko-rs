@@ -1,5 +1,6 @@
 pub async fn setup_test_app() -> (axum::Router, toko_rs::db::AppDb) {
     use toko_rs::app_router;
+    use toko_rs::config::InvoiceConfig;
     use toko_rs::db;
     use toko_rs::AppState;
 
@@ -8,7 +9,35 @@ pub async fn setup_test_app() -> (axum::Router, toko_rs::db::AppDb) {
     #[cfg(feature = "sqlite")]
     let default_url = "sqlite:toko_test.db".to_string();
     let db_url = std::env::var("DATABASE_URL").unwrap_or(default_url);
-    let (app_db, repos) = db::create_db(&db_url, "idr")
+    let (app_db, repos) = db::create_db(&db_url, "idr", InvoiceConfig::default())
+        .await
+        .expect("Failed to create pool");
+    db::run_migrations(&app_db)
+        .await
+        .expect("Failed to run migrations");
+
+    clean_all_tables(&app_db.pool).await;
+
+    let state = AppState {
+        db: app_db.clone(),
+        repos: std::sync::Arc::new(repos),
+    };
+    (app_router(state), app_db)
+}
+
+pub async fn setup_test_app_with_invoice(
+    invoice_config: toko_rs::config::InvoiceConfig,
+) -> (axum::Router, toko_rs::db::AppDb) {
+    use toko_rs::app_router;
+    use toko_rs::db;
+    use toko_rs::AppState;
+
+    #[cfg(feature = "postgres")]
+    let default_url = "postgres://postgres:postgres@localhost:5432/toko_test".to_string();
+    #[cfg(feature = "sqlite")]
+    let default_url = "sqlite:toko_test.db".to_string();
+    let db_url = std::env::var("DATABASE_URL").unwrap_or(default_url);
+    let (app_db, repos) = db::create_db(&db_url, "idr", invoice_config)
         .await
         .expect("Failed to create pool");
     db::run_migrations(&app_db)
@@ -70,14 +99,6 @@ pub async fn clean_all_tables(pool: &toko_rs::db::DbPool) {
         .await
         .unwrap();
     sqlx::query("DELETE FROM products")
-        .execute(pool)
-        .await
-        .unwrap();
-    sqlx::query("DELETE FROM idempotency_keys")
-        .execute(pool)
-        .await
-        .unwrap();
-    sqlx::query("DELETE FROM invoice_config")
         .execute(pool)
         .await
         .unwrap();

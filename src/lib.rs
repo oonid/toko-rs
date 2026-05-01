@@ -71,8 +71,9 @@ pub fn app_router_with_cors(state: AppState, cors_origins: &str) -> Router {
 pub async fn build_app_state(
     database_url: &str,
     default_currency_code: &str,
+    invoice_config: config::InvoiceConfig,
 ) -> Result<(AppState, db::AppDb), error::AppError> {
-    let (app_db, repos) = db::create_db(database_url, default_currency_code).await?;
+    let (app_db, repos) = db::create_db(database_url, default_currency_code, invoice_config).await?;
     db::run_migrations(&app_db).await?;
     let state = AppState {
         db: app_db.clone(),
@@ -112,7 +113,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_health_check_connected() {
-        let (state, _) = build_app_state(&test_db_url(), "idr").await.unwrap();
+        let (state, _) = build_app_state(&test_db_url(), "idr", Default::default()).await.unwrap();
         let app = app_router(state);
         let req = axum::http::Request::builder()
             .uri("/health")
@@ -131,14 +132,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_app_state() {
-        let (state, db) = build_app_state(&test_db_url(), "idr").await.unwrap();
+        let (state, db) = build_app_state(&test_db_url(), "idr", Default::default()).await.unwrap();
         assert!(db::ping(&db).await);
         let _ = &state;
     }
 
     #[tokio::test]
     async fn test_cors_with_specific_origins() {
-        let (state, _) = build_app_state(&test_db_url(), "idr").await.unwrap();
+        let (state, _) = build_app_state(&test_db_url(), "idr", Default::default()).await.unwrap();
         let app = app_router_with_cors(state, "http://localhost:3000,http://example.com");
 
         let req = axum::http::Request::builder()
@@ -151,7 +152,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_cors_wildcard() {
-        let (state, _) = build_app_state(&test_db_url(), "idr").await.unwrap();
+        let (state, _) = build_app_state(&test_db_url(), "idr", Default::default()).await.unwrap();
         let app = app_router_with_cors(state, "*");
 
         let req = axum::http::Request::builder()
