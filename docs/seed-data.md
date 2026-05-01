@@ -1122,6 +1122,175 @@ curl -s -X DELETE http://localhost:3000/admin/products/prod_nope | jq
 
 ---
 
+## Admin Operations (Task 32)
+
+### AC1 — List customers
+
+Filter by search query, email, name, or account status:
+
+```bash
+curl -s http://localhost:3000/admin/customers | jq
+```
+
+```json
+{
+  "customers": [
+    {
+      "id": "cus_seed_budi",
+      "first_name": "Budi",
+      "last_name": "Santoso",
+      "email": "budi@example.com",
+      "phone": "+6281234567890",
+      "company_name": "Toko Budi Sejahtera",
+      "has_account": true,
+      "created_by": null,
+      "addresses": [],
+      "created_at": "...",
+      "updated_at": "..."
+    }
+  ],
+  "count": 1,
+  "offset": 0,
+  "limit": 50
+}
+```
+
+Supported query params: `q` (searches first_name, last_name, email, phone, company_name), `email`, `first_name`, `last_name`, `has_account`, `offset`, `limit`.
+
+```bash
+curl -s 'http://localhost:3000/admin/customers?q=budi' | jq '.count'
+curl -s 'http://localhost:3000/admin/customers?has_account=true&limit=10' | jq
+```
+
+### AC2 — Get customer by ID
+
+```bash
+curl -s http://localhost:3000/admin/customers/cus_seed_budi | jq
+```
+
+```json
+{
+  "customer": {
+    "id": "cus_seed_budi",
+    "first_name": "Budi",
+    "last_name": "Santoso",
+    "email": "budi@example.com",
+    "phone": "+6281234567890",
+    "company_name": "Toko Budi Sejahtera",
+    "has_account": true,
+    "created_by": null,
+    "addresses": [],
+    "created_at": "...",
+    "updated_at": "..."
+  }
+}
+```
+
+Or look up by email first:
+
+```bash
+CUS_ID=$(curl -s 'http://localhost:3000/admin/customers?email=budi@example.com' | jq -r '.customers[0].id')
+curl -s http://localhost:3000/admin/customers/$CUS_ID | jq
+```
+
+### AC3 — List carts (admin)
+
+Admin view of all carts including completed ones (toko-rs extension — Medusa has no admin cart list):
+
+```bash
+curl -s http://localhost:3000/admin/carts | jq
+```
+
+```json
+{
+  "carts": [
+    {
+      "id": "cart_01KQ...",
+      "email": "buyer@example.com",
+      "currency_code": "idr",
+      "completed_at": null,
+      "items": [],
+      "item_total": 0,
+      "total": 0,
+      "..."
+    }
+  ],
+  "count": 1,
+  "offset": 0,
+  "limit": 50
+}
+```
+
+Supported query params: `id`, `customer_id`, `offset`, `limit`.
+
+```bash
+curl -s 'http://localhost:3000/admin/carts?customer_id=cus_seed_budi' | jq
+```
+
+### AC4 — Cancel order
+
+Cancel a pending order. Sets order status to `canceled` and payment status to `canceled`. Rejects already-canceled or completed orders (400).
+
+```bash
+# Complete a cart to create an order first (see Step 7)
+ORDER_ID=$(curl -s -X POST http://localhost:3000/store/carts/$CART_ID/complete | jq -r '.order.id')
+
+curl -s -X POST http://localhost:3000/admin/orders/$ORDER_ID/cancel | jq '.order | {id, status, canceled_at}'
+```
+
+```json
+{
+  "id": "order_01KQ...",
+  "status": "canceled",
+  "canceled_at": "2026-05-01T..."
+}
+```
+
+Error cases:
+
+```bash
+# Already canceled → 400
+curl -s -X POST http://localhost:3000/admin/orders/$ORDER_ID/cancel | jq
+# { "code": "invalid_request_error", "type": "invalid_data", "message": "Order is already canceled" }
+
+# Already completed → 400
+curl -s -X POST http://localhost:3000/admin/orders/$ORDER_ID/cancel | jq
+# { "code": "invalid_request_error", "type": "invalid_data", "message": "Cannot cancel a completed order" }
+```
+
+### AC5 — Complete order (admin)
+
+Mark a pending order as completed (toko-rs extension — Medusa has no `POST /admin/orders/:id/complete`). Rejects already-completed or canceled orders (400).
+
+```bash
+# Create a fresh order first (see Step 7)
+ORDER_ID2=$(curl -s -X POST http://localhost:3000/store/carts/$CART_ID2/complete | jq -r '.order.id')
+
+curl -s -X POST http://localhost:3000/admin/orders/$ORDER_ID2/complete | jq '.order | {id, status}'
+```
+
+```json
+{
+  "id": "order_01KQ...",
+  "status": "completed"
+}
+```
+
+Error cases:
+
+```bash
+# Already completed → 400
+curl -s -X POST http://localhost:3000/admin/orders/$ORDER_ID2/complete | jq
+# { "code": "invalid_request_error", "type": "invalid_data", "message": "Order is already completed" }
+
+# Canceled order → 400
+curl -s -X POST http://localhost:3000/admin/orders/$ORDER_ID/cancel >/dev/null
+curl -s -X POST http://localhost:3000/admin/orders/$ORDER_ID/complete | jq
+# { "code": "invalid_request_error", "type": "invalid_data", "message": "Cannot complete a canceled order" }
+```
+
+---
+
 ## Extended Error Scenarios
 
 **Empty cart checkout:**
@@ -1240,6 +1409,119 @@ curl -s http://localhost:3000/store/customers/me \
 
 ---
 
+## Admin: Invoice Operations (Task 32)
+
+### AI1: Configure invoice issuer (first time)
+
+Set up company information for invoice generation. Creates or updates the singleton config:
+
+```bash
+curl -s -X POST http://localhost:3000/admin/invoice-config \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "company_name": "Toko Sejahtera",
+    "company_address": "Jl. Merdeka No. 10, Jakarta Pusat 10110",
+    "company_phone": "+6281234567890",
+    "company_email": "admin@tokosejahtera.com",
+    "company_logo": "https://example.com/logo.png",
+    "notes": "Terima kasih atas pembelian Anda. Pembayaran dalam 30 hari."
+  }' | jq
+```
+
+```json
+{
+  "invoice_config": {
+    "id": "invcfg_01KQ...",
+    "company_name": "Toko Sejahtera",
+    "company_address": "Jl. Merdeka No. 10, Jakarta Pusat 10110",
+    "company_phone": "+6281234567890",
+    "company_email": "admin@tokosejahtera.com",
+    "company_logo": "https://example.com/logo.png",
+    "notes": "Terima kasih atas pembelian Anda. Pembayaran dalam 30 hari.",
+    "created_at": "2026-05-01T...",
+    "updated_at": "2026-05-01T..."
+  }
+}
+```
+
+### AI2: Get invoice config
+
+```bash
+curl -s http://localhost:3000/admin/invoice-config | jq
+```
+
+Returns 404 if not configured yet:
+
+```json
+{ "code": "invalid_request_error", "type": "not_found", "message": "Invoice config not found" }
+```
+
+### AI3: Update invoice config (partial)
+
+```bash
+curl -s -X POST http://localhost:3000/admin/invoice-config \
+  -H 'Content-Type: application/json' \
+  -d '{"company_logo": "https://example.com/logo-v2.png", "notes": "Updated payment terms"}' | jq '.invoice_config | {company_logo, notes}'
+```
+
+```json
+{
+  "company_logo": "https://example.com/logo-v2.png",
+  "notes": "Updated payment terms"
+}
+```
+
+### AI4: Generate invoice for an order
+
+Invoice is generated on-the-fly from order data + company config:
+
+```bash
+ORDER_ID="order_01KQ..."   # from Step 7 or Step 9
+
+curl -s http://localhost:3000/admin/orders/$ORDER_ID/invoice | jq
+```
+
+```json
+{
+  "invoice": {
+    "invoice_number": "INV-0001",
+    "date": "2026-05-01T...",
+    "status": "latest",
+    "issuer": {
+      "company_name": "Toko Sejahtera",
+      "company_address": "Jl. Merdeka No. 10, Jakarta Pusat 10110",
+      "company_phone": "+6281234567890",
+      "company_email": "admin@tokosejahtera.com",
+      "company_logo": "https://example.com/logo-v2.png"
+    },
+    "order": {
+      "id": "order_01KQ...",
+      "display_id": 1,
+      "status": "pending",
+      "email": "buyer@example.com",
+      "currency_code": "idr",
+      "items": [
+        {
+          "id": "ordli_01KQ...",
+          "title": "Kaos Polos",
+          "quantity": 3,
+          "unit_price": 75000,
+          "product_title": "Kaos Polos",
+          "variant_sku": "KAOS-P-M"
+        }
+      ],
+      "item_total": 225000,
+      "total": 225000
+    },
+    "notes": "Updated payment terms"
+  }
+}
+```
+
+Returns 404 if no config or no order.
+
+---
+
 ## Reference Tables
 
 ### Variant ID reference for curl
@@ -1266,7 +1548,7 @@ curl -s http://localhost:3000/store/customers/me \
 |---|---|---|
 | Budi Santoso | `cus_seed_budi` | `X-Customer-Id` header for order endpoints, `customer_id` in cart creation |
 
-### Endpoint summary (30 methods)
+### Endpoint summary (38 methods)
 
 | Method | Path | Section |
 |---|---|---|
@@ -1300,3 +1582,11 @@ curl -s http://localhost:3000/store/customers/me \
 | GET | `/admin/products/{id}/options/{option_id}` | AO2 |
 | POST | `/admin/products/{id}/options/{option_id}` | AO4 |
 | DELETE | `/admin/products/{id}/options/{option_id}` | AO5 |
+| GET | `/admin/customers` | AC1 |
+| GET | `/admin/customers/{id}` | AC2 |
+| GET | `/admin/carts` | AC3 |
+| POST | `/admin/orders/{id}/cancel` | AC4 |
+| POST | `/admin/orders/{id}/complete` | AC5 |
+| GET | `/admin/invoice-config` | AI2 |
+| POST | `/admin/invoice-config` | AI1 |
+| GET | `/admin/orders/{id}/invoice` | AI4 |
