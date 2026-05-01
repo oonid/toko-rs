@@ -2,7 +2,7 @@
 
 Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32}.md` into a single reference. Every item is tagged with its source audit, status, and where it was fixed (or why it was deferred). Tasks 27 and 29 were structural audits (checklist accuracy, re-numbering, redundant test annotation) — their impact is reflected in the checklist structure itself (prefixed IDs, reversal chains, corrected counts).
 
-**Last verified**: 2026-05-02 — 191 tests pass on PostgreSQL (7 suites), clippy clean, fmt clean. Latest audit: Task 33 (planned). Total: 141 fixes (137 applied, 4 planned) across 7 categories.
+**Last verified**: 2026-05-02 — 238 tests pass on PostgreSQL (10 suites), clippy clean, fmt clean. Latest audit: Task 33 (applied). Total: 141 fixes (all applied) across 7 categories.
 
 ---
 

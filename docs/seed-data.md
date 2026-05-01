@@ -387,6 +387,15 @@ curl -s -X POST http://localhost:3000/store/carts/$CART_ID/complete | jq
     "total": 675000,
     "payment_status": "not_paid",
     "fulfillment_status": "not_fulfilled",
+    "summary": {
+      "pending_difference": 675000,
+      "current_order_total": 675000,
+      "original_order_total": 675000,
+      "transaction_total": 0,
+      "paid_total": 0,
+      "refunded_total": 0,
+      "accounting_total": 675000
+    },
     "fulfillments": [],
     "shipping_methods": []
   }
@@ -499,7 +508,7 @@ curl -s http://localhost:3000/store/orders \
 ORDER_ID2="order_01KQ..."   # paste from step 10
 
 curl -s http://localhost:3000/store/orders/$ORDER_ID2 \
-  -H 'X-Customer-Id: cus_seed_budi' | jq '.order | {id, display_id, status, item_total, total, payment_status, fulfillment_status}'
+  -H 'X-Customer-Id: cus_seed_budi' | jq '.order | {id, display_id, status, item_total, total, payment_status, fulfillment_status, summary}'
 ```
 
 ```json
@@ -510,7 +519,16 @@ curl -s http://localhost:3000/store/orders/$ORDER_ID2 \
   "item_total": 250000,
   "total": 250000,
   "payment_status": "not_paid",
-  "fulfillment_status": "not_fulfilled"
+  "fulfillment_status": "not_fulfilled",
+  "summary": {
+    "pending_difference": 250000,
+    "current_order_total": 250000,
+    "original_order_total": 250000,
+    "transaction_total": 0,
+    "paid_total": 0,
+    "refunded_total": 0,
+    "accounting_total": 250000
+  }
 }
 ```
 
@@ -1409,71 +1427,65 @@ curl -s http://localhost:3000/store/customers/me \
 
 ---
 
-## Admin: Invoice Operations (Task 32)
+## Admin: Invoice Operations (Task 32 / Task 33)
 
-> **Note**: Task 33 will migrate `invoice_config` from a DB table to environment variables. AI1 (POST /admin/invoice-config) will become a read-only no-op returning current env config. AI2 will read from env vars instead of DB. AI3 (partial update) will no longer persist changes. AI4 (invoice generation) remains unchanged.
+> **Note (Task 33)**: Invoice config is loaded from environment variables (`INVOICE_COMPANY_NAME`, `INVOICE_COMPANY_ADDRESS`, `INVOICE_COMPANY_PHONE`, `INVOICE_COMPANY_EMAIL`, `INVOICE_COMPANY_LOGO`, `INVOICE_NOTES`). `POST /admin/invoice-config` is read-only — it returns the current env config regardless of the request body. To change invoice config, update the environment variables and restart the server.
 
-### AI1: Configure invoice issuer (first time)
+### AI1: Get invoice config
 
-Set up company information for invoice generation. Creates or updates the singleton config:
+Read the current invoice issuer configuration (loaded from environment variables):
 
 ```bash
-curl -s -X POST http://localhost:3000/admin/invoice-config \
-  -H 'Content-Type: application/json' \
-  -d '{
+curl -s http://localhost:3000/admin/invoice-config | jq
+```
+
+When configured (env vars set):
+
+```json
+{
+  "invoice_config": {
     "company_name": "Toko Sejahtera",
     "company_address": "Jl. Merdeka No. 10, Jakarta Pusat 10110",
     "company_phone": "+6281234567890",
     "company_email": "admin@tokosejahtera.com",
     "company_logo": "https://example.com/logo.png",
     "notes": "Terima kasih atas pembelian Anda. Pembayaran dalam 30 hari."
-  }' | jq
-```
-
-```json
-{
-  "invoice_config": {
-    "id": "invcfg_01KQ...",
-    "company_name": "Toko Sejahtera",
-    "company_address": "Jl. Merdeka No. 10, Jakarta Pusat 10110",
-    "company_phone": "+6281234567890",
-    "company_email": "admin@tokosejahtera.com",
-    "company_logo": "https://example.com/logo.png",
-    "notes": "Terima kasih atas pembelian Anda. Pembayaran dalam 30 hari.",
-    "created_at": "2026-05-01T...",
-    "updated_at": "2026-05-01T..."
   }
 }
 ```
 
-### AI2: Get invoice config
-
-```bash
-curl -s http://localhost:3000/admin/invoice-config | jq
-```
-
-Returns 404 if not configured yet:
+When not configured (all env vars empty):
 
 ```json
 { "code": "invalid_request_error", "type": "not_found", "message": "Invoice config not found" }
 ```
 
-### AI3: Update invoice config (partial)
+### AI2: Update invoice config (read-only)
+
+`POST /admin/invoice-config` accepts a JSON body but is read-only — it returns the current env config regardless of the payload. To change config, update environment variables and restart the server.
 
 ```bash
 curl -s -X POST http://localhost:3000/admin/invoice-config \
   -H 'Content-Type: application/json' \
-  -d '{"company_logo": "https://example.com/logo-v2.png", "notes": "Updated payment terms"}' | jq '.invoice_config | {company_logo, notes}'
+  -d '{"company_name": "Updated Name"}' | jq
 ```
+
+Returns the same env-based config (the payload is ignored):
 
 ```json
 {
-  "company_logo": "https://example.com/logo-v2.png",
-  "notes": "Updated payment terms"
+  "invoice_config": {
+    "company_name": "Toko Sejahtera",
+    "company_address": "Jl. Merdeka No. 10, Jakarta Pusat 10110",
+    "company_phone": "+6281234567890",
+    "company_email": "admin@tokosejahtera.com",
+    "company_logo": "https://example.com/logo.png",
+    "notes": "Terima kasih atas pembelian Anda. Pembayaran dalam 30 hari."
+  }
 }
 ```
 
-### AI4: Generate invoice for an order
+### AI3: Generate invoice for an order
 
 Invoice is generated on-the-fly from order data + company config:
 
@@ -1494,7 +1506,7 @@ curl -s http://localhost:3000/admin/orders/$ORDER_ID/invoice | jq
       "company_address": "Jl. Merdeka No. 10, Jakarta Pusat 10110",
       "company_phone": "+6281234567890",
       "company_email": "admin@tokosejahtera.com",
-      "company_logo": "https://example.com/logo-v2.png"
+      "company_logo": "https://example.com/logo.png"
     },
     "order": {
       "id": "order_01KQ...",
@@ -1515,7 +1527,7 @@ curl -s http://localhost:3000/admin/orders/$ORDER_ID/invoice | jq
       "item_total": 225000,
       "total": 225000
     },
-    "notes": "Updated payment terms"
+    "notes": "Terima kasih atas pembelian Anda. Pembayaran dalam 30 hari."
   }
 }
 ```
@@ -1589,6 +1601,6 @@ Returns 404 if no config or no order.
 | GET | `/admin/carts` | AC3 |
 | POST | `/admin/orders/{id}/cancel` | AC4 |
 | POST | `/admin/orders/{id}/complete` | AC5 |
-| GET | `/admin/invoice-config` | AI2 |
-| POST | `/admin/invoice-config` | AI1 |
-| GET | `/admin/orders/{id}/invoice` | AI4 |
+| GET | `/admin/invoice-config` | AI1 |
+| POST | `/admin/invoice-config` | AI2 |
+| GET | `/admin/orders/{id}/invoice` | AI3 |
