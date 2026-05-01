@@ -177,7 +177,7 @@ cargo run --features sqlite --no-default-features
 ```bash
 make docker-up                        # Start PostgreSQL
 
-# Integration tests (191 tests, requires PostgreSQL)
+# Integration tests (238 tests, requires PostgreSQL)
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/toko_test \
   cargo test -- --test-threads=1
 
@@ -221,6 +221,12 @@ Configured via environment variables or `.env` file:
 | `RUST_LOG` | `toko_rs=debug` | Tracing filter |
 | `DEFAULT_CURRENCY_CODE` | `idr` | ISO 4217 currency code (lowercase) |
 | `CORS_ORIGINS` | `*` | Comma-separated allowed origins |
+| `INVOICE_COMPANY_NAME` | _(empty)_ | Invoice issuer company name |
+| `INVOICE_COMPANY_ADDRESS` | _(empty)_ | Invoice issuer address |
+| `INVOICE_COMPANY_PHONE` | _(empty)_ | Invoice issuer phone |
+| `INVOICE_COMPANY_EMAIL` | _(empty)_ | Invoice issuer email |
+| `INVOICE_COMPANY_LOGO` | _(empty)_ | Invoice issuer logo URL |
+| `INVOICE_NOTES` | _(empty)_ | Invoice footer notes (e.g., payment terms) |
 
 ## Tech Stack
 
