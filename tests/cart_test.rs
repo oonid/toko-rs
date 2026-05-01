@@ -1285,3 +1285,169 @@ async fn test_cart_update_billing_address() {
     assert_eq!(body["cart"]["billing_address"]["city"], "Bandung");
     assert!(body["cart"]["shipping_address"].is_null());
 }
+
+#[tokio::test]
+async fn test_admin_list_carts() {
+    let (app, db) = common::setup_test_app().await;
+    seed_in_pool(&db.pool).await;
+
+    let req = request(
+        Method::POST,
+        "/store/carts",
+        &json!({"email": "cart1@test.com"}),
+    );
+    app.clone().oneshot(req).await.unwrap();
+    let req = request(
+        Method::POST,
+        "/store/carts",
+        &json!({"email": "cart2@test.com"}),
+    );
+    app.clone().oneshot(req).await.unwrap();
+
+    let req = Request::builder()
+        .method(Method::GET)
+        .uri("/admin/carts")
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert!(body["carts"].is_array());
+    assert!(body["count"].as_i64().unwrap() >= 2);
+    assert_eq!(body["offset"], 0);
+}
+
+#[tokio::test]
+async fn test_admin_list_carts_filter_by_customer_id() {
+    let (app, db) = common::setup_test_app().await;
+    seed_in_pool(&db.pool).await;
+
+    sqlx::query("INSERT INTO customers (id, email, has_account) VALUES ('cus_specific', 'specific@test.com', TRUE)")
+        .execute(&db.pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO customers (id, email, has_account) VALUES ('cus_other', 'other@test.com', TRUE)")
+        .execute(&db.pool)
+        .await
+        .unwrap();
+
+    let req = request(
+        Method::POST,
+        "/store/carts",
+        &json!({"customer_id": "cus_specific"}),
+    );
+    app.clone().oneshot(req).await.unwrap();
+    let req = request(
+        Method::POST,
+        "/store/carts",
+        &json!({"customer_id": "cus_other"}),
+    );
+    app.clone().oneshot(req).await.unwrap();
+
+    let req = Request::builder()
+        .method(Method::GET)
+        .uri("/admin/carts?customer_id=cus_specific")
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    let carts = body["carts"].as_array().unwrap();
+    assert!(!carts.is_empty());
+    for c in carts {
+        assert_eq!(c["customer_id"], "cus_specific");
+    }
+}
+
+#[tokio::test]
+async fn test_admin_list_carts_filter_by_id() {
+    let (app, db) = common::setup_test_app().await;
+    seed_in_pool(&db.pool).await;
+
+    let req = request(
+        Method::POST,
+        "/store/carts",
+        &json!({"email": "findme@test.com"}),
+    );
+    let res = app.clone().oneshot(req).await.unwrap();
+    let cart_id = body_json(res).await["cart"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let req = Request::builder()
+        .method(Method::GET)
+        .uri(&format!("/admin/carts?id={}", cart_id))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    let carts = body["carts"].as_array().unwrap();
+    assert_eq!(carts.len(), 1);
+    assert_eq!(carts[0]["id"], cart_id);
+}
+
+#[tokio::test]
+async fn test_admin_list_carts_pagination() {
+    let (app, db) = common::setup_test_app().await;
+    seed_in_pool(&db.pool).await;
+
+    for i in 0..3 {
+        let req = request(
+            Method::POST,
+            "/store/carts",
+            &json!({"email": format!("page{}@test.com", i)}),
+        );
+        app.clone().oneshot(req).await.unwrap();
+    }
+
+    let req = Request::builder()
+        .method(Method::GET)
+        .uri("/admin/carts?offset=0&limit=2")
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body["carts"].as_array().unwrap().len(), 2);
+    assert!(body["count"].as_i64().unwrap() >= 3);
+    assert_eq!(body["limit"], 2);
+}
+
+#[tokio::test]
+async fn test_admin_list_carts_includes_line_items() {
+    let (app, db) = common::setup_test_app().await;
+    seed_in_pool(&db.pool).await;
+
+    let req = request(
+        Method::POST,
+        "/store/carts",
+        &json!({"email": "items@test.com"}),
+    );
+    let res = app.clone().oneshot(req).await.unwrap();
+    let cart_id = body_json(res).await["cart"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let req = request(
+        Method::POST,
+        &format!("/store/carts/{}/line-items", cart_id),
+        &json!({"variant_id": "var_1", "quantity": 2}),
+    );
+    app.clone().oneshot(req).await.unwrap();
+
+    let req = Request::builder()
+        .method(Method::GET)
+        .uri("/admin/carts")
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    let carts = body["carts"].as_array().unwrap();
+    let found = carts.iter().find(|c| c["id"] == cart_id).unwrap();
+    assert_eq!(found["items"].as_array().unwrap().len(), 1);
+    assert_eq!(found["items"][0]["quantity"], 2);
+}

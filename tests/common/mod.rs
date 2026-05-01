@@ -77,6 +77,10 @@ pub async fn clean_all_tables(pool: &toko_rs::db::DbPool) {
         .execute(pool)
         .await
         .unwrap();
+    sqlx::query("DELETE FROM invoice_config")
+        .execute(pool)
+        .await
+        .unwrap();
     sqlx::query("UPDATE _sequences SET value = 0 WHERE name = 'order_display_id'")
         .execute(pool)
         .await

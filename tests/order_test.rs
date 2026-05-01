@@ -976,3 +976,167 @@ async fn test_complete_cart_with_pre_existing_order_returns_existing() {
     assert_eq!(body["order"]["id"], "order_preexist");
     assert_eq!(body["order"]["display_id"], 999);
 }
+
+async fn create_pending_order(app: &axum::Router, pool: &toko_rs::db::DbPool) -> String {
+    let cart_id = create_cart_with_item(app, pool).await;
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/complete", cart_id),
+            &json!(null),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    body_json(res).await["order"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string()
+}
+
+#[tokio::test]
+async fn test_admin_cancel_pending_order() {
+    let (app, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+    let order_id = create_pending_order(&app, &pool).await;
+
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(&format!("/admin/orders/{}/cancel", order_id))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body["order"]["status"], "canceled");
+    assert!(body["order"]["canceled_at"].is_string());
+}
+
+#[tokio::test]
+async fn test_admin_cancel_already_canceled_order() {
+    let (app, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+    let order_id = create_pending_order(&app, &pool).await;
+
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(&format!("/admin/orders/{}/cancel", order_id))
+        .body(Body::empty())
+        .unwrap();
+    app.clone().oneshot(req).await.unwrap();
+
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(&format!("/admin/orders/{}/cancel", order_id))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_admin_cancel_completed_order() {
+    let (app, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+    let order_id = create_pending_order(&app, &pool).await;
+
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(&format!("/admin/orders/{}/complete", order_id))
+        .body(Body::empty())
+        .unwrap();
+    app.clone().oneshot(req).await.unwrap();
+
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(&format!("/admin/orders/{}/cancel", order_id))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_admin_cancel_payment_status_updated() {
+    let (app, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+    let order_id = create_pending_order(&app, &pool).await;
+
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(&format!("/admin/orders/{}/cancel", order_id))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let payment: (String,) =
+        sqlx::query_as("SELECT status FROM payment_records WHERE order_id = $1")
+            .bind(&order_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(payment.0, "canceled");
+}
+
+#[tokio::test]
+async fn test_admin_complete_pending_order() {
+    let (app, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+    let order_id = create_pending_order(&app, &pool).await;
+
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(&format!("/admin/orders/{}/complete", order_id))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body["order"]["status"], "completed");
+}
+
+#[tokio::test]
+async fn test_admin_complete_already_completed_order() {
+    let (app, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+    let order_id = create_pending_order(&app, &pool).await;
+
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(&format!("/admin/orders/{}/complete", order_id))
+        .body(Body::empty())
+        .unwrap();
+    app.clone().oneshot(req).await.unwrap();
+
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(&format!("/admin/orders/{}/complete", order_id))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_admin_complete_canceled_order() {
+    let (app, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+    let order_id = create_pending_order(&app, &pool).await;
+
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(&format!("/admin/orders/{}/cancel", order_id))
+        .body(Body::empty())
+        .unwrap();
+    app.clone().oneshot(req).await.unwrap();
+
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(&format!("/admin/orders/{}/complete", order_id))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
