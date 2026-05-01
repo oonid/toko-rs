@@ -398,4 +398,67 @@ impl CartRepository {
 
         Ok(())
     }
+
+    pub async fn list(
+        &self,
+        params: &AdminCartListParams,
+    ) -> Result<(Vec<CartWithItems>, i64), AppError> {
+        let limit = params.capped_limit();
+
+        let mut conditions: Vec<String> = vec!["c.deleted_at IS NULL".to_string()];
+        let mut param_idx = 1u32;
+
+        if params.id.is_some() {
+            conditions.push(format!("c.id = ${param_idx}"));
+            param_idx += 1;
+        }
+        if params.customer_id.is_some() {
+            conditions.push(format!("c.customer_id = ${param_idx}"));
+            param_idx += 1;
+        }
+
+        let where_clause = conditions.join(" AND ");
+        let off_idx = param_idx;
+        let lim_idx = param_idx + 1;
+
+        let count_sql = format!("SELECT COUNT(*) FROM carts c WHERE {}", where_clause);
+        let mut count_q = sqlx::query_scalar::<_, i64>(&count_sql);
+        if let Some(ref v) = params.id {
+            count_q = count_q.bind(v.as_str());
+        }
+        if let Some(ref v) = params.customer_id {
+            count_q = count_q.bind(v.as_str());
+        }
+        let count = count_q.fetch_one(&self.pool).await?;
+
+        let data_sql = format!(
+            "SELECT c.* FROM carts c WHERE {} ORDER BY c.created_at DESC OFFSET ${off_idx} LIMIT ${lim_idx}",
+            where_clause
+        );
+        let mut data_q = sqlx::query_as::<_, Cart>(&data_sql);
+        if let Some(ref v) = params.id {
+            data_q = data_q.bind(v.as_str());
+        }
+        if let Some(ref v) = params.customer_id {
+            data_q = data_q.bind(v.as_str());
+        }
+        let carts = data_q
+            .bind(params.offset)
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .await?;
+
+        let mut wrapped = Vec::with_capacity(carts.len());
+        for cart in carts {
+            let items = sqlx::query_as::<_, CartLineItem>(
+                "SELECT * FROM cart_line_items WHERE cart_id = $1 AND deleted_at IS NULL ORDER BY created_at",
+            )
+            .bind(&cart.id)
+            .fetch_all(&self.pool)
+            .await?;
+            wrapped.push(CartWithItems::from_items(cart, items));
+        }
+
+        Ok((wrapped, count))
+    }
 }

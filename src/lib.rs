@@ -8,6 +8,7 @@ use tower_http::trace::TraceLayer;
 pub mod cart;
 pub mod config;
 pub mod customer;
+pub mod invoice;
 pub mod order;
 pub mod payment;
 pub mod product;
@@ -54,8 +55,12 @@ pub fn app_router_with_cors(state: AppState, cors_origins: &str) -> Router {
     Router::new()
         .merge(product::routes::router())
         .merge(cart::routes::router())
+        .merge(cart::routes::admin_router())
         .merge(customer::routes::router())
+        .merge(customer::routes::admin_router())
+        .merge(invoice::routes::admin_router())
         .merge(order::routes::router())
+        .merge(order::routes::admin_router())
         .merge(order_protected)
         .route("/health", axum::routing::get(health_check))
         .layer(TraceLayer::new_for_http())

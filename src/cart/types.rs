@@ -54,3 +54,27 @@ pub struct LineItemDeleteResponse {
     pub deleted: bool,
     pub parent: super::models::CartWithItems,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminCartListParams {
+    pub id: Option<String>,
+    pub customer_id: Option<String>,
+    #[serde(default)]
+    pub offset: i64,
+    #[serde(default = "crate::types::default_limit")]
+    pub limit: i64,
+}
+
+impl AdminCartListParams {
+    pub fn capped_limit(&self) -> i64 {
+        self.limit.min(100)
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminCartListResponse {
+    pub carts: Vec<super::models::CartWithItems>,
+    pub count: i64,
+    pub offset: i64,
+    pub limit: i64,
+}
