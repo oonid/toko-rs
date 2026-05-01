@@ -19,6 +19,12 @@ pub fn protected_router() -> Router<AppState> {
         .route("/store/orders/{id}", get(store_get_order))
 }
 
+pub fn admin_router() -> Router<AppState> {
+    Router::new()
+        .route("/admin/orders/{id}/cancel", post(admin_cancel_order))
+        .route("/admin/orders/{id}/complete", post(admin_complete_order))
+}
+
 #[tracing::instrument(skip_all, fields(cart_id = %cart_id))]
 async fn store_complete_cart(
     State(state): State<AppState>,
@@ -67,5 +73,24 @@ async fn store_get_order(
         )));
     }
 
+    Ok(Json(OrderResponse { order }))
+}
+
+#[tracing::instrument(skip_all, fields(id = %id))]
+async fn admin_cancel_order(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<OrderResponse>, AppError> {
+    let order = state.repos.order.cancel_order(&id).await?;
+    let _ = state.repos.payment.cancel_by_order_id(&id).await;
+    Ok(Json(OrderResponse { order }))
+}
+
+#[tracing::instrument(skip_all, fields(id = %id))]
+async fn admin_complete_order(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<OrderResponse>, AppError> {
+    let order = state.repos.order.complete_order(&id).await?;
     Ok(Json(OrderResponse { order }))
 }

@@ -1,6 +1,7 @@
 use crate::cart::repository::CartRepository;
 use crate::customer::repository::CustomerRepository;
 use crate::error::AppError;
+use crate::invoice::repository::InvoiceRepository;
 use crate::order::repository::OrderRepository;
 use crate::payment::repository::PaymentRepository;
 use crate::product::repository::ProductRepository;
@@ -43,6 +44,7 @@ pub struct Repositories {
     pub customer: CustomerRepository,
     pub order: OrderRepository,
     pub payment: PaymentRepository,
+    pub invoice: InvoiceRepository,
 }
 
 pub async fn create_db(
@@ -71,6 +73,7 @@ pub async fn create_db(
         customer: CustomerRepository::new(pool.clone()),
         order: OrderRepository::new(pool.clone()),
         payment: PaymentRepository::new(pool.clone()),
+        invoice: InvoiceRepository::new(pool.clone()),
     };
 
     Ok((AppDb { pool }, repos))

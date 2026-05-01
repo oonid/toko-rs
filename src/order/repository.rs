@@ -270,4 +270,52 @@ impl OrderRepository {
 
         Ok(OrderWithItems::from_items(order, items))
     }
+
+    pub async fn cancel_order(&self, id: &str) -> Result<OrderWithItems, AppError> {
+        let order = self.find_by_id(id).await?;
+
+        if order.order.status == "canceled" {
+            return Err(AppError::InvalidData(
+                "Order is already canceled".to_string(),
+            ));
+        }
+        if order.order.status == "completed" {
+            return Err(AppError::InvalidData(
+                "Cannot cancel a completed order".to_string(),
+            ));
+        }
+
+        sqlx::query(
+            "UPDATE orders SET status = 'canceled', canceled_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+        )
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+
+        self.find_by_id(id).await
+    }
+
+    pub async fn complete_order(&self, id: &str) -> Result<OrderWithItems, AppError> {
+        let order = self.find_by_id(id).await?;
+
+        if order.order.status == "completed" {
+            return Err(AppError::InvalidData(
+                "Order is already completed".to_string(),
+            ));
+        }
+        if order.order.status == "canceled" {
+            return Err(AppError::InvalidData(
+                "Cannot complete a canceled order".to_string(),
+            ));
+        }
+
+        sqlx::query(
+            "UPDATE orders SET status = 'completed', updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+        )
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+
+        self.find_by_id(id).await
+    }
 }

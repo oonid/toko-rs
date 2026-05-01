@@ -2,7 +2,7 @@ use super::types::*;
 use crate::extract;
 use crate::{error::AppError, AppState};
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     routing::{get, post},
     Json, Router,
 };
@@ -20,6 +20,10 @@ pub fn router() -> Router<AppState> {
             "/store/carts/{id}/line-items/{line_id}",
             post(store_update_line_item).delete(store_delete_line_item),
         )
+}
+
+pub fn admin_router() -> Router<AppState> {
+    Router::new().route("/admin/carts", get(admin_list_carts))
 }
 
 #[tracing::instrument(skip_all)]
@@ -100,4 +104,19 @@ async fn store_update_line_item(
         .update_line_item(&id, &line_id, payload)
         .await?;
     Ok(Json(CartResponse { cart }))
+}
+
+#[tracing::instrument(skip_all)]
+async fn admin_list_carts(
+    State(state): State<AppState>,
+    Query(params): Query<AdminCartListParams>,
+) -> Result<Json<AdminCartListResponse>, AppError> {
+    let limit = params.capped_limit();
+    let (carts, count) = state.repos.cart.list(&params).await?;
+    Ok(Json(AdminCartListResponse {
+        carts,
+        count,
+        offset: params.offset,
+        limit,
+    }))
 }

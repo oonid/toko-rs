@@ -70,4 +70,15 @@ impl PaymentRepository {
             .await
             .map_err(AppError::DatabaseError)
     }
+
+    pub async fn cancel_by_order_id(&self, order_id: &str) -> Result<(), AppError> {
+        sqlx::query(
+            "UPDATE payment_records SET status = 'canceled', updated_at = CURRENT_TIMESTAMP WHERE order_id = $1 AND status NOT IN ('captured', 'refunded')",
+        )
+        .bind(order_id)
+        .execute(&self.pool)
+        .await
+        .map_err(AppError::DatabaseError)?;
+        Ok(())
+    }
 }

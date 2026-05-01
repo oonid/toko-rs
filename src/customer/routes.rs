@@ -3,7 +3,7 @@ use crate::error::AppError;
 use crate::extract;
 use crate::AppState;
 use axum::{
-    extract::{Request, State},
+    extract::{Path, Query, Request, State},
     http::StatusCode,
     middleware::Next,
     routing::{get, post},
@@ -22,6 +22,12 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/store/customers", post(store_register))
         .merge(me_routes)
+}
+
+pub fn admin_router() -> Router<AppState> {
+    Router::new()
+        .route("/admin/customers", get(admin_list_customers))
+        .route("/admin/customers/{id}", get(admin_get_customer))
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -78,4 +84,28 @@ async fn store_update_me(
 
     let customer = state.repos.customer.update(&cid.id, &payload).await?;
     Ok(Json(CustomerResponse { customer }))
+}
+
+#[tracing::instrument(skip_all)]
+async fn admin_list_customers(
+    State(state): State<AppState>,
+    Query(params): Query<AdminCustomerListParams>,
+) -> Result<Json<AdminCustomerListResponse>, AppError> {
+    let limit = params.capped_limit();
+    let (customers, count) = state.repos.customer.list(&params).await?;
+    Ok(Json(AdminCustomerListResponse {
+        customers,
+        count,
+        offset: params.offset,
+        limit,
+    }))
+}
+
+#[tracing::instrument(skip_all, fields(id = %id))]
+async fn admin_get_customer(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<AdminCustomerResponse>, AppError> {
+    let customer = state.repos.customer.find_by_id(&id).await?;
+    Ok(Json(AdminCustomerResponse { customer }))
 }
