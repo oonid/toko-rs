@@ -12,8 +12,8 @@ pub struct UpdateInvoiceConfigInput {
 }
 
 #[derive(Debug, serde::Serialize)]
-pub struct InvoiceConfigResponse {
-    pub invoice_config: super::models::InvoiceConfig,
+pub struct InvoiceConfigApiResponse {
+    pub invoice_config: super::models::InvoiceConfigResponse,
 }
 
 #[derive(Debug, serde::Serialize)]

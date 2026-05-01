@@ -33,6 +33,33 @@ pub struct AppConfig {
     pub default_currency_code: String,
     #[serde(default = "default_cors_origins")]
     pub cors_origins: String,
+    #[serde(default)]
+    pub invoice: InvoiceConfig,
+}
+
+#[derive(Debug, Deserialize, Clone, Default)]
+pub struct InvoiceConfig {
+    #[serde(default)]
+    pub company_name: String,
+    #[serde(default)]
+    pub company_address: String,
+    #[serde(default)]
+    pub company_phone: String,
+    #[serde(default)]
+    pub company_email: String,
+    #[serde(default)]
+    pub company_logo: Option<String>,
+    #[serde(default)]
+    pub notes: Option<String>,
+}
+
+impl InvoiceConfig {
+    pub fn is_configured(&self) -> bool {
+        !self.company_name.is_empty()
+            || !self.company_address.is_empty()
+            || !self.company_phone.is_empty()
+            || !self.company_email.is_empty()
+    }
 }
 
 impl AppConfig {

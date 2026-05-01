@@ -142,8 +142,8 @@ src/
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/admin/invoice-config` | Get issuer company config |
-| POST | `/admin/invoice-config` | Create or update issuer config |
+| GET | `/admin/invoice-config` | Get issuer company config (from env vars) |
+| POST | `/admin/invoice-config` | Returns current config (read-only; env-based) |
 | GET | `/admin/orders/:id/invoice` | Generate invoice on-the-fly from order data |
 
 ### Health
@@ -154,7 +154,7 @@ src/
 
 ## Database
 
-7 migrations, 13 tables:
+5 migrations, 14 tables:
 
 | Migration | Tables |
 |-----------|--------|
@@ -163,8 +163,8 @@ src/
 | `003_carts` | `carts`, `cart_line_items` |
 | `004_orders` | `_sequences`, `orders`, `order_line_items` |
 | `005_payments` | `payment_records` |
-| `006_idempotency` | `idempotency_keys` |
-| `007_invoice_config` | `invoice_config` |
+
+Invoice config is stored as environment variables (not a DB table): `INVOICE_COMPANY_NAME`, `INVOICE_COMPANY_ADDRESS`, `INVOICE_COMPANY_PHONE`, `INVOICE_COMPANY_EMAIL`, `INVOICE_COMPANY_LOGO`, `INVOICE_NOTES`.
 
 PostgreSQL is the default. SQLite is available behind a feature flag:
 
@@ -253,7 +253,7 @@ make cov          # cargo llvm-cov
 
 ## Project Status
 
-**P1 (Core MVP) — Complete.** 191 tests, 90.4% line coverage, clippy-clean, 38 endpoint methods.
+**P1 (Core MVP) — Complete.** 238 tests, clippy-clean, 38 endpoint methods, 14 tables, 5 migrations.
 
 The following are out of scope for P1 and planned for future phases:
 

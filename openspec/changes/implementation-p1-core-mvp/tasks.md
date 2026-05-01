@@ -1345,3 +1345,89 @@ Three admin-only features needed for operational use of the MVP: finding custome
 - [x] 32f.5 Update `docs/seed-data.md` with curl examples for all 8 new endpoints (AC1-AC5, AI1-AI4)
 - [x] 32f.6 Create `docs/audit-p1-task32.md` — full audit report with Medusa comparison tables
 - [x] 32f.7 Update `docs/seed-data.md` endpoint summary — 38 methods
+
+## Task 33: Schema Hardening — Dead Table Removal, Config Migration, Status Computation
+
+**Type**: Refactor / P1 Schema Cleanup
+**Priority**: MEDIUM
+**Status**: [x] Complete
+
+### Context
+
+Post-Task-32 exploration identified two categories of schema improvements for P1:
+1. **Dead/unnecessary tables** — `idempotency_keys` has zero usage in application code; `invoice_config` is a single-row config table better served by environment variables.
+2. **Hardcoded status fields** — `payment_status` and `fulfillment_status` on `OrderWithItems` are hardcoded strings that should derive from actual data (`payment_records.status` and `order.status`).
+3. **Missing order summary computation** — Medusa's `StoreOrder.summary` is a REQUIRED field that should be computed from order + payment data.
+
+This task removes 2 tables (reducing from 16 to 14), moves invoice config to `config.rs`/env vars, and makes order status fields dynamic rather than hardcoded lies.
+
+### 33a. Remove `idempotency_keys` table and migration
+
+The `idempotency_keys` table (migration 006) has zero SQL queries in `src/` and zero test assertions. It is only referenced in test cleanup (`DELETE FROM idempotency_keys`). Cart completion idempotency is handled by `orders.cart_id UNIQUE` + `SELECT ... FOR UPDATE`.
+
+- [x] 33a.1 Delete `migrations/006_idempotency.sql`
+- [x] 33a.2 Delete `migrations/sqlite/006_idempotency.sql`
+- [x] 33a.3 Remove `DELETE FROM idempotency_keys` from `tests/common/mod.rs`
+- [x] 33a.4 Remove `DELETE FROM idempotency_keys` from `tests/e2e/common/mod.rs` (if present)
+- [x] 33a.5 Run full test suite — all pass
+
+### 33b. Move `invoice_config` from DB table to environment config
+
+The `invoice_config` table stores a single row of company information (name, address, phone, email, logo, notes). This is application configuration, not transactional data. Moving it to `config.rs`/`.env` eliminates a table and simplifies the invoice module.
+
+- [x] 33b.1 Add `InvoiceConfig` struct to `src/config.rs` with env var keys: `INVOICE_COMPANY_NAME`, `INVOICE_COMPANY_ADDRESS`, `INVOICE_COMPANY_PHONE`, `INVOICE_COMPANY_EMAIL`, `INVOICE_COMPANY_LOGO`, `INVOICE_NOTES` — all optional, all with empty-string defaults
+- [x] 33b.2 Add `pub invoice: InvoiceConfig` field to `AppConfig`
+- [x] 33b.3 Thread `invoice_config` through `Repositories` or `AppState` to `InvoiceRepository`
+- [x] 33b.4 Rewrite `InvoiceRepository` — remove all SQL queries, read from config struct instead. `get_config()` returns `InvoiceConfig` from memory. `upsert_config()` becomes a no-op or returns the current config (runtime editing not possible with env-based config).
+- [x] 33b.5 Remove `InvoiceRepository.pool` field — no longer needs DB access
+- [x] 33b.6 Remove `InvoiceRepository` from `Repositories` in `src/db.rs` if it no longer needs a pool
+- [x] 33b.7 Delete `migrations/007_invoice_config.sql` and `migrations/sqlite/007_invoice_config.sql`
+- [x] 33b.8 Remove `DELETE FROM invoice_config` from `tests/common/mod.rs`
+- [x] 33b.9 Update `Invoice::from_order()` to accept the config struct directly
+- [x] 33b.10 Change `POST /admin/invoice-config` to return current config (no-op update) or remove the endpoint. Change `GET /admin/invoice-config` to return from config. **Decision: keep both endpoints, `POST` returns current config (env is read-only at runtime).**
+- [x] 33b.11 Update invoice tests — remove DB-dependent assertions, test config from env
+- [x] 33b.12 Update `.env.example` with invoice config vars
+- [x] 33b.13 Run full test suite — all pass
+
+### 33c. Compute `payment_status` from `payment_records`
+
+Currently hardcoded as `"not_paid"` in `OrderWithItems::from_items()`. Should derive from the payment record's status.
+
+- [x] 33c.1 Add `resolve_payment_status(order_id: &str)` helper to `src/order/repository.rs` — queries `payment_records.status WHERE order_id = $1`, maps to Medusa PaymentStatus enum
+- [x] 33c.2 Define the status mapping: `pending → "not_paid"`, `authorized → "authorized"`, `captured → "captured"`, `failed → "not_paid"`, `refunded → "refunded"`, `canceled → "canceled"`, no record → `"not_paid"`
+- [x] 33c.3 Pass resolved `payment_status` into `OrderWithItems::from_items()` (add parameter)
+- [x] 33c.4 Update all callers of `from_items()` in `src/order/repository.rs` and `src/invoice/routes.rs`
+- [x] 33c.5 Add test: order with pending payment returns `"not_paid"`
+- [x] 33c.6 Add test: cancelled order returns `"canceled"` payment_status
+- [x] 33c.7 Run full test suite — all pass
+
+### 33d. Compute `fulfillment_status` from `order.status`
+
+Currently hardcoded as `"not_fulfilled"`. Should be `"canceled"` when order is canceled, else `"not_fulfilled"`.
+
+- [x] 33d.1 Update `OrderWithItems::from_items()` — derive `fulfillment_status` from `order.status`: `"canceled"` if canceled, else `"not_fulfilled"`
+- [x] 33d.2 Add test: cancelled order returns `"canceled"` fulfillment_status
+- [x] 33d.3 Add test: pending order returns `"not_fulfilled"` fulfillment_status
+- [x] 33d.4 Run full test suite — all pass
+
+### 33e. Compute `order_summary` from order + payment data
+
+Medusa's `StoreOrder.summary` is a REQUIRED field containing `{ pending_difference, current_order_total, original_order_total, transaction_total, paid_total, refunded_total, accounting_total }`. Compute in Rust from existing data.
+
+- [x] 33e.1 Add `OrderSummary` struct to `src/order/models.rs` or `src/order/types.rs` — `{ pending_difference, current_order_total, original_order_total, transaction_total, paid_total, refunded_total, accounting_total }` (all i64)
+- [x] 33e.2 Add `summary: OrderSummary` field to `OrderWithItems`
+- [x] 33e.3 Compute values in `from_items()` — `current_order_total = total`, `original_order_total = total`, `paid_total = payment.amount if captured else 0`, etc. All other fields default to 0 for P1.
+- [x] 33e.4 Add contract test: `order["summary"]` exists with required fields
+- [x] 33e.5 Run full test suite — all pass
+
+### 33f. Documentation and verification
+
+- [x] 33f.1 Update `docs/audit-master-checklist.md` with T33 entries
+- [x] 33f.2 Update `docs/seed-data.md` — remove `invoice_config` table references, add env var examples
+- [x] 33f.3 Update `README.md` — table count 13→14 removal back to 14, migration count 7→5
+- [x] 33f.4 Update `design.md` — Decision 20 for invoice config migration, update known divergences, update table count
+- [x] 33f.5 Update `proposal.md` — table count, capabilities
+- [x] 33f.6 Run full test suite on PostgreSQL — all pass
+- [x] 33f.7 Run `cargo clippy -- -D warnings` — zero warnings
+- [x] 33f.8 Run `cargo fmt --check` — clean
+- [x] 33f.9 Write `docs/audit-p1-task33.md` — schema hardening report

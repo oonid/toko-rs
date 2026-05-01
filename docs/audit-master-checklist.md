@@ -2,7 +2,7 @@
 
 Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32}.md` into a single reference. Every item is tagged with its source audit, status, and where it was fixed (or why it was deferred). Tasks 27 and 29 were structural audits (checklist accuracy, re-numbering, redundant test annotation) — their impact is reflected in the checklist structure itself (prefixed IDs, reversal chains, corrected counts).
 
-**Last verified**: 2026-05-01 — 191 tests pass on PostgreSQL (7 suites), clippy clean, fmt clean. Latest audit: Task 32. Total: 137 fixes applied (0 planned) across 7 categories.
+**Last verified**: 2026-05-02 — 191 tests pass on PostgreSQL (7 suites), clippy clean, fmt clean. Latest audit: Task 33 (planned). Total: 141 fixes (137 applied, 4 planned) across 7 categories.
 
 ---
 
@@ -159,7 +159,9 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25
 | D-28 | T30-5 | Customer missing `created_by` column | Added `created_by TEXT` to `customers` in both PG and SQLite | 30e |
 | D-29 | T32 | No index on `customers.phone` for admin search | Add `idx_customers_phone ON customers (phone) WHERE deleted_at IS NULL AND phone IS NOT NULL` to both PG and SQLite | 32a.8 |
 | D-30 | T32 | `payment_records.status` CHECK missing `'canceled'` — admin cancel cannot set status | Add `'canceled'` to status CHECK constraint in both PG and SQLite | 32c.4 |
-| D-31 | T32 | No `invoice_config` table for invoice issuer information | `CREATE TABLE invoice_config` (id, company_name, company_address, company_phone, company_email, company_logo, notes, timestamps) in both PG and SQLite. Migration 007 | 32e |
+| D-31 | T32 | No `invoice_config` table for invoice issuer information | `CREATE TABLE invoice_config` (id, company_name, company_address, company_phone, company_email, company_logo, notes, timestamps) in both PG and SQLite. Migration 007 | 32e | **[REMOVED by T33] — migrated to env vars** |
+| D-32 | T33 | `idempotency_keys` table has zero usage in application code — dead migration | Delete `migrations/006_idempotency.sql` and SQLite equivalent. Remove test cleanup references | 33a |
+| D-33 | T33 | `invoice_config` single-row table better served by env vars | Migrate to `AppConfig.invoice` struct with env var keys. Delete migration 007. `POST /admin/invoice-config` becomes read-only | 33b |
 
 ---
 
@@ -178,6 +180,9 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25
 | L-9 | T26 HIGH-3 | Cart completion not idempotent — retry created new order or returned error | Idempotency check: lookup existing order by `cart_id` before creating; returns existing order on retry | 26f |
 | L-10 | T32 | Order cancel simplified — no payment provider calls, no fulfillment checks | P1: update order status + payment status only. Full workflow deferred to P2 | 32c,32d |
 | L-11 | T32 | Invoice generated on-the-fly from order data — no `invoices` table | P1: `Invoice::from_order()` merges `InvoiceConfig` + `OrderWithItems` at query time. No persistence, no PDF. Full invoice lifecycle deferred to P2 | 32e |
+| L-12 | T33 | `payment_status` hardcoded as `"not_paid"` — doesn't reflect actual payment state or order cancel | Derive from `payment_records.status` at query time with Medusa PaymentStatus mapping | 33c |
+| L-13 | T33 | `fulfillment_status` hardcoded as `"not_fulfilled"` — doesn't reflect order cancel | Derive from `order.status`: `"canceled"` if canceled, else `"not_fulfilled"` | 33d |
+| L-14 | T33 | `order_summary` missing — Medusa's REQUIRED `StoreOrder.summary` field | Compute from order total + payment records at query time. 7 fields: pending_difference, current_order_total, etc. | 33e |
 
 ---
 
@@ -247,10 +252,10 @@ Entries moved from this section to fix sections: S-24 (was T22 S1), B-30 (was T2
 | Response shape fixes (S) | 35 |
 | Input/validation fixes (V) | 12 |
 | Error handling fixes (E) | 12 |
-| Database schema fixes (D) | 31 |
-| Business logic fixes (L) | 11 |
+| Database schema fixes (D) | 33 |
+| Business logic fixes (L) | 14 |
 | Config/infra fixes (C) | 4 |
-| **Total** | **137** |
+| **Total** | **141** |
 | Deferred to P2 | 12 |
 | Known divergences (by design) | 11 |
 | False positive | 1 |

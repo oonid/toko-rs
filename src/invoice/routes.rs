@@ -1,4 +1,4 @@
-use super::models::Invoice;
+use super::models::{Invoice, InvoiceConfigResponse};
 use super::types::*;
 use crate::error::AppError;
 use crate::AppState;
@@ -17,29 +17,24 @@ pub fn admin_router() -> Router<AppState> {
 #[tracing::instrument(skip_all)]
 async fn admin_get_config(
     State(state): State<AppState>,
-) -> Result<Json<InvoiceConfigResponse>, AppError> {
-    let config = state.repos.invoice.get_config().await?;
-    Ok(Json(InvoiceConfigResponse { invoice_config: config }))
+) -> Result<Json<InvoiceConfigApiResponse>, AppError> {
+    let config = &state.repos.invoice.config;
+    let response = InvoiceConfigResponse::from(config);
+    Ok(Json(InvoiceConfigApiResponse {
+        invoice_config: response,
+    }))
 }
 
 #[tracing::instrument(skip_all)]
 async fn admin_update_config(
     State(state): State<AppState>,
-    Json(payload): Json<UpdateInvoiceConfigInput>,
-) -> Result<Json<InvoiceConfigResponse>, AppError> {
-    let config = state
-        .repos
-        .invoice
-        .upsert_config(
-            payload.company_name,
-            payload.company_address,
-            payload.company_phone,
-            payload.company_email,
-            payload.company_logo,
-            payload.notes,
-        )
-        .await?;
-    Ok(Json(InvoiceConfigResponse { invoice_config: config }))
+    Json(_payload): Json<UpdateInvoiceConfigInput>,
+) -> Result<Json<InvoiceConfigApiResponse>, AppError> {
+    let config = &state.repos.invoice.config;
+    let response = InvoiceConfigResponse::from(config);
+    Ok(Json(InvoiceConfigApiResponse {
+        invoice_config: response,
+    }))
 }
 
 #[tracing::instrument(skip_all, fields(id = %id))]
@@ -47,8 +42,11 @@ async fn admin_get_invoice(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<InvoiceResponse>, AppError> {
-    let config = state.repos.invoice.get_config().await?;
+    let config = &state.repos.invoice.config;
+    if !config.is_configured() {
+        return Err(AppError::NotFound("Invoice config not found".into()));
+    }
     let order = state.repos.order.find_by_id(&id).await?;
-    let invoice = Invoice::from_order(&config, order);
+    let invoice = Invoice::from_order(config, order);
     Ok(Json(InvoiceResponse { invoice }))
 }

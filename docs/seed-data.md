@@ -1411,6 +1411,8 @@ curl -s http://localhost:3000/store/customers/me \
 
 ## Admin: Invoice Operations (Task 32)
 
+> **Note**: Task 33 will migrate `invoice_config` from a DB table to environment variables. AI1 (POST /admin/invoice-config) will become a read-only no-op returning current env config. AI2 will read from env vars instead of DB. AI3 (partial update) will no longer persist changes. AI4 (invoice generation) remains unchanged.
+
 ### AI1: Configure invoice issuer (first time)
 
 Set up company information for invoice generation. Creates or updates the singleton config:

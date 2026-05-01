@@ -421,6 +421,8 @@ async fn test_cart_complete_error_response_type() {
                 billing_address: None,
             },
             vec![],
+            "not_paid",
+            "not_fulfilled",
         ),
     ))
     .unwrap();

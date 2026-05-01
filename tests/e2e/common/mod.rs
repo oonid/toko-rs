@@ -75,7 +75,7 @@ impl Drop for E2eContext {
 pub async fn setup_e2e() -> E2eContext {
     let db_url = resolve_db_url().await;
 
-    let (app_db, repos) = toko_rs::db::create_db(&db_url, "idr")
+    let (app_db, repos) = toko_rs::db::create_db(&db_url, "idr", Default::default())
         .await
         .expect("Failed to create PG pool");
     toko_rs::db::run_migrations(&app_db)
@@ -191,10 +191,6 @@ async fn clean_all_tables(pool: &toko_rs::db::DbPool) {
         .await
         .unwrap();
     sqlx::query("DELETE FROM products")
-        .execute(pool)
-        .await
-        .unwrap();
-    sqlx::query("DELETE FROM idempotency_keys")
         .execute(pool)
         .await
         .unwrap();

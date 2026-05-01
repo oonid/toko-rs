@@ -50,6 +50,7 @@ pub struct Repositories {
 pub async fn create_db(
     database_url: &str,
     default_currency_code: &str,
+    invoice_config: crate::config::InvoiceConfig,
 ) -> Result<(AppDb, Repositories), AppError> {
     #[cfg(feature = "postgres")]
     let pool = DbPoolOptions::new()
@@ -73,7 +74,7 @@ pub async fn create_db(
         customer: CustomerRepository::new(pool.clone()),
         order: OrderRepository::new(pool.clone()),
         payment: PaymentRepository::new(pool.clone()),
-        invoice: InvoiceRepository::new(pool.clone()),
+        invoice: InvoiceRepository::new(invoice_config),
     };
 
     Ok((AppDb { pool }, repos))
@@ -185,21 +186,21 @@ mod tests {
     #[tokio::test]
     async fn test_create_db() {
         let url = test_db_url();
-        let (app_db, _repos) = create_db(&url, "idr").await.unwrap();
+        let (app_db, _repos) = create_db(&url, "idr", Default::default()).await.unwrap();
         let _ = &app_db.pool;
     }
 
     #[tokio::test]
     async fn test_run_migrations() {
         let url = test_db_url();
-        let (app_db, _) = create_db(&url, "idr").await.unwrap();
+        let (app_db, _) = create_db(&url, "idr", Default::default()).await.unwrap();
         run_migrations(&app_db).await.unwrap();
     }
 
     #[tokio::test]
     async fn test_ping() {
         let url = test_db_url();
-        let (app_db, _) = create_db(&url, "idr").await.unwrap();
+        let (app_db, _) = create_db(&url, "idr", Default::default()).await.unwrap();
         run_migrations(&app_db).await.unwrap();
         assert!(ping(&app_db).await);
     }

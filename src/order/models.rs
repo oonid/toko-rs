@@ -2,6 +2,17 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct OrderSummary {
+    pub pending_difference: i64,
+    pub current_order_total: i64,
+    pub original_order_total: i64,
+    pub transaction_total: i64,
+    pub paid_total: i64,
+    pub refunded_total: i64,
+    pub accounting_total: i64,
+}
+
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
 pub struct Order {
     pub id: String,
@@ -125,12 +136,13 @@ pub struct OrderWithItems {
     pub discount_subtotal: i64,
     pub payment_status: String,
     pub fulfillment_status: String,
+    pub summary: OrderSummary,
     pub fulfillments: Vec<serde_json::Value>,
     pub shipping_methods: Vec<serde_json::Value>,
 }
 
 impl OrderWithItems {
-    pub fn from_items(order: Order, mut items: Vec<OrderLineItem>) -> Self {
+    pub fn from_items(order: Order, mut items: Vec<OrderLineItem>, payment_status: &str, fulfillment_status: &str) -> Self {
         for item in &mut items {
             if let Some(ref snap) = item.snapshot {
                 let s = &snap.0;
@@ -227,8 +239,17 @@ impl OrderWithItems {
             credit_line_tax_total: 0,
             discount_subtotal: 0,
             items,
-            payment_status: "not_paid".to_string(),
-            fulfillment_status: "not_fulfilled".to_string(),
+            payment_status: payment_status.to_string(),
+            fulfillment_status: fulfillment_status.to_string(),
+            summary: OrderSummary {
+                pending_difference: item_total,
+                current_order_total: item_total,
+                original_order_total: item_total,
+                transaction_total: 0,
+                paid_total: 0,
+                refunded_total: 0,
+                accounting_total: item_total,
+            },
             fulfillments: vec![],
             shipping_methods: vec![],
         }
