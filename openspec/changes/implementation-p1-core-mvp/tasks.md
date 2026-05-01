@@ -1281,55 +1281,67 @@ Images currently always return `[]`. No DB table, no input field. Medusa has `im
 - [x] 31b.4 Write `docs/audit-p1-task31.md` audit report
 - [x] 31b.5 Update `docs/audit-master-checklist.md` with T31 entries
 
-## Task 32: P1 Admin Extensions — Customer List, Cart List, Order Cancel/Complete
+## Task 32: P1 Admin Extensions — Customer List, Cart List, Order Cancel/Complete, Invoice
 
-**Type**: Feature / Medusa Parity
+**Type**: Feature / Medusa Parity + Extension
 **Priority**: HIGH
-**Status**: [ ] Pending
+**Status**: [x] Complete
 
 ### Context
 
-Three admin-only features needed for operational use of the MVP: finding customers by phone/email, viewing abandoned/active carts, and managing order lifecycle (cancel/complete). All three are admin-only endpoints (no auth in P1). Features 1 and 3 are Medusa parity; feature 2 is a toko-rs extension documented as K-11.
+Three admin-only features needed for operational use of the MVP: finding customers by phone/email, viewing abandoned/active carts, and managing order lifecycle (cancel/complete). All three are admin-only endpoints (no auth in P1). Features 1 and 3 are Medusa parity; feature 2 is a toko-rs extension documented as K-11. Additionally, invoice generation (text-based, on-the-fly from order data) is added as a P1 extension following Medusa's tutorial pattern (K-12).
 
 ### 32a. Admin customer list + get (Medusa parity)
 
-- [ ] 32a.1 Add `AdminCustomerListParams` to `src/customer/types.rs` — query params: `q` (free-text), `email`, `first_name`, `last_name`, `has_account`, `offset`, `limit`
-- [ ] 32a.2 Add `AdminCustomerListResponse { customers: Vec<CustomerWithAddresses>, count, offset, limit }` to `src/customer/types.rs`
-- [ ] 32a.3 Add `AdminCustomerResponse { customer: CustomerWithAddresses }` to `src/customer/types.rs`
-- [ ] 32a.4 Add `list(params: &AdminCustomerListParams)` to `src/customer/repository.rs` — dynamic WHERE for filters, `q` performs ILIKE/LIKE on first_name, last_name, email, phone
-- [ ] 32a.5 Add `find_by_id_admin(id: &str)` to `src/customer/repository.rs` — single customer by ID (reuse existing `wrap_with_addresses`)
-- [ ] 32a.6 Add admin routes to `src/customer/routes.rs` — `GET /admin/customers` (list), `GET /admin/customers/:id` (get)
-- [ ] 32a.7 Wire admin customer routes into `app_router` in `src/lib.rs`
-- [ ] 32a.8 Add migration: `CREATE INDEX idx_customers_phone ON customers (phone) WHERE deleted_at IS NULL` to both PG and SQLite
-- [ ] 32a.9 Add tests: list all, search by q, filter by email, get by id, get not found, pagination
+- [x] 32a.1 Add `AdminCustomerListParams` to `src/customer/types.rs` — query params: `q` (free-text), `email`, `first_name`, `last_name`, `has_account`, `offset`, `limit`
+- [x] 32a.2 Add `AdminCustomerListResponse { customers: Vec<CustomerWithAddresses>, count, offset, limit }` to `src/customer/types.rs`
+- [x] 32a.3 Add `AdminCustomerResponse { customer: CustomerWithAddresses }` to `src/customer/types.rs`
+- [x] 32a.4 Add `list(params: &AdminCustomerListParams)` to `src/customer/repository.rs` — dynamic WHERE for filters, `q` performs ILIKE on first_name, last_name, email, phone, company_name (5 Medusa searchable fields)
+- [x] 32a.5 Reuse existing `find_by_id` for admin get — no separate method needed (both call `wrap_with_addresses`)
+- [x] 32a.6 Add admin routes to `src/customer/routes.rs` — `GET /admin/customers` (list), `GET /admin/customers/{id}` (get)
+- [x] 32a.7 Wire admin customer routes into `app_router` in `src/lib.rs`
+- [x] 32a.8 Add migration: `CREATE INDEX idx_customers_phone ON customers (phone) WHERE deleted_at IS NULL AND phone IS NOT NULL` to both PG and SQLite
+- [x] 32a.9 Add tests: list all, search by q (first_name + company_name), filter by email/first_name/last_name/has_account, get by id, get not found, pagination (8 tests)
 
 ### 32b. Admin cart list (toko-rs extension — K-11)
 
-- [ ] 32b.1 Add `AdminCartListParams` to `src/cart/types.rs` — query params: `id`, `customer_id`, `offset`, `limit`
-- [ ] 32b.2 Add `AdminCartListResponse { carts: Vec<CartWithItems>, count, offset, limit }` to `src/cart/types.rs`
-- [ ] 32b.3 Add `list(params: &AdminCartListParams)` to `src/cart/repository.rs` — dynamic WHERE for filters, includes line items
-- [ ] 32b.4 Add admin route to `src/cart/routes.rs` — `GET /admin/carts` (list)
-- [ ] 32b.5 Wire admin cart route into `app_router` in `src/lib.rs`
-- [ ] 32b.6 Add tests: list all, filter by customer_id, pagination, includes line items
+- [x] 32b.1 Add `AdminCartListParams` to `src/cart/types.rs` — query params: `id`, `customer_id`, `offset`, `limit`
+- [x] 32b.2 Add `AdminCartListResponse { carts: Vec<CartWithItems>, count, offset, limit }` to `src/cart/types.rs`
+- [x] 32b.3 Add `list(params: &AdminCartListParams)` to `src/cart/repository.rs` — dynamic WHERE for id/customer_id filters, includes line items via per-cart query
+- [x] 32b.4 Add admin route to `src/cart/routes.rs` — `GET /admin/carts` (list)
+- [x] 32b.5 Wire admin cart route into `app_router` in `src/lib.rs`
+- [x] 32b.6 Add tests: list all, filter by customer_id, filter by id, pagination, includes line items (5 tests)
 
 ### 32c. Admin order cancel (Medusa parity — simplified)
 
-- [ ] 32c.1 Add `cancel_order(id: &str)` to `src/order/repository.rs` — validate status is `pending`, set `status = 'canceled'` and `canceled_at = now()`
-- [ ] 32c.2 Add `cancel_by_order_id(order_id: &str)` to `src/payment/repository.rs` — set payment status to `'canceled'`
-- [ ] 32c.3 Add admin route to `src/order/routes.rs` — `POST /admin/orders/:id/cancel` — calls order cancel + payment cancel
-- [ ] 32c.4 Add migration: add `'canceled'` to `payment_records.status` CHECK constraint in both PG and SQLite migrations (if not already present)
-- [ ] 32c.5 Add tests: cancel pending order, cancel already canceled, cancel completed order, payment status updated
+- [x] 32c.1 Add `cancel_order(id: &str)` to `src/order/repository.rs` — validates status not canceled/completed, sets `status = 'canceled'` and `canceled_at = now()`
+- [x] 32c.2 Add `cancel_by_order_id(order_id: &str)` to `src/payment/repository.rs` — sets payment status to `'canceled'` for non-captured/refunded payments
+- [x] 32c.3 Add admin route to `src/order/routes.rs` — `POST /admin/orders/{id}/cancel` — calls order cancel + payment cancel
+- [x] 32c.4 Add migration: add `'canceled'` to `payment_records.status` CHECK constraint in both PG and SQLite migrations
+- [x] 32c.5 Add tests: cancel pending order, cancel already canceled (400), cancel completed order (400), payment status updated (4 tests)
 
 ### 32d. Admin order complete (Medusa parity — simplified)
 
-- [ ] 32d.1 Add `complete_order(id: &str)` to `src/order/repository.rs` — validate status is `pending`, set `status = 'completed'`
-- [ ] 32d.2 Add admin route to `src/order/routes.rs` — `POST /admin/orders/:id/complete`
-- [ ] 32d.3 Add tests: complete pending order, complete already completed order
+- [x] 32d.1 Add `complete_order(id: &str)` to `src/order/repository.rs` — validates status not completed/canceled, sets `status = 'completed'`
+- [x] 32d.2 Add admin route to `src/order/routes.rs` — `POST /admin/orders/{id}/complete`
+- [x] 32d.3 Add tests: complete pending order, complete already completed (400), complete canceled order (400) (3 tests)
 
-### 32e. Documentation and verification
+### 32e. Admin invoice — on-the-fly generation (toko-rs extension — K-12)
 
-- [ ] 32e.1 Update `docs/audit-master-checklist.md` with T32 entries across all 6 dimensions
-- [ ] 32e.2 Run full test suite on PostgreSQL — all existing + new tests pass
-- [ ] 32e.3 Run `cargo clippy -- -D warnings` — zero warnings
-- [ ] 32e.4 Run `cargo fmt --check` — clean
-- [ ] 32e.5 Update `docs/seed-data.md` with curl examples for the 5 new endpoints
+- [x] 32e.1 Create migration `007_invoice_config.sql` for both PG and SQLite — `invoice_config` table (id, company_name, company_address, company_phone, company_email, company_logo, notes, timestamps)
+- [x] 32e.2 Create `src/invoice/` module: `mod.rs`, `models.rs` (`InvoiceConfig`, `Invoice`, `InvoiceIssuer`), `types.rs` (`UpdateInvoiceConfigInput`, response types), `repository.rs` (`get_config`, `upsert_config`), `routes.rs` (3 admin endpoints)
+- [x] 32e.3 Wire `pub mod invoice` into `src/lib.rs`, add `InvoiceRepository` to `Repositories` in `src/db.rs`, mount `invoice::routes::admin_router()`
+- [x] 32e.4 Add `DELETE FROM invoice_config` to `tests/common/mod.rs` cleanup
+- [x] 32e.5 Implement `Invoice::from_order()` — merges `InvoiceConfig` + `OrderWithItems` at query time, generates `invoice_number` from `display_id` (format `INV-XXXX`), no persistence, no PDF
+- [x] 32e.6 Add routes: `GET /admin/invoice-config`, `POST /admin/invoice-config`, `GET /admin/orders/{id}/invoice`
+- [x] 32e.7 Add tests: config 404 when empty, create via upsert, get after create, partial update, invoice on-the-fly, invoice_number matches display_id, 404 no config, 404 no order, order totals, issuer logo+notes (10 tests)
+
+### 32f. Documentation and verification
+
+- [x] 32f.1 Update `docs/audit-master-checklist.md` with T32 entries across all 6 dimensions (137 total, 0 planned)
+- [x] 32f.2 Run full test suite on PostgreSQL — 191 pass (7 suites)
+- [x] 32f.3 Run `cargo clippy -- -D warnings` — zero warnings
+- [x] 32f.4 Run `cargo fmt --check` — clean
+- [x] 32f.5 Update `docs/seed-data.md` with curl examples for all 8 new endpoints (AC1-AC5, AI1-AI4)
+- [x] 32f.6 Create `docs/audit-p1-task32.md` — full audit report with Medusa comparison tables
+- [x] 32f.7 Update `docs/seed-data.md` endpoint summary — 38 methods

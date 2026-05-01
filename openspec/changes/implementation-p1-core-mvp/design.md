@@ -255,3 +255,15 @@ Medusa has `POST /admin/orders/:id/cancel` and `POST /admin/orders/:id/complete`
 **Medusa comparison**: Medusa's cancel workflow (266 lines) involves 7 steps: validate, cancel/refund payments via external provider, remove inventory reservations, create credit lines, cancel payment collections, emit events. Toko-rs collapses this to 3 steps: validate, update order status, update payment status. This is sufficient for P1 where payments are manual records (no real provider).
 
 The payment `status` CHECK constraint is extended to include `'canceled'`.
+
+### 19. Invoice generation — text-based, on-the-fly from order data
+
+Medusa does not have a built-in invoice system. The Medusa documentation provides a tutorial for building a custom `invoice-generator` module with full PDF generation. Toko-rs implements a simplified text-based invoice as a P1 extension (K-12):
+
+- **No `invoices` table** — invoice is generated at query time by merging `InvoiceConfig` (company/issuer info) with `OrderWithItems`. No persistence, no PDF.
+- **`invoice_config` table** (singleton) — stores issuer company name, address, phone, email, logo URL, and footer notes. Created/updated via `POST /admin/invoice-config`.
+- **Invoice shape**: `{ invoice_number, date, status, issuer: { company_name, ... }, order: { ...full OrderWithItems }, notes }`. The `invoice_number` is derived from `display_id` as `INV-XXXX`.
+- **3 admin endpoints**: `GET /admin/invoice-config`, `POST /admin/invoice-config`, `GET /admin/orders/:id/invoice`.
+- **Future P2 path**: Add `invoices` table for generation history tracking, add PDF rendering via the same JSON structure, add store endpoints for customer download, subscribe to `order.placed` events for auto-generation.
+
+**Medusa reference**: `vendor/medusa/www/apps/resources/app/how-to-tutorials/tutorials/invoice-generator/page.mdx` — 2640-line tutorial with `Invoice`, `InvoiceConfig` data models, PDF generation via `pdfmake`, admin/store routes, event subscriptions.
