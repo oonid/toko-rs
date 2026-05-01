@@ -2,7 +2,7 @@
 
 A modular, high-performance headless e-commerce backend written in Rust, API-compatible with [MedusaJS v2](https://medusajs.com/).
 
-Implements the core **Browse → Cart → Checkout** flow with 30 endpoint methods across 5 domain modules, backed by PostgreSQL (primary) or SQLite (optional).
+Implements the core **Browse → Cart → Checkout** flow with 38 endpoint methods across 6 domain modules, backed by PostgreSQL (primary) or SQLite (optional).
 
 ## Quick Start
 
@@ -30,7 +30,7 @@ curl http://localhost:3000/store/products | jq '.products[].title'
 
 ## Architecture
 
-Single-binary modular monolith. Each domain module (`product/`, `cart/`, `customer/`, `order/`, `payment/`) follows the same internal structure:
+Single-binary modular monolith. Each domain module (`product/`, `cart/`, `customer/`, `order/`, `payment/`, `invoice/`) follows the same internal structure:
 
 ```
 src/
@@ -52,6 +52,7 @@ src/
   customer/            (same structure)
   order/               (same structure)
   payment/             (internal only — no routes in P1)
+  invoice/             (admin only — config + on-the-fly generation)
 ```
 
 **Layers**: Routes → Types → Repository → Database. No service layer in P1 — handlers call repositories directly.
@@ -117,6 +118,34 @@ src/
 | GET | `/store/customers/me` | Get profile (`X-Customer-Id` header) |
 | POST | `/store/customers/me` | Update profile (`X-Customer-Id` header) |
 
+### Admin: Customers (2 endpoints)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/admin/customers` | List customers (`q`, `email`, `first_name`, `last_name`, `has_account` filters) |
+| GET | `/admin/customers/:id` | Get customer with addresses |
+
+### Admin: Carts (1 endpoint)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/admin/carts` | List carts (`id`, `customer_id` filters) |
+
+### Admin: Orders (2 endpoints)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/admin/orders/:id/cancel` | Cancel order (sets canceled_at, updates payment) |
+| POST | `/admin/orders/:id/complete` | Complete order |
+
+### Admin: Invoice (3 endpoints)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/admin/invoice-config` | Get issuer company config |
+| POST | `/admin/invoice-config` | Create or update issuer config |
+| GET | `/admin/orders/:id/invoice` | Generate invoice on-the-fly from order data |
+
 ### Health
 
 | Method | Path | Description |
@@ -125,7 +154,7 @@ src/
 
 ## Database
 
-6 migrations, 11+ tables:
+7 migrations, 13 tables:
 
 | Migration | Tables |
 |-----------|--------|
@@ -135,6 +164,7 @@ src/
 | `004_orders` | `_sequences`, `orders`, `order_line_items` |
 | `005_payments` | `payment_records` |
 | `006_idempotency` | `idempotency_keys` |
+| `007_invoice_config` | `invoice_config` |
 
 PostgreSQL is the default. SQLite is available behind a feature flag:
 
@@ -147,8 +177,8 @@ cargo run --features sqlite --no-default-features
 ```bash
 make docker-up                        # Start PostgreSQL
 
-# Integration tests (207 tests, requires PostgreSQL)
-DATABASE_URL=postgres://postgres:postgres@localhost:5432/toko \
+# Integration tests (191 tests, requires PostgreSQL)
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/toko_test \
   cargo test -- --test-threads=1
 
 # SQLite tests
@@ -174,6 +204,7 @@ tests/
   cart_test.rs            Cart lifecycle tests
   order_test.rs           Order + payment tests
   customer_test.rs        Customer registration + profile tests
+  invoice_test.rs         Invoice config + generation tests
   contract_test.rs        Response shape validation against Medusa OAS
   e2e/                    End-to-end tests against live HTTP server
 ```
@@ -222,7 +253,7 @@ make cov          # cargo llvm-cov
 
 ## Project Status
 
-**P1 (Core MVP) — Complete.** 207 tests, ~94% line coverage, clippy-clean.
+**P1 (Core MVP) — Complete.** 191 tests, 90.4% line coverage, clippy-clean, 38 endpoint methods.
 
 The following are out of scope for P1 and planned for future phases:
 
