@@ -39,3 +39,4 @@ CREATE INDEX idx_customer_addresses_customer_id ON customer_addresses (customer_
 CREATE UNIQUE INDEX uq_customer_default_shipping ON customer_addresses (customer_id) WHERE is_default_shipping = TRUE AND deleted_at IS NULL;
 CREATE UNIQUE INDEX uq_customer_default_billing ON customer_addresses (customer_id) WHERE is_default_billing = TRUE AND deleted_at IS NULL;
 CREATE UNIQUE INDEX uq_customers_email ON customers (email, has_account) WHERE deleted_at IS NULL;
+CREATE INDEX idx_customers_phone ON customers (phone) WHERE deleted_at IS NULL AND phone IS NOT NULL;
