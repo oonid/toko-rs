@@ -3,7 +3,7 @@ CREATE TABLE payment_records (
     order_id TEXT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
     amount BIGINT NOT NULL CHECK (amount >= 0),
     currency_code TEXT NOT NULL DEFAULT 'idr',
-    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'authorized', 'captured', 'failed', 'refunded')),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'authorized', 'captured', 'failed', 'refunded', 'canceled')),
     provider TEXT NOT NULL DEFAULT 'manual',
     metadata JSONB,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),

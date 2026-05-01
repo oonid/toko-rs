@@ -13,7 +13,8 @@ CREATE TABLE customers (
     deleted_at DATETIME
 );
 
-CREATE UNIQUE INDEX uq_customers_email ON customers (email, has_account) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX uq_customers_email ON customers (email, has_account) WHERE deleted_at IS NULL AND email IS NOT NULL;
+CREATE INDEX idx_customers_phone ON customers (phone) WHERE deleted_at IS NULL AND phone IS NOT NULL;
 
 CREATE TABLE customer_addresses (
     id TEXT PRIMARY KEY,
