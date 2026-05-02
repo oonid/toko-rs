@@ -180,7 +180,7 @@ mod tests {
         let default = "postgres://postgres:postgres@localhost:5432/toko_test".to_string();
         #[cfg(feature = "sqlite")]
         let default = "sqlite:toko_test.db".to_string();
-        std::env::var("DATABASE_URL").unwrap_or_else(|_| default)
+        std::env::var("DATABASE_URL").unwrap_or(default)
     }
 
     #[tokio::test]
@@ -217,7 +217,6 @@ mod tests {
         let db_err = sqlx::Error::Database(Box::new(TestDbError {
             code: Some(unique_violation_code().to_string()),
             message: "dup".into(),
-            ..Default::default()
         }));
         assert!(is_unique_violation(&db_err));
         assert!(!is_fk_violation(&db_err));
@@ -228,7 +227,6 @@ mod tests {
         let db_err = sqlx::Error::Database(Box::new(TestDbError {
             code: Some(fk_violation_code().to_string()),
             message: "fk".into(),
-            ..Default::default()
         }));
         assert!(is_fk_violation(&db_err));
         assert!(!is_unique_violation(&db_err));
@@ -239,7 +237,6 @@ mod tests {
         let db_err = sqlx::Error::Database(Box::new(TestDbError {
             code: Some(not_null_violation_code().to_string()),
             message: "nn".into(),
-            ..Default::default()
         }));
         assert!(is_not_null_violation(&db_err));
     }
@@ -249,7 +246,6 @@ mod tests {
         let db_err = sqlx::Error::Database(Box::new(TestDbError {
             code: Some(serialization_failure_code().to_string()),
             message: "ser".into(),
-            ..Default::default()
         }));
         assert!(is_serialization_failure(&db_err));
     }

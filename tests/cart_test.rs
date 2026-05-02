@@ -1204,7 +1204,7 @@ async fn test_delete_nonexistent_line_item_returns_404() {
         .oneshot(
             Request::builder()
                 .method(Method::DELETE)
-                .uri(&format!(
+                .uri(format!(
                     "/store/carts/{}/line-items/nonexistent_item",
                     cart_id
                 ))
@@ -1377,7 +1377,7 @@ async fn test_admin_list_carts_filter_by_id() {
 
     let req = Request::builder()
         .method(Method::GET)
-        .uri(&format!("/admin/carts?id={}", cart_id))
+        .uri(format!("/admin/carts?id={}", cart_id))
         .body(Body::empty())
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();

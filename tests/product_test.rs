@@ -72,7 +72,7 @@ async fn test_admin_get_product() {
     let id = created["product"]["id"].as_str().unwrap();
     let req = Request::builder()
         .method(Method::GET)
-        .uri(&format!("/admin/products/{}", id))
+        .uri(format!("/admin/products/{}", id))
         .body(Body::empty())
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
@@ -90,7 +90,7 @@ async fn test_soft_delete_cascades_to_children() {
 
     let del_req = Request::builder()
         .method(Method::DELETE)
-        .uri(&format!("/admin/products/{}", product_id))
+        .uri(format!("/admin/products/{}", product_id))
         .body(Body::empty())
         .unwrap();
     let resp = app.clone().oneshot(del_req).await.unwrap();
@@ -98,7 +98,7 @@ async fn test_soft_delete_cascades_to_children() {
 
     let list_with_deleted_req = Request::builder()
         .method(Method::GET)
-        .uri(&format!("/admin/products?with_deleted=true"))
+        .uri("/admin/products?with_deleted=true")
         .body(Body::empty())
         .unwrap();
     let list_resp = app.clone().oneshot(list_with_deleted_req).await.unwrap();
@@ -162,7 +162,7 @@ async fn test_soft_delete_does_not_affect_other_products() {
 
     let del_req = Request::builder()
         .method(Method::DELETE)
-        .uri(&format!("/admin/products/{}", id_a))
+        .uri(format!("/admin/products/{}", id_a))
         .body(Body::empty())
         .unwrap();
     let del_resp = app.clone().oneshot(del_req).await.unwrap();
@@ -170,7 +170,7 @@ async fn test_soft_delete_does_not_affect_other_products() {
 
     let get_req = Request::builder()
         .method(Method::GET)
-        .uri(&format!("/admin/products/{}", id_b))
+        .uri(format!("/admin/products/{}", id_b))
         .body(Body::empty())
         .unwrap();
     let get_resp = app.oneshot(get_req).await.unwrap();
@@ -187,7 +187,7 @@ async fn test_admin_list_products_with_deleted() {
     let id = created["product"]["id"].as_str().unwrap();
     let del_req = Request::builder()
         .method(Method::DELETE)
-        .uri(&format!("/admin/products/{}", id))
+        .uri(format!("/admin/products/{}", id))
         .body(Body::empty())
         .unwrap();
     app.clone().oneshot(del_req).await.unwrap();
@@ -242,7 +242,7 @@ async fn test_admin_update_product() {
     let payload = json!({"status": "published", "title": "Updated T-Shirt"});
     let req = Request::builder()
         .method(Method::POST)
-        .uri(&format!("/admin/products/{}", id))
+        .uri(format!("/admin/products/{}", id))
         .header("content-type", "application/json")
         .body(Body::from(payload.to_string()))
         .unwrap();
@@ -260,7 +260,7 @@ async fn test_admin_delete_product() {
     let id = created["product"]["id"].as_str().unwrap();
     let req = Request::builder()
         .method(Method::DELETE)
-        .uri(&format!("/admin/products/{}", id))
+        .uri(format!("/admin/products/{}", id))
         .body(Body::empty())
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
@@ -271,7 +271,7 @@ async fn test_admin_delete_product() {
     assert_eq!(body["deleted"], true);
     let req2 = Request::builder()
         .method(Method::GET)
-        .uri(&format!("/admin/products/{}", id))
+        .uri(format!("/admin/products/{}", id))
         .body(Body::empty())
         .unwrap();
     let resp2 = app.oneshot(req2).await.unwrap();
@@ -286,7 +286,7 @@ async fn test_admin_add_variant() {
     let payload = json!({"title": "Large", "sku": "TS-L", "price": 2900, "options": {"Size": "L"}});
     let req = Request::builder()
         .method(Method::POST)
-        .uri(&format!("/admin/products/{}/variants", id))
+        .uri(format!("/admin/products/{}/variants", id))
         .header("content-type", "application/json")
         .body(Body::from(payload.to_string()))
         .unwrap();
@@ -327,7 +327,7 @@ async fn test_admin_add_variant_validation_failure() {
     let payload = json!({"title": "", "price": -5});
     let req = Request::builder()
         .method(Method::POST)
-        .uri(&format!("/admin/products/{}/variants", id))
+        .uri(format!("/admin/products/{}/variants", id))
         .header("content-type", "application/json")
         .body(Body::from(payload.to_string()))
         .unwrap();
@@ -372,7 +372,7 @@ async fn test_store_list_published_only() {
     assert_eq!(body["products"].as_array().unwrap().len(), 0);
     let pub_req = Request::builder()
         .method(Method::POST)
-        .uri(&format!("/admin/products/{}", id))
+        .uri(format!("/admin/products/{}", id))
         .header("content-type", "application/json")
         .body(Body::from(json!({"status": "published"}).to_string()))
         .unwrap();
@@ -384,7 +384,7 @@ async fn test_store_list_published_only() {
         .unwrap();
     let resp2 = app.oneshot(req2).await.unwrap();
     let body2 = body_json(resp2).await;
-    assert!(body2["products"].as_array().unwrap().len() >= 1);
+    assert!(!body2["products"].as_array().unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -394,21 +394,21 @@ async fn test_store_get_published_product() {
     let id = created["product"]["id"].as_str().unwrap();
     let req = Request::builder()
         .method(Method::GET)
-        .uri(&format!("/store/products/{}", id))
+        .uri(format!("/store/products/{}", id))
         .body(Body::empty())
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     let pub_req = Request::builder()
         .method(Method::POST)
-        .uri(&format!("/admin/products/{}", id))
+        .uri(format!("/admin/products/{}", id))
         .header("content-type", "application/json")
         .body(Body::from(json!({"status": "published"}).to_string()))
         .unwrap();
     app.clone().oneshot(pub_req).await.unwrap();
     let req2 = Request::builder()
         .method(Method::GET)
-        .uri(&format!("/store/products/{}", id))
+        .uri(format!("/store/products/{}", id))
         .body(Body::empty())
         .unwrap();
     let resp2 = app.oneshot(req2).await.unwrap();
@@ -422,20 +422,20 @@ async fn test_store_deleted_product_returns_404() {
     let id = created["product"]["id"].as_str().unwrap();
     let pub_req = Request::builder()
         .method(Method::POST)
-        .uri(&format!("/admin/products/{}", id))
+        .uri(format!("/admin/products/{}", id))
         .header("content-type", "application/json")
         .body(Body::from(json!({"status": "published"}).to_string()))
         .unwrap();
     app.clone().oneshot(pub_req).await.unwrap();
     let del_req = Request::builder()
         .method(Method::DELETE)
-        .uri(&format!("/admin/products/{}", id))
+        .uri(format!("/admin/products/{}", id))
         .body(Body::empty())
         .unwrap();
     app.clone().oneshot(del_req).await.unwrap();
     let store_req = Request::builder()
         .method(Method::GET)
-        .uri(&format!("/store/products/{}", id))
+        .uri(format!("/store/products/{}", id))
         .body(Body::empty())
         .unwrap();
     let resp = app.oneshot(store_req).await.unwrap();
@@ -450,7 +450,7 @@ async fn test_admin_update_product_partial() {
     let payload = json!({"description": "Updated desc only"});
     let req = Request::builder()
         .method(Method::POST)
-        .uri(&format!("/admin/products/{}", id))
+        .uri(format!("/admin/products/{}", id))
         .header("content-type", "application/json")
         .body(Body::from(payload.to_string()))
         .unwrap();
@@ -469,7 +469,7 @@ async fn test_admin_create_product_reuse_handle_after_soft_delete() {
 
     let del_req = Request::builder()
         .method(Method::DELETE)
-        .uri(&format!("/admin/products/{}", id))
+        .uri(format!("/admin/products/{}", id))
         .body(Body::empty())
         .unwrap();
     let del_resp = app.clone().oneshot(del_req).await.unwrap();
@@ -497,7 +497,7 @@ async fn test_admin_add_variant_duplicate_sku() {
         json!({"title": "Dupe SKU", "sku": "TS-S", "price": 2500, "options": {"Size": "L"}});
     let req = Request::builder()
         .method(Method::POST)
-        .uri(&format!("/admin/products/{}/variants", id))
+        .uri(format!("/admin/products/{}/variants", id))
         .header("content-type", "application/json")
         .body(Body::from(payload.to_string()))
         .unwrap();
@@ -524,7 +524,7 @@ async fn test_soft_deleted_variant_excluded_from_product() {
 
     let req = Request::builder()
         .method(Method::GET)
-        .uri(&format!("/admin/products/{}", product_id))
+        .uri(format!("/admin/products/{}", product_id))
         .body(Body::empty())
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
@@ -550,7 +550,7 @@ async fn test_soft_deleted_option_excluded_from_product() {
 
     let req = Request::builder()
         .method(Method::GET)
-        .uri(&format!("/admin/products/{}", product_id))
+        .uri(format!("/admin/products/{}", product_id))
         .body(Body::empty())
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
@@ -580,7 +580,7 @@ async fn test_soft_delete_variant_cleans_pivot_rows() {
 
     let del_req = Request::builder()
         .method(Method::DELETE)
-        .uri(&format!(
+        .uri(format!(
             "/admin/products/{}/variants/{}",
             product_id, variant_id
         ))
@@ -609,7 +609,7 @@ async fn test_double_delete_returns_ok() {
 
     let del_req = Request::builder()
         .method(Method::DELETE)
-        .uri(&format!("/admin/products/{}", id))
+        .uri(format!("/admin/products/{}", id))
         .body(Body::empty())
         .unwrap();
     let resp1 = app.clone().oneshot(del_req).await.unwrap();
@@ -621,7 +621,7 @@ async fn test_double_delete_returns_ok() {
 
     let del_req2 = Request::builder()
         .method(Method::DELETE)
-        .uri(&format!("/admin/products/{}", id))
+        .uri(format!("/admin/products/{}", id))
         .body(Body::empty())
         .unwrap();
     let resp2 = app.clone().oneshot(del_req2).await.unwrap();
@@ -660,7 +660,7 @@ async fn test_admin_list_variants() {
 
     let req = Request::builder()
         .method(Method::GET)
-        .uri(&format!("/admin/products/{}/variants", product_id))
+        .uri(format!("/admin/products/{}/variants", product_id))
         .body(Body::empty())
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
@@ -684,7 +684,7 @@ async fn test_admin_list_variants_pagination() {
 
     let req = Request::builder()
         .method(Method::GET)
-        .uri(&format!(
+        .uri(format!(
             "/admin/products/{}/variants?limit=1&offset=0",
             product_id
         ))
@@ -707,7 +707,7 @@ async fn test_admin_get_variant() {
 
     let req = Request::builder()
         .method(Method::GET)
-        .uri(&format!(
+        .uri(format!(
             "/admin/products/{}/variants/{}",
             product_id, variant_id
         ))
@@ -730,7 +730,7 @@ async fn test_admin_get_variant_not_found() {
 
     let req = Request::builder()
         .method(Method::GET)
-        .uri(&format!(
+        .uri(format!(
             "/admin/products/{}/variants/variant_nonexistent",
             product_id
         ))
@@ -757,7 +757,7 @@ async fn test_admin_update_variant() {
     });
     let req = Request::builder()
         .method(Method::POST)
-        .uri(&format!(
+        .uri(format!(
             "/admin/products/{}/variants/{}",
             product_id, variant_id
         ))
@@ -788,7 +788,7 @@ async fn test_admin_update_variant_negative_price_rejected() {
     let payload = json!({"price": -500});
     let req = Request::builder()
         .method(Method::POST)
-        .uri(&format!(
+        .uri(format!(
             "/admin/products/{}/variants/{}",
             product_id, variant_id
         ))
@@ -809,7 +809,7 @@ async fn test_admin_update_variant_sku_uniqueness() {
     let payload = json!({"sku": "TS-S"});
     let req = Request::builder()
         .method(Method::POST)
-        .uri(&format!(
+        .uri(format!(
             "/admin/products/{}/variants/{}",
             product_id, variant_id
         ))
@@ -831,7 +831,7 @@ async fn test_admin_delete_variant() {
 
     let req = Request::builder()
         .method(Method::DELETE)
-        .uri(&format!(
+        .uri(format!(
             "/admin/products/{}/variants/{}",
             product_id, variant_id
         ))
@@ -856,7 +856,7 @@ async fn test_admin_delete_variant_idempotent() {
 
     let del_req1 = Request::builder()
         .method(Method::DELETE)
-        .uri(&format!(
+        .uri(format!(
             "/admin/products/{}/variants/{}",
             product_id, variant_id
         ))
@@ -867,7 +867,7 @@ async fn test_admin_delete_variant_idempotent() {
 
     let del_req2 = Request::builder()
         .method(Method::DELETE)
-        .uri(&format!(
+        .uri(format!(
             "/admin/products/{}/variants/{}",
             product_id, variant_id
         ))
@@ -888,7 +888,7 @@ async fn test_admin_delete_variant_not_found() {
 
     let req = Request::builder()
         .method(Method::DELETE)
-        .uri(&format!(
+        .uri(format!(
             "/admin/products/{}/variants/variant_nonexistent",
             product_id
         ))
@@ -915,7 +915,7 @@ async fn test_add_variant_duplicate_option_combo_against_db() {
     });
     let req = Request::builder()
         .method(Method::POST)
-        .uri(&format!("/admin/products/{}/variants", product_id))
+        .uri(format!("/admin/products/{}/variants", product_id))
         .header("content-type", "application/json")
         .body(Body::from(payload.to_string()))
         .unwrap();
@@ -938,7 +938,7 @@ async fn test_add_variant_different_option_combo_allowed() {
     });
     let req = Request::builder()
         .method(Method::POST)
-        .uri(&format!("/admin/products/{}/variants", product_id))
+        .uri(format!("/admin/products/{}/variants", product_id))
         .header("content-type", "application/json")
         .body(Body::from(payload.to_string()))
         .unwrap();
@@ -961,7 +961,7 @@ async fn test_add_variant_missing_option_rejected() {
     });
     let req = Request::builder()
         .method(Method::POST)
-        .uri(&format!("/admin/products/{}/variants", product_id))
+        .uri(format!("/admin/products/{}/variants", product_id))
         .header("content-type", "application/json")
         .body(Body::from(payload.to_string()))
         .unwrap();
@@ -987,7 +987,7 @@ async fn test_add_variant_no_options_when_product_has_options_rejected() {
     });
     let req = Request::builder()
         .method(Method::POST)
-        .uri(&format!("/admin/products/{}/variants", product_id))
+        .uri(format!("/admin/products/{}/variants", product_id))
         .header("content-type", "application/json")
         .body(Body::from(payload.to_string()))
         .unwrap();
@@ -1101,7 +1101,7 @@ async fn test_update_product_accepts_is_giftcard_and_discountable() {
 
     let req = Request::builder()
         .method(Method::POST)
-        .uri(&format!("/admin/products/{}", id))
+        .uri(format!("/admin/products/{}", id))
         .header("content-type", "application/json")
         .body(Body::from(
             json!({"discountable": false, "subtitle": "Updated"}).to_string(),
@@ -1119,7 +1119,7 @@ async fn test_add_variant_with_explicit_rank() {
 
     let req = Request::builder()
         .method(Method::POST)
-        .uri(&format!("/admin/products/{}/variants", id))
+        .uri(format!("/admin/products/{}/variants", id))
         .header("content-type", "application/json")
         .body(Body::from(
             json!({
@@ -1194,7 +1194,7 @@ async fn test_product_subtitle_persists() {
     let payload = json!({"subtitle": "Updated Subtitle"});
     let req = Request::builder()
         .method(Method::POST)
-        .uri(&format!("/admin/products/{}", product_id))
+        .uri(format!("/admin/products/{}", product_id))
         .header("content-type", "application/json")
         .body(Body::from(payload.to_string()))
         .unwrap();
@@ -1229,7 +1229,7 @@ async fn test_product_is_giftcard_and_discountable_persist() {
     let payload = json!({"discountable": true});
     let req = Request::builder()
         .method(Method::POST)
-        .uri(&format!("/admin/products/{}", product_id))
+        .uri(format!("/admin/products/{}", product_id))
         .header("content-type", "application/json")
         .body(Body::from(payload.to_string()))
         .unwrap();
@@ -1318,7 +1318,7 @@ async fn test_variant_thumbnail_crud() {
     });
     let req = Request::builder()
         .method(Method::POST)
-        .uri(&format!(
+        .uri(format!(
             "/admin/products/{}/variants/{}",
             product_id, variant_id
         ))
@@ -1345,7 +1345,7 @@ async fn test_admin_list_options() {
 
     let req = Request::builder()
         .method(Method::GET)
-        .uri(&format!("/admin/products/{}/options", product_id))
+        .uri(format!("/admin/products/{}/options", product_id))
         .body(Body::empty())
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
@@ -1380,7 +1380,7 @@ async fn test_admin_create_option() {
     let opt_payload = json!({"title": "Color", "values": ["Red", "Blue"]});
     let req = Request::builder()
         .method(Method::POST)
-        .uri(&format!("/admin/products/{}/options", product_id))
+        .uri(format!("/admin/products/{}/options", product_id))
         .header("content-type", "application/json")
         .body(Body::from(opt_payload.to_string()))
         .unwrap();
@@ -1402,7 +1402,7 @@ async fn test_admin_get_option() {
 
     let req = Request::builder()
         .method(Method::GET)
-        .uri(&format!(
+        .uri(format!(
             "/admin/products/{}/options/{}",
             product_id, option_id
         ))
@@ -1430,7 +1430,7 @@ async fn test_admin_update_option() {
     let payload = json!({"title": "Shirt Size"});
     let req = Request::builder()
         .method(Method::POST)
-        .uri(&format!(
+        .uri(format!(
             "/admin/products/{}/options/{}",
             product_id, option_id
         ))
@@ -1458,7 +1458,7 @@ async fn test_admin_delete_option() {
 
     let req = Request::builder()
         .method(Method::DELETE)
-        .uri(&format!(
+        .uri(format!(
             "/admin/products/{}/options/{}",
             product_id, option_id
         ))
@@ -1474,7 +1474,7 @@ async fn test_admin_delete_option() {
 
     let get_req = Request::builder()
         .method(Method::GET)
-        .uri(&format!("/admin/products/{}", product_id))
+        .uri(format!("/admin/products/{}", product_id))
         .body(Body::empty())
         .unwrap();
     let get_resp = app.oneshot(get_req).await.unwrap();
@@ -1531,7 +1531,7 @@ async fn test_product_images_on_update() {
     });
     let req = Request::builder()
         .method(Method::POST)
-        .uri(&format!("/admin/products/{}", id))
+        .uri(format!("/admin/products/{}", id))
         .header("content-type", "application/json")
         .body(Body::from(update_payload.to_string()))
         .unwrap();
@@ -1569,7 +1569,7 @@ async fn test_product_images_replace_on_update() {
     });
     let req = Request::builder()
         .method(Method::POST)
-        .uri(&format!("/admin/products/{}", id))
+        .uri(format!("/admin/products/{}", id))
         .header("content-type", "application/json")
         .body(Body::from(update_payload.to_string()))
         .unwrap();
@@ -1621,7 +1621,7 @@ async fn test_product_images_update_with_id_field() {
     });
     let req = Request::builder()
         .method(Method::POST)
-        .uri(&format!("/admin/products/{}", id))
+        .uri(format!("/admin/products/{}", id))
         .header("content-type", "application/json")
         .body(Body::from(update_payload.to_string()))
         .unwrap();

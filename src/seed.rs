@@ -385,7 +385,7 @@ mod tests {
         let default = "postgres://postgres:postgres@localhost:5432/toko_test".to_string();
         #[cfg(feature = "sqlite")]
         let default = "sqlite:toko_test.db".to_string();
-        std::env::var("DATABASE_URL").unwrap_or_else(|_| default)
+        std::env::var("DATABASE_URL").unwrap_or(default)
     }
 
     async fn setup_seed_db() -> DbPool {
