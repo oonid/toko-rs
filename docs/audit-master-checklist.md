@@ -2,7 +2,7 @@
 
 Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32}.md` into a single reference. Every item is tagged with its source audit, status, and where it was fixed (or why it was deferred). Tasks 27 and 29 were structural audits (checklist accuracy, re-numbering, redundant test annotation) — their impact is reflected in the checklist structure itself (prefixed IDs, reversal chains, corrected counts).
 
-**Last verified**: 2026-05-02 — 238 tests pass on PostgreSQL (10 suites), clippy clean, fmt clean. Latest audit: Task 33 (applied). Total: 141 fixes (all applied) across 7 categories.
+**Last verified**: 2026-05-02 — 249 tests pass on PostgreSQL (10 suites), clippy clean, fmt clean. Latest audit: Task 34 (applied). Total: 148 fixes (all applied) + 0 planned across 7 categories.
 
 ---
 
@@ -84,6 +84,8 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25
 | S-33 | T32 | Admin cart list endpoint missing — no way to view abandoned/active carts | Add `GET /admin/carts` with `id`, `customer_id` filters. **toko-rs extension (K-11)** | 32b |
 | S-34 | T32 | Admin order cancel/complete missing — Medusa has `POST /admin/orders/:id/cancel` and `POST /admin/orders/:id/complete` | Add 2 endpoints. Simplified: no payment provider calls, no fulfillment checks | 32c,32d |
 | S-35 | T32 | Invoice config + invoice generation endpoints missing — Medusa tutorial defines `GET/POST /admin/invoice-config` and `GET /admin/orders/:id/invoices` | Add 3 endpoints. `invoice_config` table for issuer info. Invoice generated on-the-fly from order data (no `invoices` table). **toko-rs extension (K-12)** | 32e |
+| S-36 | T34 | `fulfillment_status` not persisted — derived only from `order.status`, cannot track fulfill/ship lifecycle | Persisted `fulfillment_status` column with 4 states (`not_fulfilled`, `fulfilled`, `shipped`, `canceled`). Admin fulfill/ship endpoints | 34c, 34d |
+| S-37 | T34 | Missing `shipped_at` field on order — Medusa fulfillment has `shipped_at` | Added `shipped_at TIMESTAMPTZ` column on orders, set on ship operation | 34c |
 
 ---
 
@@ -162,6 +164,8 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25
 | D-31 | T32 | No `invoice_config` table for invoice issuer information | `CREATE TABLE invoice_config` (id, company_name, company_address, company_phone, company_email, company_logo, notes, timestamps) in both PG and SQLite. Migration 007 | 32e | **[REMOVED by T33] — migrated to env vars** |
 | D-32 | T33 | `idempotency_keys` table has zero usage in application code — dead migration | Delete `migrations/006_idempotency.sql` and SQLite equivalent. Remove test cleanup references | 33a |
 | D-33 | T33 | `invoice_config` single-row table better served by env vars | Migrate to `AppConfig.invoice` struct with env var keys. Delete migration 007. `POST /admin/invoice-config` becomes read-only | 33b |
+| D-34 | T34 | No `fulfillment_status` column — computed only from `order.status`, cannot track fulfill/ship lifecycle | `ALTER TABLE orders ADD COLUMN fulfillment_status TEXT NOT NULL DEFAULT 'not_fulfilled' CHECK (...)` in both PG and SQLite. Migration 006 | 34c |
+| D-35 | T34 | No `captured_at` on payment records — cannot track when payment was captured | `ALTER TABLE payment_records ADD COLUMN captured_at TIMESTAMPTZ` in both PG and SQLite. Migration 006 | 34c |
 
 ---
 
@@ -183,6 +187,9 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25
 | L-12 | T33 | `payment_status` hardcoded as `"not_paid"` — doesn't reflect actual payment state or order cancel | Derive from `payment_records.status` at query time with Medusa PaymentStatus mapping | 33c |
 | L-13 | T33 | `fulfillment_status` hardcoded as `"not_fulfilled"` — doesn't reflect order cancel | Derive from `order.status`: `"canceled"` if canceled, else `"not_fulfilled"` | 33d |
 | L-14 | T33 | `order_summary` missing — Medusa's REQUIRED `StoreOrder.summary` field | Compute from order total + payment records at query time. 7 fields: pending_difference, current_order_total, etc. | 33e |
+| L-15 | T34 | No fulfill/ship operations — `fulfillment_status` only derived from `order.status` | `fulfill_order()`, `ship_order()` with Medusa-aligned validation (cancel guard, double-ops guard, fulfill-before-ship) | 34a |
+| L-16 | T34 | No payment capture operation — payment always stays `pending` | `capture_by_order_id()` sets `status='captured'` and `captured_at`. Order-scoped URL (Decision 23) | 34b |
+| L-17 | T34 | `OrderSummary.paid_total` always 0 — doesn't reflect captured payments | `resolve_payment_status()` returns captured amount. `paid_total`, `transaction_total`, `pending_difference` computed from it | 34f |
 
 ---
 
@@ -249,13 +256,13 @@ Entries moved from this section to fix sections: S-24 (was T22 S1), B-30 (was T2
 | Category | Count |
 |----------|-------|
 | Bugs fixed (B) | 32 |
-| Response shape fixes (S) | 35 |
+| Response shape fixes (S) | 37 |
 | Input/validation fixes (V) | 12 |
 | Error handling fixes (E) | 12 |
-| Database schema fixes (D) | 33 |
-| Business logic fixes (L) | 14 |
+| Database schema fixes (D) | 35 |
+| Business logic fixes (L) | 17 |
 | Config/infra fixes (C) | 4 |
-| **Total** | **141** |
+| **Total** | **148** |
 | Deferred to P2 | 12 |
 | Known divergences (by design) | 11 |
 | False positive | 1 |

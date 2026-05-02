@@ -387,6 +387,7 @@ curl -s -X POST http://localhost:3000/store/carts/$CART_ID/complete | jq
     "total": 675000,
     "payment_status": "not_paid",
     "fulfillment_status": "not_fulfilled",
+    "shipped_at": null,
     "summary": {
       "pending_difference": 675000,
       "current_order_total": 675000,
@@ -520,6 +521,7 @@ curl -s http://localhost:3000/store/orders/$ORDER_ID2 \
   "total": 250000,
   "payment_status": "not_paid",
   "fulfillment_status": "not_fulfilled",
+  "shipped_at": null,
   "summary": {
     "pending_difference": 250000,
     "current_order_total": 250000,
@@ -1307,6 +1309,146 @@ curl -s -X POST http://localhost:3000/admin/orders/$ORDER_ID/complete | jq
 # { "code": "invalid_request_error", "type": "invalid_data", "message": "Cannot complete a canceled order" }
 ```
 
+### AC6 — Fulfill order (admin)
+
+Mark an order as fulfilled. Sets `fulfillment_status` to `"fulfilled"`. Rejects canceled or already-fulfilled orders (400).
+
+```bash
+# Create a fresh order first (see Step 7)
+ORDER_ID3=$(curl -s -X POST http://localhost:3000/store/carts/$CART_ID3/complete | jq -r '.order.id')
+
+curl -s -X POST http://localhost:3000/admin/orders/$ORDER_ID3/fulfill | jq '.order | {id, status, fulfillment_status}'
+```
+
+```json
+{
+  "id": "order_01KQ...",
+  "status": "pending",
+  "fulfillment_status": "fulfilled"
+}
+```
+
+Error cases:
+
+```bash
+# Already fulfilled → 400
+curl -s -X POST http://localhost:3000/admin/orders/$ORDER_ID3/fulfill | jq
+# { "code": "invalid_request_error", "type": "invalid_data", "message": "Order is already fulfilled" }
+
+# Canceled order → 400
+curl -s -X POST http://localhost:3000/admin/orders/$ORDER_ID/cancel >/dev/null
+curl -s -X POST http://localhost:3000/admin/orders/$ORDER_ID/fulfill | jq
+# { "code": "invalid_request_error", "type": "invalid_data", "message": "Cannot fulfill a canceled order" }
+```
+
+### AC7 — Ship order (admin)
+
+Mark a fulfilled order as shipped. Sets `fulfillment_status` to `"shipped"` and `shipped_at` to current timestamp. Requires prior fulfillment (400 if not fulfilled).
+
+```bash
+# First fulfill the order (see AC6)
+curl -s -X POST http://localhost:3000/admin/orders/$ORDER_ID3/fulfill >/dev/null
+
+curl -s -X POST http://localhost:3000/admin/orders/$ORDER_ID3/ship | jq '.order | {id, fulfillment_status, shipped_at}'
+```
+
+```json
+{
+  "id": "order_01KQ...",
+  "fulfillment_status": "shipped",
+  "shipped_at": "2026-05-02T..."
+}
+```
+
+Error cases:
+
+```bash
+# Ship without fulfilling → 400
+curl -s -X POST http://localhost:3000/admin/orders/$ORDER_ID3/ship | jq
+# { "code": "invalid_request_error", "type": "invalid_data", "message": "Order must be fulfilled before shipping" }
+
+# Canceled order → 400
+curl -s -X POST http://localhost:3000/admin/orders/$ORDER_ID/cancel >/dev/null
+curl -s -X POST http://localhost:3000/admin/orders/$ORDER_ID/ship | jq
+# { "code": "invalid_request_error", "type": "invalid_data", "message": "Cannot ship a canceled order" }
+```
+
+### AC8 — Capture payment (admin)
+
+Capture payment for an order. Sets `payment_status` to `"captured"`, `captured_at` on the payment record, and updates `OrderSummary.paid_total`. Rejects already-captured or canceled payments (400).
+
+```bash
+# Create a fresh order first (see Step 7)
+ORDER_ID4=$(curl -s -X POST http://localhost:3000/store/carts/$CART_ID4/complete | jq -r '.order.id')
+
+curl -s -X POST http://localhost:3000/admin/orders/$ORDER_ID4/capture-payment | jq '.order | {id, payment_status, summary}'
+```
+
+```json
+{
+  "id": "order_01KQ...",
+  "payment_status": "captured",
+  "summary": {
+    "pending_difference": 0,
+    "current_order_total": 675000,
+    "original_order_total": 675000,
+    "transaction_total": 675000,
+    "paid_total": 675000,
+    "refunded_total": 0,
+    "accounting_total": 675000
+  }
+}
+```
+
+Error cases:
+
+```bash
+# Already captured → 400
+curl -s -X POST http://localhost:3000/admin/orders/$ORDER_ID4/capture-payment | jq
+# { "code": "invalid_request_error", "type": "invalid_data", "message": "Payment cannot be captured" }
+```
+
+### AC9 — Full lifecycle walkthrough
+
+Demonstrates the complete order lifecycle: create → fulfill → capture → ship:
+
+```bash
+# 1. Create order
+CART_ID=$(curl -s -X POST http://localhost:3000/store/carts \
+  -H 'Content-Type: application/json' \
+  -d '{"currency_code": "idr"}' | jq -r '.cart.id')
+
+curl -s -X POST http://localhost:3000/store/carts/$CART_ID/line-items \
+  -H 'Content-Type: application/json' \
+  -d '{"variant_id": "var_seed_kaos_m", "quantity": 1}' >/dev/null
+
+ORDER_ID=$(curl -s -X POST http://localhost:3000/store/carts/$CART_ID/complete | jq -r '.order.id')
+
+# 2. Capture payment
+curl -s -X POST http://localhost:3000/admin/orders/$ORDER_ID/capture-payment >/dev/null
+
+# 3. Fulfill
+curl -s -X POST http://localhost:3000/admin/orders/$ORDER_ID/fulfill >/dev/null
+
+# 4. Ship
+curl -s -X POST http://localhost:3000/admin/orders/$ORDER_ID/ship | jq '.order | {status, payment_status, fulfillment_status, shipped_at, summary: {paid_total, pending_difference}}'
+```
+
+```json
+{
+  "status": "pending",
+  "payment_status": "captured",
+  "fulfillment_status": "shipped",
+  "shipped_at": "2026-05-02T...",
+  "summary": {
+    "paid_total": 75000,
+    "pending_difference": 0
+  }
+}
+```
+
+Note: Operations are independent and can be performed in any order (except ship requires fulfill). Capture, fulfill, and complete are parallel tracks — matching Medusa's architecture.
+
 ---
 
 ## Extended Error Scenarios
@@ -1562,7 +1704,7 @@ Returns 404 if no config or no order.
 |---|---|---|
 | Budi Santoso | `cus_seed_budi` | `X-Customer-Id` header for order endpoints, `customer_id` in cart creation |
 
-### Endpoint summary (38 methods)
+### Endpoint summary (41 methods)
 
 | Method | Path | Section |
 |---|---|---|
@@ -1601,6 +1743,9 @@ Returns 404 if no config or no order.
 | GET | `/admin/carts` | AC3 |
 | POST | `/admin/orders/{id}/cancel` | AC4 |
 | POST | `/admin/orders/{id}/complete` | AC5 |
+| POST | `/admin/orders/{id}/fulfill` | AC6 |
+| POST | `/admin/orders/{id}/ship` | AC7 |
+| POST | `/admin/orders/{id}/capture-payment` | AC8 |
 | GET | `/admin/invoice-config` | AI1 |
 | POST | `/admin/invoice-config` | AI2 |
 | GET | `/admin/orders/{id}/invoice` | AI3 |
