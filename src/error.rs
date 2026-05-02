@@ -231,7 +231,6 @@ mod tests {
         let db_err = sqlx::Error::Database(Box::new(TestDbError {
             code: Some(crate::db::unique_violation_code().to_string()),
             message: "dup".into(),
-            ..Default::default()
         }));
         let resp = map_db_constraint(db_err).into_response();
         let body = into_body(resp).await;
@@ -241,7 +240,6 @@ mod tests {
         let db_err = sqlx::Error::Database(Box::new(TestDbError {
             code: Some(crate::db::fk_violation_code().to_string()),
             message: "fk".into(),
-            ..Default::default()
         }));
         let resp = map_db_constraint(db_err).into_response();
         let body = into_body(resp).await;
@@ -251,7 +249,6 @@ mod tests {
         let db_err = sqlx::Error::Database(Box::new(TestDbError {
             code: Some(crate::db::not_null_violation_code().to_string()),
             message: "nn".into(),
-            ..Default::default()
         }));
         let resp = map_db_constraint(db_err).into_response();
         let body = into_body(resp).await;
@@ -314,7 +311,6 @@ mod tests {
         let db_err = sqlx::Error::Database(Box::new(TestDbError {
             code: Some(unique_violation_code().to_string()),
             message: "dup".into(),
-            ..Default::default()
         }));
         let result = map_db_constraint(db_err);
         assert!(matches!(result, AppError::DuplicateError(_)));
@@ -326,7 +322,6 @@ mod tests {
         let db_err = sqlx::Error::Database(Box::new(TestDbError {
             code: Some(fk_violation_code().to_string()),
             message: "fk".into(),
-            ..Default::default()
         }));
         let result = map_db_constraint(db_err);
         assert!(matches!(result, AppError::NotFound(_)));

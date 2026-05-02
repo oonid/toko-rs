@@ -155,7 +155,7 @@ async fn test_get_invoice_generates_on_the_fly() {
     let resp = app
         .oneshot(
             Request::builder()
-                .uri(&format!("/admin/orders/{}/invoice", order_id))
+                .uri(format!("/admin/orders/{}/invoice", order_id))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -191,7 +191,7 @@ async fn test_get_invoice_number_matches_display_id() {
     let resp = app
         .oneshot(
             Request::builder()
-                .uri(&format!("/admin/orders/{}/invoice", order_id))
+                .uri(format!("/admin/orders/{}/invoice", order_id))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -212,7 +212,7 @@ async fn test_get_invoice_returns_404_no_config() {
     let resp = app
         .oneshot(
             Request::builder()
-                .uri(&format!("/admin/orders/{}/invoice", order_id))
+                .uri(format!("/admin/orders/{}/invoice", order_id))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -248,7 +248,7 @@ async fn test_get_invoice_includes_order_totals() {
     let resp = app
         .oneshot(
             Request::builder()
-                .uri(&format!("/admin/orders/{}/invoice", order_id))
+                .uri(format!("/admin/orders/{}/invoice", order_id))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -278,7 +278,7 @@ async fn test_get_invoice_includes_issuer_logo_and_notes() {
     let resp = app
         .oneshot(
             Request::builder()
-                .uri(&format!("/admin/orders/{}/invoice", order_id))
+                .uri(format!("/admin/orders/{}/invoice", order_id))
                 .body(Body::empty())
                 .unwrap(),
         )

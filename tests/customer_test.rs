@@ -476,7 +476,7 @@ async fn test_admin_get_customer() {
 
     let req = Request::builder()
         .method(Method::GET)
-        .uri(&format!("/admin/customers/{}", cus_id))
+        .uri(format!("/admin/customers/{}", cus_id))
         .body(Body::empty())
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
