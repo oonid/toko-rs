@@ -1431,3 +1431,151 @@ Medusa's `StoreOrder.summary` is a REQUIRED field containing `{ pending_differen
 - [x] 33f.7 Run `cargo clippy -- -D warnings` — zero warnings
 - [x] 33f.8 Run `cargo fmt --check` — clean
 - [x] 33f.9 Write `docs/audit-p1-task33.md` — schema hardening report
+
+## Task 34: Order Lifecycle — Fulfillment, Payment Capture, Invoice Enhancement
+
+**Type**: Feature / Medusa-Aligned Lifecycle Extension
+**Priority**: HIGH
+**Status**: [ ] Planned
+
+### Context
+
+Task 33 audit identified that `fulfillment_status` and `payment_status` can never reach their positive terminal states (`shipped`, `captured`). The order lifecycle in toko-rs P1 currently has three fixed endpoints:
+
+- `POST /admin/orders/:id/cancel` → status=canceled, payment_status=canceled, fulfillment_status=canceled
+- `POST /admin/orders/:id/complete` → status=completed (no preconditions)
+- `GET /admin/orders/:id/invoice` → always available
+
+No endpoint exists to:
+1. Mark an order as shipped (fulfillment_status stuck at "not_fulfilled")
+2. Capture payment (payment_status stuck at "not_paid")
+3. Reflect these states in the invoice
+
+**Medusa reference**: Medusa has separate fulfillment and payment modules with their own tables and complex workflows. For P1, we take a simpler approach: **no new tables**, just add persisted columns to `orders` and a payment capture method. Each operation is an independent admin action (matches Medusa's parallel-track architecture where fulfillment, payment, and order status are independent).
+
+### Design decisions (Task 34)
+
+#### Decision 22: Persisted fulfillment_status column (no fulfillments table)
+
+Medusa computes `fulfillment_status` from a `fulfillments` table with per-item quantity tracking. P1 has no fulfillment module and no partial fulfillment. Instead:
+
+- Add `fulfillment_status TEXT NOT NULL DEFAULT 'not_fulfilled'` column to `orders`
+- Add `shipped_at TIMESTAMPTZ` column to `orders`
+- Admin sets fulfillment via `POST /admin/orders/:id/fulfill` (sets `fulfillment_status = 'fulfilled'`) and `POST /admin/orders/:id/ship` (sets `fulfillment_status = 'shipped'`, `shipped_at = now()`)
+- Cancel sets `fulfillment_status = 'canceled'`
+- `resolve_fulfillment_status()` in the order repository reads from this column instead of deriving from `order.status`
+
+**Medusa divergence**: Medusa has 8 fulfillment statuses (not_fulfilled, partially_fulfilled, fulfilled, partially_shipped, shipped, partially_delivered, delivered, canceled). P1 supports 4: `not_fulfilled`, `fulfilled`, `shipped`, `canceled`. No partial states in P1.
+
+#### Decision 23: Payment capture via existing payment_records table
+
+Medusa has a complex payment module with payment collections, sessions, and provider integrations. P1 has a simple `payment_records` table with a `status` column that already supports `'captured'` in its CHECK constraint.
+
+- Add `PaymentRepository::capture(order_id)` — sets `payment_records.status = 'captured'` and `captured_at = now()`
+- Add `captured_at TIMESTAMPTZ` column to `payment_records`
+- Admin captures via `POST /admin/orders/:id/capture-payment`
+- `resolve_payment_status()` already handles `"captured"` mapping
+
+#### Decision 24: Invoice shows payment status enrichment
+
+When payment is captured, the invoice response includes payment information:
+- Add `payment_status` and `payment_captured_at` to the invoice response
+- Invoice remains available at any order status (no gating)
+
+#### Decision 25: Order complete remains manual, no preconditions
+
+Matches Medusa: `POST /admin/orders/:id/complete` has no precondition checks. Admin can complete an order without fulfilling or capturing. The documented recommended flow is:
+
+```
+pending → fulfill → ship → (invoice available) → capture-payment → complete
+```
+
+But each step is independent. Admin decides the order of operations.
+
+### Checklist entries (planned)
+
+| ID | Finding | Fix | Section |
+|----|---------|-----|---------|
+| S-36 | No admin endpoint to mark order as fulfilled/shipped | Add `POST /admin/orders/:id/fulfill` and `POST /admin/orders/:id/ship` | 34a |
+| S-37 | No admin endpoint to capture payment | Add `POST /admin/orders/:id/capture-payment` | 34b |
+| D-34 | `orders` table missing `fulfillment_status` and `shipped_at` columns | Add persisted columns to both PG and SQLite migrations | 34c |
+| D-35 | `payment_records` table missing `captured_at` column | Add `captured_at TIMESTAMPTZ` to both PG and SQLite migrations | 34c |
+| L-15 | `fulfillment_status` hardcoded as `"not_fulfilled"` — cannot reach positive states | Persist as column, update via admin endpoints | 34d |
+| L-16 | `payment_status` cannot reach `"captured"` state | Add `capture()` method to payment repository | 34b |
+| L-17 | Invoice response missing payment information | Add `payment_status` and `captured_at` to invoice when available | 34e |
+
+### 34a. Add fulfillment endpoints (2 new admin routes)
+
+- [ ] 34a.1 Add `POST /admin/orders/:id/fulfill` — sets `orders.fulfillment_status = 'fulfilled'`, returns `{ order }`
+- [ ] 34a.2 Add `POST /admin/orders/:id/ship` — sets `orders.fulfillment_status = 'shipped'` and `orders.shipped_at = CURRENT_TIMESTAMP`, returns `{ order }`
+- [ ] 34a.3 Add validation: reject if order is canceled
+- [ ] 34a.4 Add validation: reject if order is already shipped (for fulfill), already fulfilled/shipped (for ship, only not_fulfilled → ship)
+- [ ] 34a.5 Add route handlers in `src/order/routes.rs`
+- [ ] 34a.6 Add repository methods: `fulfill_order(id)`, `ship_order(id)` in `src/order/repository.rs`
+
+### 34b. Add payment capture endpoint (1 new admin route)
+
+- [ ] 34b.1 Add `POST /admin/orders/:id/capture-payment` — sets `payment_records.status = 'captured'` and `payment_records.captured_at = CURRENT_TIMESTAMP`, returns `{ order }`
+- [ ] 34b.2 Add `PaymentRepository::capture(order_id)` method in `src/payment/repository.rs`
+- [ ] 34b.3 Add validation: reject if order is canceled
+- [ ] 34b.4 Add validation: reject if payment already captured
+- [ ] 34b.5 Add route handler in `src/order/routes.rs`
+
+### 34c. Database schema changes (migration 006)
+
+- [ ] 34c.1 Add `fulfillment_status TEXT NOT NULL DEFAULT 'not_fulfilled' CHECK (fulfillment_status IN ('not_fulfilled', 'fulfilled', 'shipped', 'canceled'))` to `orders` in PG migration
+- [ ] 34c.2 Add `shipped_at TIMESTAMPTZ` to `orders` in PG migration
+- [ ] 34c.3 Add same columns to SQLite migration
+- [ ] 34c.4 Add `captured_at TIMESTAMPTZ` to `payment_records` in PG migration
+- [ ] 34c.5 Add same to SQLite migration
+- [ ] 34c.6 Update `Order` model in `src/order/models.rs` with new fields
+- [ ] 34c.7 Update `PaymentRecord` model in `src/payment/models.rs` with `captured_at`
+- [ ] 34c.8 Update `cancel_order` to also set `fulfillment_status = 'canceled'`
+- [ ] 34c.9 DB recreation required (checksum changes)
+
+### 34d. Update fulfillment_status derivation to read from column
+
+- [ ] 34d.1 Remove `resolve_fulfillment_status()` logic from `load_items()` — read from `order.fulfillment_status` column directly
+- [ ] 34d.2 Remove `fulfillment_status` parameter from `OrderWithItems::from_items()` — read from `order.fulfillment_status` instead
+- [ ] 34d.3 Update all callers of `from_items()` — remove `fulfillment_status` arg
+- [ ] 34d.4 Update `OrderSummary` computation: set `paid_total` from payment amount when captured
+
+### 34e. Enrich invoice response with payment info
+
+- [ ] 34e.1 Add `payment_status: String` and `payment_captured_at: Option<DateTime<Utc>>` to `Invoice` model
+- [ ] 34e.2 Populate from payment record in `Invoice::from_order()`
+- [ ] 34e.3 Update invoice tests to verify new fields
+
+### 34f. Update OrderSummary to reflect actual payment state
+
+- [ ] 34f.1 When payment is captured: `paid_total = payment.amount`, `transaction_total = payment.amount`, `pending_difference = original_order_total - paid_total`
+- [ ] 34f.2 When payment is not captured: all zeros for paid/transaction, `pending_difference = original_order_total`
+- [ ] 34f.3 Pass payment info into `from_items()` or compute in `load_items()`
+
+### 34g. Tests
+
+- [ ] 34g.1 Test: fulfill pending order → fulfillment_status = "fulfilled"
+- [ ] 34g.2 Test: ship pending order → fulfillment_status = "shipped", shipped_at set
+- [ ] 34g.3 Test: fulfill already shipped → 400
+- [ ] 34g.4 Test: fulfill canceled order → 400
+- [ ] 34g.5 Test: capture payment → payment_status = "captured", captured_at set
+- [ ] 34g.6 Test: capture already captured → 400
+- [ ] 34g.7 Test: capture canceled order → 400
+- [ ] 34g.8 Test: cancel order sets fulfillment_status = "canceled"
+- [ ] 34g.9 Test: OrderSummary reflects captured payment (paid_total, pending_difference)
+- [ ] 34g.10 Test: invoice includes payment_status and captured_at when captured
+- [ ] 34g.11 Test: full lifecycle — create order → fulfill → ship → capture → complete
+- [ ] 34g.12 Update contract tests for new fields on order and invoice responses
+
+### 34h. Documentation and verification
+
+- [ ] 34h.1 Update `docs/audit-master-checklist.md` with T34 entries
+- [ ] 34h.2 Update `docs/seed-data.md` — add lifecycle examples (fulfill, ship, capture, complete)
+- [ ] 34h.3 Update `README.md` — endpoint count 38→41 (3 new), new lifecycle section
+- [ ] 34h.4 Update `design.md` — Decisions 22-25, fulfillment/payment status architecture
+- [ ] 34h.5 Update `proposal.md` — capabilities
+- [ ] 34h.6 Write `docs/audit-p1-task34.md` — lifecycle extension report
+- [ ] 34h.7 Run full test suite on PostgreSQL — all pass
+- [ ] 34h.8 Run `cargo clippy -- -D warnings` — zero warnings
+- [ ] 34h.9 Run `cargo fmt --check` — clean
+- [ ] 34h.10 Run `cargo llvm-cov` — >90% coverage
