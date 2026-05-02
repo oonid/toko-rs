@@ -2,7 +2,7 @@
 
 A modular, high-performance headless e-commerce backend written in Rust, API-compatible with [MedusaJS v2](https://medusajs.com/).
 
-Implements the core **Browse → Cart → Checkout** flow with 38 endpoint methods across 6 domain modules, backed by PostgreSQL (primary) or SQLite (optional).
+Implements the core **Browse → Cart → Checkout** flow with 41 endpoint methods across 6 domain modules, backed by PostgreSQL (primary) or SQLite (optional).
 
 ## Quick Start
 
@@ -177,7 +177,7 @@ cargo run --features sqlite --no-default-features
 ```bash
 make docker-up                        # Start PostgreSQL
 
-# Integration tests (238 tests, requires PostgreSQL)
+# Integration tests (249 tests, requires PostgreSQL)
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/toko_test \
   cargo test -- --test-threads=1
 
@@ -259,7 +259,7 @@ make cov          # cargo llvm-cov
 
 ## Project Status
 
-**P1 (Core MVP) — Complete.** 238 tests, clippy-clean, 38 endpoint methods, 14 tables, 5 migrations.
+**P1 (Core MVP) — Complete.** 249 tests, clippy-clean, 41 endpoint methods, 14 tables, 6 migrations.
 
 The following are out of scope for P1 and planned for future phases:
 
