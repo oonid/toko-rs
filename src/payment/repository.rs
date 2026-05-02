@@ -81,4 +81,18 @@ impl PaymentRepository {
         .map_err(AppError::DatabaseError)?;
         Ok(())
     }
+
+    pub async fn capture_by_order_id(&self, order_id: &str) -> Result<PaymentRecord, AppError> {
+        let result = sqlx::query_as::<_, PaymentRecord>(
+            "UPDATE payment_records SET status = 'captured', captured_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE order_id = $1 AND status IN ('pending', 'authorized') RETURNING *",
+        )
+        .bind(order_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(AppError::DatabaseError)?;
+
+        result.ok_or_else(|| {
+            AppError::InvalidData("Payment cannot be captured".to_string())
+        })
+    }
 }

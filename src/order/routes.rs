@@ -23,6 +23,9 @@ pub fn admin_router() -> Router<AppState> {
     Router::new()
         .route("/admin/orders/{id}/cancel", post(admin_cancel_order))
         .route("/admin/orders/{id}/complete", post(admin_complete_order))
+        .route("/admin/orders/{id}/fulfill", post(admin_fulfill_order))
+        .route("/admin/orders/{id}/ship", post(admin_ship_order))
+        .route("/admin/orders/{id}/capture-payment", post(admin_capture_payment))
 }
 
 #[tracing::instrument(skip_all, fields(cart_id = %cart_id))]
@@ -92,5 +95,33 @@ async fn admin_complete_order(
     Path(id): Path<String>,
 ) -> Result<Json<OrderResponse>, AppError> {
     let order = state.repos.order.complete_order(&id).await?;
+    Ok(Json(OrderResponse { order }))
+}
+
+#[tracing::instrument(skip_all, fields(id = %id))]
+async fn admin_fulfill_order(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<OrderResponse>, AppError> {
+    let order = state.repos.order.fulfill_order(&id).await?;
+    Ok(Json(OrderResponse { order }))
+}
+
+#[tracing::instrument(skip_all, fields(id = %id))]
+async fn admin_ship_order(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<OrderResponse>, AppError> {
+    let order = state.repos.order.ship_order(&id).await?;
+    Ok(Json(OrderResponse { order }))
+}
+
+#[tracing::instrument(skip_all, fields(id = %id))]
+async fn admin_capture_payment(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<OrderResponse>, AppError> {
+    state.repos.payment.capture_by_order_id(&id).await?;
+    let order = state.repos.order.find_by_id(&id).await?;
     Ok(Json(OrderResponse { order }))
 }

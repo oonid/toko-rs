@@ -25,6 +25,7 @@ pub async fn setup_test_app() -> (axum::Router, toko_rs::db::AppDb) {
     (app_router(state), app_db)
 }
 
+#[allow(dead_code)]
 pub async fn setup_test_app_with_invoice(
     invoice_config: toko_rs::config::InvoiceConfig,
 ) -> (axum::Router, toko_rs::db::AppDb) {

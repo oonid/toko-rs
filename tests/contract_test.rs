@@ -454,6 +454,7 @@ async fn test_contract_order_complete_response_shape() {
             "fulfillment_status",
             "fulfillments",
             "shipping_methods",
+            "shipped_at",
             "created_at",
         ],
     );

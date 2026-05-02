@@ -8,7 +8,7 @@ toko-rs is a Rust single-binary headless e-commerce backend inspired by MedusaJS
 - **Validation schemas**: Zod validators in `vendor/medusa/packages/medusa/src/api/*/validators.ts` — used to derive Rust request validation.
 - **Route handlers**: Implementation patterns in `vendor/medusa/packages/medusa/src/api/*/route.ts` — used to understand response wrapping and error handling.
 
-**Current state**: All P1 task groups through Task 32 are **complete**. 191 integration tests passing, clippy clean, `cargo fmt` clean. 90.38% line coverage. 38 endpoint methods across product (17: 5 product + 5 variant + 5 option + 2 store), cart (8: 7 store + 1 admin), order (5: 3 store + 2 admin), customer (5: 3 store + 2 admin), invoice (3: admin), health (1). PostgreSQL primary with SQLite feature flag. 14 tables (after removing `idempotency_keys` and `invoice_config` in Task 33).
+**Current state**: All P1 task groups through Task 33 are **complete**. 238 integration tests passing, clippy clean, `cargo fmt` clean. 91.8% line coverage. 38 endpoint methods across product (17: 5 product + 5 variant + 5 option + 2 store), cart (8: 7 store + 1 admin), order (5: 3 store + 2 admin), customer (5: 3 store + 2 admin), invoice (3: admin), health (1). PostgreSQL primary with SQLite feature flag. 14 tables (after removing `idempotency_keys` and `invoice_config` in Task 33). Task 34 (order lifecycle: fulfillment, payment capture, invoice enhancement) is planned.
 
 **Medusa micro-kernel architecture reference**: MedusaJS separates its codebase into three layers (see `vendor/medusa/packages/`):
 
@@ -290,3 +290,45 @@ Medusa's `StoreOrder` has three status fields: `status` (order lifecycle), `paym
 - **`fulfillment_status`**: **Derived** from `order.status` at query time. Mapping: `canceled→"canceled"`, else→"not_fulfilled"`. No fulfillments table exists in P1. When fulfillment module is added in P2, this becomes a persisted column.
 
 **`order_summary`**: Computed from `order.total` + `payment_records` at query time. Fields: `pending_difference`, `current_order_total`, `original_order_total`, `transaction_total`, `paid_total`, `refunded_total`, `accounting_total`. Not persisted — matches Medusa's REQUIRED `summary` field without a separate `order_summary` table.
+
+### 22. Persisted fulfillment_status column (no fulfillments table)
+
+Medusa computes `fulfillment_status` from a `fulfillments` table with per-item quantity tracking (8 statuses: not_fulfilled through delivered). P1 has no fulfillment module. Instead, `fulfillment_status` is persisted as a column on `orders` with 4 states: `not_fulfilled`, `fulfilled`, `shipped`, `canceled`.
+
+- Default on creation: `'not_fulfilled'`
+- Admin transitions via independent endpoints: `POST /admin/orders/:id/fulfill` → `fulfilled`, `POST /admin/orders/:id/ship` → `shipped`
+- Cancel transitions to `canceled`
+- No partial fulfillment states in P1 — all items are fulfilled/shipped together
+
+**Medusa divergence**: Medusa has separate fulfillment records with per-item quantity tracking (`fulfilled_quantity`, `shipped_quantity`, `delivered_quantity`). P1 treats fulfillment as a single order-level state. This is sufficient for MVP where orders are small and all items ship together.
+
+**P2 consideration**: Add `fulfillments` table with per-item tracking for partial fulfillment, multi-location shipping, and tracking numbers. The column-based approach provides forward compatibility — the column value can be derived from fulfillment records in P2.
+
+### 23. Payment capture via existing payment_records table
+
+Medusa has a complex payment module with payment collections, sessions, and provider integrations (`POST /admin/payments/:id/capture`). P1 has a simple `payment_records` table with a `status` column.
+
+- `PaymentRepository::capture(order_id)` sets `status = 'captured'` and `captured_at = now()`
+- Admin captures via `POST /admin/orders/:id/capture-payment` (order-scoped, not payment-scoped, since P1 has exactly one payment per order)
+- No partial capture in P1 — captures the full payment amount
+- `resolve_payment_status()` already maps `"captured"` → `"captured"` in the response
+
+**Medusa divergence**: Medusa's capture endpoint operates on the payment ID directly (`POST /admin/payments/:id/capture`) and supports partial capture amounts. P1 operates on the order ID (simpler URL) and always captures the full amount. The response returns the full order (not just the payment) for consistency with other order admin endpoints.
+
+### 24. Invoice shows payment status enrichment
+
+When payment is captured, the invoice response includes `payment_status` and `payment_captured_at` fields. This provides the invoice consumer with payment context without requiring a separate API call.
+
+- Invoice remains available at any order status (no gating) — matches current behavior
+- Payment fields are `null` when payment is not captured
+
+### 25. Order complete remains manual with no preconditions
+
+Matches Medusa architecture: fulfillment, payment, and order status are **independent parallel tracks**. `POST /admin/orders/:id/complete` has no precondition checks — admin can complete at any time.
+
+Recommended documented flow (not enforced):
+```
+pending → fulfill → ship → (invoice available) → capture-payment → complete
+```
+
+But admin can perform operations in any order. This matches Medusa's design where each operation is independent.

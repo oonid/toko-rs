@@ -186,7 +186,7 @@ async fn test_get_order_by_id() {
         .oneshot(
             Request::builder()
                 .method(Method::GET)
-                .uri(&format!("/store/orders/{}", order_id))
+                .uri(format!("/store/orders/{}", order_id))
                 .header("X-Customer-Id", "cus_test1")
                 .body(Body::empty())
                 .unwrap(),
@@ -226,7 +226,7 @@ async fn test_get_order_rejects_wrong_customer() {
         .oneshot(
             Request::builder()
                 .method(Method::GET)
-                .uri(&format!("/store/orders/{}", order_id))
+                .uri(format!("/store/orders/{}", order_id))
                 .header("X-Customer-Id", "cus_other")
                 .body(Body::empty())
                 .unwrap(),
@@ -414,6 +414,8 @@ async fn test_cart_complete_error_response_type() {
                 status: "pending".into(),
                 metadata: None,
                 canceled_at: None,
+                fulfillment_status: "not_fulfilled".into(),
+                shipped_at: None,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
                 deleted_at: None,
@@ -422,7 +424,7 @@ async fn test_cart_complete_error_response_type() {
             },
             vec![],
             "not_paid",
-            "not_fulfilled",
+            0,
         ),
     ))
     .unwrap();
@@ -816,7 +818,7 @@ async fn test_list_orders_filter_by_id() {
         .oneshot(
             Request::builder()
                 .method(Method::GET)
-                .uri(&format!("/store/orders?id={}", order_id))
+                .uri(format!("/store/orders?id={}", order_id))
                 .header("X-Customer-Id", "cus_fid")
                 .body(Body::empty())
                 .unwrap(),
@@ -1005,7 +1007,7 @@ async fn test_admin_cancel_pending_order() {
 
     let req = Request::builder()
         .method(Method::POST)
-        .uri(&format!("/admin/orders/{}/cancel", order_id))
+        .uri(format!("/admin/orders/{}/cancel", order_id))
         .body(Body::empty())
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
@@ -1023,14 +1025,14 @@ async fn test_admin_cancel_already_canceled_order() {
 
     let req = Request::builder()
         .method(Method::POST)
-        .uri(&format!("/admin/orders/{}/cancel", order_id))
+        .uri(format!("/admin/orders/{}/cancel", order_id))
         .body(Body::empty())
         .unwrap();
     app.clone().oneshot(req).await.unwrap();
 
     let req = Request::builder()
         .method(Method::POST)
-        .uri(&format!("/admin/orders/{}/cancel", order_id))
+        .uri(format!("/admin/orders/{}/cancel", order_id))
         .body(Body::empty())
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
@@ -1045,14 +1047,14 @@ async fn test_admin_cancel_completed_order() {
 
     let req = Request::builder()
         .method(Method::POST)
-        .uri(&format!("/admin/orders/{}/complete", order_id))
+        .uri(format!("/admin/orders/{}/complete", order_id))
         .body(Body::empty())
         .unwrap();
     app.clone().oneshot(req).await.unwrap();
 
     let req = Request::builder()
         .method(Method::POST)
-        .uri(&format!("/admin/orders/{}/cancel", order_id))
+        .uri(format!("/admin/orders/{}/cancel", order_id))
         .body(Body::empty())
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
@@ -1067,7 +1069,7 @@ async fn test_admin_cancel_payment_status_updated() {
 
     let req = Request::builder()
         .method(Method::POST)
-        .uri(&format!("/admin/orders/{}/cancel", order_id))
+        .uri(format!("/admin/orders/{}/cancel", order_id))
         .body(Body::empty())
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
@@ -1090,7 +1092,7 @@ async fn test_admin_complete_pending_order() {
 
     let req = Request::builder()
         .method(Method::POST)
-        .uri(&format!("/admin/orders/{}/complete", order_id))
+        .uri(format!("/admin/orders/{}/complete", order_id))
         .body(Body::empty())
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
@@ -1107,14 +1109,14 @@ async fn test_admin_complete_already_completed_order() {
 
     let req = Request::builder()
         .method(Method::POST)
-        .uri(&format!("/admin/orders/{}/complete", order_id))
+        .uri(format!("/admin/orders/{}/complete", order_id))
         .body(Body::empty())
         .unwrap();
     app.clone().oneshot(req).await.unwrap();
 
     let req = Request::builder()
         .method(Method::POST)
-        .uri(&format!("/admin/orders/{}/complete", order_id))
+        .uri(format!("/admin/orders/{}/complete", order_id))
         .body(Body::empty())
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
@@ -1122,21 +1124,242 @@ async fn test_admin_complete_already_completed_order() {
 }
 
 #[tokio::test]
-async fn test_admin_complete_canceled_order() {
+async fn test_admin_fulfill_pending_order() {
     let (app, db) = common::setup_test_app().await;
     let pool = db.pool.clone();
     let order_id = create_pending_order(&app, &pool).await;
 
     let req = Request::builder()
         .method(Method::POST)
-        .uri(&format!("/admin/orders/{}/cancel", order_id))
+        .uri(format!("/admin/orders/{}/fulfill", order_id))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body["order"]["fulfillment_status"], "fulfilled");
+}
+
+#[tokio::test]
+async fn test_admin_fulfill_canceled_order() {
+    let (app, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+    let order_id = create_pending_order(&app, &pool).await;
+
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(format!("/admin/orders/{}/cancel", order_id))
         .body(Body::empty())
         .unwrap();
     app.clone().oneshot(req).await.unwrap();
 
     let req = Request::builder()
         .method(Method::POST)
-        .uri(&format!("/admin/orders/{}/complete", order_id))
+        .uri(format!("/admin/orders/{}/fulfill", order_id))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_admin_fulfill_already_fulfilled() {
+    let (app, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+    let order_id = create_pending_order(&app, &pool).await;
+
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(format!("/admin/orders/{}/fulfill", order_id))
+        .body(Body::empty())
+        .unwrap();
+    app.clone().oneshot(req).await.unwrap();
+
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(format!("/admin/orders/{}/fulfill", order_id))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_admin_cancel_sets_fulfillment_status_canceled() {
+    let (app, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+    let order_id = create_pending_order(&app, &pool).await;
+
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(format!("/admin/orders/{}/cancel", order_id))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body["order"]["fulfillment_status"], "canceled");
+}
+
+#[tokio::test]
+async fn test_admin_ship_fulfilled_order() {
+    let (app, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+    let order_id = create_pending_order(&app, &pool).await;
+
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(format!("/admin/orders/{}/fulfill", order_id))
+        .body(Body::empty())
+        .unwrap();
+    app.clone().oneshot(req).await.unwrap();
+
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(format!("/admin/orders/{}/ship", order_id))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body["order"]["fulfillment_status"], "shipped");
+}
+
+#[tokio::test]
+async fn test_admin_ship_without_fulfill() {
+    let (app, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+    let order_id = create_pending_order(&app, &pool).await;
+
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(format!("/admin/orders/{}/ship", order_id))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_admin_ship_canceled_order() {
+    let (app, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+    let order_id = create_pending_order(&app, &pool).await;
+
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(format!("/admin/orders/{}/cancel", order_id))
+        .body(Body::empty())
+        .unwrap();
+    app.clone().oneshot(req).await.unwrap();
+
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(format!("/admin/orders/{}/ship", order_id))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_admin_shipped_order_has_shipped_at() {
+    let (app, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+    let order_id = create_pending_order(&app, &pool).await;
+
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(format!("/admin/orders/{}/fulfill", order_id))
+        .body(Body::empty())
+        .unwrap();
+    app.clone().oneshot(req).await.unwrap();
+
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(format!("/admin/orders/{}/ship", order_id))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    let body = body_json(resp).await;
+    assert_eq!(body["order"]["fulfillment_status"], "shipped");
+    assert!(body["order"]["shipped_at"].is_string(), "shipped_at must be set");
+}
+
+#[tokio::test]
+async fn test_admin_capture_payment() {
+    let (app, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+    let order_id = create_pending_order(&app, &pool).await;
+
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(format!("/admin/orders/{}/capture-payment", order_id))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body["order"]["payment_status"], "captured");
+}
+
+#[tokio::test]
+async fn test_admin_capture_updates_payment_record() {
+    let (app, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+    let order_id = create_pending_order(&app, &pool).await;
+
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(format!("/admin/orders/{}/capture-payment", order_id))
+        .body(Body::empty())
+        .unwrap();
+    app.clone().oneshot(req).await.unwrap();
+
+    let payment: (String, Option<chrono::DateTime<chrono::Utc>>,) =
+        sqlx::query_as("SELECT status, captured_at FROM payment_records WHERE order_id = $1")
+            .bind(&order_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(payment.0, "captured");
+    assert!(payment.1.is_some(), "captured_at must be set");
+}
+
+#[tokio::test]
+async fn test_admin_capture_updates_order_summary() {
+    let (app, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+    let order_id = create_pending_order(&app, &pool).await;
+
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(format!("/admin/orders/{}/capture-payment", order_id))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    let body = body_json(resp).await;
+    assert_eq!(body["order"]["summary"]["paid_total"], 2000);
+    assert_eq!(body["order"]["summary"]["pending_difference"], 0);
+    assert_eq!(body["order"]["summary"]["transaction_total"], 2000);
+}
+
+#[tokio::test]
+async fn test_admin_capture_already_captured() {
+    let (app, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+    let order_id = create_pending_order(&app, &pool).await;
+
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(format!("/admin/orders/{}/capture-payment", order_id))
+        .body(Body::empty())
+        .unwrap();
+    app.clone().oneshot(req).await.unwrap();
+
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(format!("/admin/orders/{}/capture-payment", order_id))
         .body(Body::empty())
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();

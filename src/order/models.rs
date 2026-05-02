@@ -29,6 +29,8 @@ pub struct Order {
     #[serde(skip_deserializing)]
     pub metadata: Option<sqlx::types::Json<serde_json::Value>>,
     pub canceled_at: Option<DateTime<Utc>>,
+    pub fulfillment_status: String,
+    pub shipped_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     #[serde(skip)]
@@ -142,7 +144,7 @@ pub struct OrderWithItems {
 }
 
 impl OrderWithItems {
-    pub fn from_items(order: Order, mut items: Vec<OrderLineItem>, payment_status: &str, fulfillment_status: &str) -> Self {
+    pub fn from_items(order: Order, mut items: Vec<OrderLineItem>, payment_status: &str, paid_total: i64) -> Self {
         for item in &mut items {
             if let Some(ref snap) = item.snapshot {
                 let s = &snap.0;
@@ -210,6 +212,7 @@ impl OrderWithItems {
             item.original_tax_total = 0;
         }
         let item_total = items.iter().map(|i| i.quantity * i.unit_price).sum();
+        let fulfillment_status = order.fulfillment_status.clone();
         Self {
             order,
             item_total,
@@ -240,13 +243,13 @@ impl OrderWithItems {
             discount_subtotal: 0,
             items,
             payment_status: payment_status.to_string(),
-            fulfillment_status: fulfillment_status.to_string(),
+            fulfillment_status,
             summary: OrderSummary {
-                pending_difference: item_total,
+                pending_difference: item_total - paid_total,
                 current_order_total: item_total,
                 original_order_total: item_total,
-                transaction_total: 0,
-                paid_total: 0,
+                transaction_total: paid_total,
+                paid_total,
                 refunded_total: 0,
                 accounting_total: item_total,
             },

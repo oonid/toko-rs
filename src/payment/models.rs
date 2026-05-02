@@ -12,6 +12,7 @@ pub struct PaymentRecord {
     pub provider: String,
     #[serde(skip_deserializing)]
     pub metadata: Option<sqlx::types::Json<serde_json::Value>>,
+    pub captured_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     #[serde(skip)]
