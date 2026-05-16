@@ -17,7 +17,7 @@ async fn test_e2e_customer_lifecycle() {
                 "first_name": "Budi",
                 "last_name": "Santoso",
                 "email": "budi2@example.com",
-                "phone": "+6281234567890"
+                "phone": "+628999888777"
             }),
         )
         .await;
