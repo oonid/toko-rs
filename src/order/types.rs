@@ -76,3 +76,19 @@ impl ListOrdersParams {
         self.limit.min(100)
     }
 }
+
+#[derive(Debug, Deserialize)]
+pub struct AdminListOrdersParams {
+    pub customer_id: Option<String>,
+    pub status: Option<String>,
+    #[serde(default)]
+    pub offset: i64,
+    #[serde(default = "types::default_limit")]
+    pub limit: i64,
+}
+
+impl AdminListOrdersParams {
+    pub fn capped_limit(&self) -> i64 {
+        self.limit.min(100)
+    }
+}

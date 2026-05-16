@@ -260,6 +260,69 @@ impl OrderRepository {
         Ok((result, count.0))
     }
 
+    pub async fn list_all(
+        &self,
+        params: &AdminListOrdersParams,
+    ) -> Result<(Vec<OrderWithItems>, i64), AppError> {
+        let limit = params.capped_limit();
+
+        let mut where_parts = vec!["deleted_at IS NULL".to_string()];
+        let mut idx = 1u32;
+
+        let customer_id_filter = if let Some(ref v) = params.customer_id {
+            where_parts.push(format!("customer_id = ${}", idx));
+            idx += 1;
+            Some(v.clone())
+        } else {
+            None
+        };
+
+        let status_filter = if let Some(ref v) = params.status {
+            where_parts.push(format!("status = ${}", idx));
+            idx += 1;
+            Some(v.clone())
+        } else {
+            None
+        };
+
+        let where_sql = where_parts.join(" AND ");
+
+        let count_sql = format!("SELECT COUNT(*) FROM orders WHERE {}", where_sql);
+        let query_sql = format!(
+            "SELECT * FROM orders WHERE {} ORDER BY created_at DESC LIMIT ${} OFFSET ${}",
+            where_sql,
+            idx,
+            idx + 1
+        );
+
+        let mut count_q = sqlx::query_as::<_, (i64,)>(&count_sql);
+        if let Some(ref v) = customer_id_filter {
+            count_q = count_q.bind(v);
+        }
+        if let Some(ref v) = status_filter {
+            count_q = count_q.bind(v);
+        }
+        let count = count_q.fetch_one(&self.pool).await?;
+
+        let mut data_q = sqlx::query_as::<_, Order>(&query_sql);
+        if let Some(ref v) = customer_id_filter {
+            data_q = data_q.bind(v);
+        }
+        if let Some(ref v) = status_filter {
+            data_q = data_q.bind(v);
+        }
+        data_q = data_q.bind(limit);
+        data_q = data_q.bind(params.offset);
+        let orders = data_q.fetch_all(&self.pool).await?;
+
+        let mut result = Vec::with_capacity(orders.len());
+        for order in orders {
+            result.push(self.load_items(order).await?);
+        }
+
+        Ok((result, count.0))
+    }
+
     async fn load_items(&self, order: Order) -> Result<OrderWithItems, AppError> {
         let items = sqlx::query_as::<_, OrderLineItem>(
             "SELECT * FROM order_line_items WHERE order_id = $1 AND deleted_at IS NULL",

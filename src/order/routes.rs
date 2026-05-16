@@ -21,6 +21,8 @@ pub fn protected_router() -> Router<AppState> {
 
 pub fn admin_router() -> Router<AppState> {
     Router::new()
+        .route("/admin/orders", get(admin_list_orders))
+        .route("/admin/orders/{id}", get(admin_get_order))
         .route("/admin/orders/{id}/cancel", post(admin_cancel_order))
         .route("/admin/orders/{id}/complete", post(admin_complete_order))
         .route("/admin/orders/{id}/fulfill", post(admin_fulfill_order))
@@ -95,6 +97,30 @@ async fn admin_complete_order(
     Path(id): Path<String>,
 ) -> Result<Json<OrderResponse>, AppError> {
     let order = state.repos.order.complete_order(&id).await?;
+    Ok(Json(OrderResponse { order }))
+}
+
+#[tracing::instrument(skip_all, fields(offset = params.offset, limit = params.limit))]
+async fn admin_list_orders(
+    State(state): State<AppState>,
+    Query(params): Query<AdminListOrdersParams>,
+) -> Result<Json<OrderListResponse>, AppError> {
+    let limit = params.capped_limit();
+    let (orders, count) = state.repos.order.list_all(&params).await?;
+    Ok(Json(OrderListResponse {
+        orders,
+        count,
+        offset: params.offset,
+        limit,
+    }))
+}
+
+#[tracing::instrument(skip_all, fields(id = %id))]
+async fn admin_get_order(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<OrderResponse>, AppError> {
+    let order = state.repos.order.find_by_id(&id).await?;
     Ok(Json(OrderResponse { order }))
 }
 
