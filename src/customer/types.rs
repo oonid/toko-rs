@@ -46,6 +46,7 @@ pub struct AdminCustomerListParams {
     pub email: Option<String>,
     pub first_name: Option<String>,
     pub last_name: Option<String>,
+    pub phone: Option<String>,
     pub has_account: Option<bool>,
     #[serde(default)]
     pub offset: i64,

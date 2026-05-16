@@ -36,11 +36,19 @@ impl CustomerRepository {
         .fetch_one(&self.pool)
         .await
         .map_err(|e| {
-            if crate::db::is_unique_violation(&e) {
-                return AppError::DuplicateError(format!(
-                    "Customer with email '{}' already exists",
-                    input.email.as_deref().unwrap_or("(none)")
-                ));
+            if let sqlx::Error::Database(ref db_err) = e {
+                if db_err.code().as_deref() == Some(crate::db::unique_violation_code()) {
+                    if db_err.constraint() == Some("uq_customers_phone") {
+                        return AppError::DuplicateError(format!(
+                            "Customer with phone '{}' already exists",
+                            input.phone.as_deref().unwrap_or("(none)")
+                        ));
+                    }
+                    return AppError::DuplicateError(format!(
+                        "Customer with email '{}' already exists",
+                        input.email.as_deref().unwrap_or("(none)")
+                    ));
+                }
             }
             AppError::DatabaseError(e)
         })?;
@@ -72,6 +80,7 @@ impl CustomerRepository {
             params.first_name.as_ref().map(|v| format!("%{}%", v));
         let last_name_pattern: Option<String> =
             params.last_name.as_ref().map(|v| format!("%{}%", v));
+        let phone_filter: Option<String> = params.phone.clone();
         let has_account_val = params.has_account;
 
         let mut conditions: Vec<String> = vec!["c.deleted_at IS NULL".to_string()];
@@ -93,6 +102,10 @@ impl CustomerRepository {
         }
         if last_name_pattern.is_some() {
             conditions.push(format!("c.last_name ILIKE ${param_idx}"));
+            param_idx += 1;
+        }
+        if phone_filter.is_some() {
+            conditions.push(format!("c.phone = ${param_idx}"));
             param_idx += 1;
         }
         if has_account_val.is_some() {
@@ -118,6 +131,9 @@ impl CustomerRepository {
         if let Some(ref v) = last_name_pattern {
             count_q = count_q.bind(v.as_str());
         }
+        if let Some(ref v) = phone_filter {
+            count_q = count_q.bind(v.as_str());
+        }
         if let Some(v) = has_account_val {
             count_q = count_q.bind(v);
         }
@@ -138,6 +154,9 @@ impl CustomerRepository {
             data_q = data_q.bind(v.as_str());
         }
         if let Some(ref v) = last_name_pattern {
+            data_q = data_q.bind(v.as_str());
+        }
+        if let Some(ref v) = phone_filter {
             data_q = data_q.bind(v.as_str());
         }
         if let Some(v) = has_account_val {
@@ -185,7 +204,24 @@ impl CustomerRepository {
         .bind(metadata_to_json(input.metadata.clone()))
         .bind(id)
         .execute(&self.pool)
-        .await?;
+        .await
+        .map_err(|e| {
+            if let sqlx::Error::Database(ref db_err) = e {
+                if db_err.code().as_deref() == Some(crate::db::unique_violation_code()) {
+                    if db_err.constraint() == Some("uq_customers_phone") {
+                        return AppError::DuplicateError(format!(
+                            "Customer with phone '{}' already exists",
+                            input.phone.as_deref().unwrap_or("(none)")
+                        ));
+                    }
+                    return AppError::DuplicateError(format!(
+                        "Customer with email '{}' already exists",
+                        input.email.as_deref().unwrap_or("(none)")
+                    ));
+                }
+            }
+            AppError::DatabaseError(e)
+        })?;
 
         self.find_by_id(id).await
     }
