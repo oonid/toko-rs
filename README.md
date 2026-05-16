@@ -2,7 +2,9 @@
 
 A modular, high-performance headless e-commerce backend written in Rust, API-compatible with [MedusaJS v2](https://medusajs.com/).
 
-Implements the core **Browse → Cart → Checkout** flow with 41 endpoint methods across 6 domain modules, backed by PostgreSQL (primary) or SQLite (optional).
+Implements the core **Browse → Cart → Checkout** flow with 43 endpoint methods across 6 domain modules, backed by PostgreSQL (primary) or SQLite (optional).
+
+See [docs/p1_additions.md](docs/p1_additions.md) for a full compliance comparison against Medusa v2 — which endpoints match, which are toko-rs additions, and what is deferred to future phases.
 
 ## Quick Start
 
@@ -122,7 +124,7 @@ src/
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/admin/customers` | List customers (`q`, `email`, `first_name`, `last_name`, `has_account` filters) |
+| GET | `/admin/customers` | List customers (`q`, `email`, `first_name`, `last_name`, `phone`, `has_account` filters) |
 | GET | `/admin/customers/:id` | Get customer with addresses |
 
 ### Admin: Carts (1 endpoint)
@@ -131,12 +133,17 @@ src/
 |--------|------|-------------|
 | GET | `/admin/carts` | List carts (`id`, `customer_id` filters) |
 
-### Admin: Orders (2 endpoints)
+### Admin: Orders (7 endpoints)
 
 | Method | Path | Description |
 |--------|------|-------------|
+| GET | `/admin/orders` | List orders (`customer_id`, `status` filters, paginated) |
+| GET | `/admin/orders/:id` | Get order with line items |
 | POST | `/admin/orders/:id/cancel` | Cancel order (sets canceled_at, updates payment) |
 | POST | `/admin/orders/:id/complete` | Complete order |
+| POST | `/admin/orders/:id/fulfill` | Mark order fulfilled |
+| POST | `/admin/orders/:id/ship` | Mark order shipped (records shipped_at) |
+| POST | `/admin/orders/:id/capture-payment` | Capture payment (records captured_at) |
 
 ### Admin: Invoice (3 endpoints)
 
@@ -154,15 +161,17 @@ src/
 
 ## Database
 
-5 migrations, 14 tables:
+7 migrations, 14 tables:
 
-| Migration | Tables |
-|-----------|--------|
+| Migration | Tables / Changes |
+|-----------|-----------------|
 | `001_products` | `products`, `product_options`, `product_option_values`, `product_variants`, `product_variant_option`, `product_images` |
 | `002_customers` | `customers`, `customer_addresses` |
 | `003_carts` | `carts`, `cart_line_items` |
 | `004_orders` | `_sequences`, `orders`, `order_line_items` |
 | `005_payments` | `payment_records` |
+| `006_order_lifecycle` | Adds `fulfillment_status`, `shipped_at` to `orders`; `captured_at` to `payment_records` |
+| `007_customers_phone_unique` | Partial unique index on `customers(phone)` where `deleted_at IS NULL` |
 
 Invoice config is stored as environment variables (not a DB table): `INVOICE_COMPANY_NAME`, `INVOICE_COMPANY_ADDRESS`, `INVOICE_COMPANY_PHONE`, `INVOICE_COMPANY_EMAIL`, `INVOICE_COMPANY_LOGO`, `INVOICE_NOTES`.
 
@@ -177,7 +186,7 @@ cargo run --features sqlite --no-default-features
 ```bash
 make docker-up                        # Start PostgreSQL
 
-# Integration tests (249 tests, requires PostgreSQL)
+# Integration tests (259 tests, requires PostgreSQL)
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/toko_test \
   cargo test -- --test-threads=1
 
@@ -259,7 +268,7 @@ make cov          # cargo llvm-cov
 
 ## Project Status
 
-**P1 (Core MVP) — Complete.** 249 tests, clippy-clean, 41 endpoint methods, 14 tables, 6 migrations.
+**P1 (Core MVP) — Complete.** 259 tests, clippy-clean, 43 endpoint methods, 14 tables, 7 migrations.
 
 The following are out of scope for P1 and planned for future phases:
 
