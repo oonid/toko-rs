@@ -503,3 +503,115 @@ async fn test_admin_get_customer_not_found() {
     let body = body_json(resp).await;
     assert!(body["message"].as_str().unwrap().contains("not found"));
 }
+
+// --- Phone uniqueness constraint tests (store-modification.md) ---
+
+#[tokio::test]
+async fn test_customer_duplicate_phone_returns_422() {
+    let (app, _) = setup_test_app().await;
+
+    let p1 = json!({"email": "dupph1@example.com", "first_name": "Dup1", "phone": "0811222333"});
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri("/store/customers")
+        .header("content-type", "application/json")
+        .body(Body::from(p1.to_string()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let p2 = json!({"email": "dupph2@example.com", "first_name": "Dup2", "phone": "0811222333"});
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri("/store/customers")
+        .header("content-type", "application/json")
+        .body(Body::from(p2.to_string()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let body = body_json(resp).await;
+    assert_eq!(body["type"], "duplicate_error");
+    assert!(body["message"].as_str().unwrap().contains("phone"));
+}
+
+#[tokio::test]
+async fn test_customer_null_phones_do_not_conflict() {
+    let (app, _) = setup_test_app().await;
+
+    for (email, name) in [
+        ("nullph1@example.com", "NullPh1"),
+        ("nullph2@example.com", "NullPh2"),
+    ] {
+        let payload = json!({"email": email, "first_name": name});
+        let req = Request::builder()
+            .method(Method::POST)
+            .uri("/store/customers")
+            .header("content-type", "application/json")
+            .body(Body::from(payload.to_string()))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(
+            resp.status(),
+            StatusCode::OK,
+            "customer {} should register without phone conflict",
+            email
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_customer_update_to_duplicate_phone_returns_422() {
+    let (app, _) = setup_test_app().await;
+
+    let p1 = json!({"email": "updph1@example.com", "first_name": "Upd1", "phone": "0822111222"});
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri("/store/customers")
+        .header("content-type", "application/json")
+        .body(Body::from(p1.to_string()))
+        .unwrap();
+    app.clone().oneshot(req).await.unwrap();
+
+    let p2 = json!({"email": "updph2@example.com", "first_name": "Upd2", "phone": "0822333444"});
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri("/store/customers")
+        .header("content-type", "application/json")
+        .body(Body::from(p2.to_string()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    let cus_id2 = body_json(resp).await["customer"]["id"].as_str().unwrap().to_string();
+
+    let update = json!({"phone": "0822111222"});
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri("/store/customers/me")
+        .header("content-type", "application/json")
+        .header("X-Customer-Id", &cus_id2)
+        .body(Body::from(update.to_string()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let body = body_json(resp).await;
+    assert_eq!(body["type"], "duplicate_error");
+    assert!(body["message"].as_str().unwrap().contains("phone"));
+}
+
+#[tokio::test]
+async fn test_admin_list_customers_filter_by_phone() {
+    let (app, _) = setup_test_app().await;
+    create_test_customer(&app, "phfilt1@example.com", "PhFilt", "One", "0888777666", None).await;
+    create_test_customer(&app, "phfilt2@example.com", "PhFilt", "Two", "0888777555", None).await;
+
+    let req = Request::builder()
+        .method(Method::GET)
+        .uri("/admin/customers?phone=0888777666")
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    let customers = body["customers"].as_array().unwrap();
+    assert_eq!(customers.len(), 1);
+    assert_eq!(customers[0]["phone"], "0888777666");
+}
