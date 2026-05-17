@@ -137,7 +137,6 @@ pub struct OrderWithItems {
     pub credit_line_tax_total: i64,
     pub discount_subtotal: i64,
     pub payment_status: String,
-    pub fulfillment_status: String,
     pub summary: OrderSummary,
     pub fulfillments: Vec<serde_json::Value>,
     pub shipping_methods: Vec<serde_json::Value>,
@@ -212,7 +211,6 @@ impl OrderWithItems {
             item.original_tax_total = 0;
         }
         let item_total = items.iter().map(|i| i.quantity * i.unit_price).sum();
-        let fulfillment_status = order.fulfillment_status.clone();
         Self {
             order,
             item_total,
@@ -243,7 +241,6 @@ impl OrderWithItems {
             discount_subtotal: 0,
             items,
             payment_status: payment_status.to_string(),
-            fulfillment_status,
             summary: OrderSummary {
                 pending_difference: item_total - paid_total,
                 current_order_total: item_total,
