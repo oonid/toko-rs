@@ -1542,9 +1542,9 @@ But each step is independent. Admin decides the order of operations.
 
 ### 34e. Enrich invoice response with payment info
 
-- [ ] 34e.1 Add `payment_status: String` and `payment_captured_at: Option<DateTime<Utc>>` to `Invoice` model
-- [ ] 34e.2 Populate from payment record in `Invoice::from_order()`
-- [ ] 34e.3 Update invoice tests to verify new fields
+- [x] 34e.1 Add `payment_status: String` and `payment_captured_at: Option<DateTime<Utc>>` to `Invoice` model
+- [x] 34e.2 Populate from payment record in `Invoice::from_order()` — route fetches `payment.captured_at` via `PaymentRepository::find_by_order_id`
+- [x] 34e.3 Update invoice tests to verify new fields — `test_get_invoice_generates_on_the_fly` asserts `payment_status = "not_paid"` and `payment_captured_at = null`
 
 ### 34f. Update OrderSummary to reflect actual payment state
 
@@ -1560,10 +1560,10 @@ But each step is independent. Admin decides the order of operations.
 - [x] 34g.4 Test: fulfill canceled order → 400
 - [x] 34g.5 Test: capture payment → payment_status = "captured", captured_at set
 - [x] 34g.6 Test: capture already captured → 400
-- [ ] 34g.7 Test: capture payment on canceled order → 400
+- [x] 34g.7 Test: capture payment on canceled order → 400
 - [x] 34g.8 Test: cancel order sets fulfillment_status = "canceled"
 - [x] 34g.9 Test: OrderSummary reflects captured payment (paid_total, pending_difference)
-- [ ] 34g.10 Test: invoice includes payment_status and captured_at when captured (blocked by 34e)
+- [x] 34g.10 Test: invoice includes payment_status and captured_at when captured — `test_get_invoice_payment_status_when_captured`
 - [x] 34g.11 Test: full lifecycle — create order → fulfill → ship → capture → complete (e2e)
 - [x] 34g.12 Update contract tests for new fields on order responses (fulfillment_status, shipped_at, credit_line_total)
 
@@ -1575,10 +1575,10 @@ But each step is independent. Admin decides the order of operations.
 - [ ] 34h.4 ~~Update `design.md`~~ — file does not exist in this repo (N/A)
 - [ ] 34h.5 ~~Update `proposal.md`~~ — file does not exist in this repo (N/A)
 - [x] 34h.6 Write `docs/audit-p1-task34.md` — lifecycle extension report
-- [x] 34h.7 Run full test suite on PostgreSQL — 260 pass
+- [x] 34h.7 Run full test suite on PostgreSQL — 262 pass
 - [x] 34h.8 Run `cargo clippy -- -D warnings` — zero warnings
 - [x] 34h.9 Run `cargo fmt --check` — clean (fixed in T35 C-6)
-- [ ] 34h.10 Run `cargo llvm-cov` — >90% coverage (not yet verified)
+- [x] 34h.10 Run `cargo llvm-cov` — coverage verified (262 tests; line coverage >90% across all source modules)
 
 ## 35. Task 35 — Post-T34 Compatibility Sweep (T35)
 
@@ -1653,26 +1653,26 @@ But each step is independent. Admin decides the order of operations.
 
 ### 35o. Mod 1c — `create` constraint-name discrimination for phone duplicate error
 
-- [ ] In `src/customer/repository.rs::create`, wrap the unique-violation branch with `db_err.constraint() == Some("uq_customers_phone")` check
-- [ ] Return `DuplicateError("Customer with phone '{}' already exists")` on phone constraint hit
-- [ ] Fall through to existing `DuplicateError("Customer with email '{}' already exists")` otherwise
+- [x] In `src/customer/repository.rs::create`, wrap the unique-violation branch with `db_err.constraint() == Some("uq_customers_phone")` check
+- [x] Return `DuplicateError("Customer with phone '{}' already exists")` on phone constraint hit
+- [x] Fall through to existing `DuplicateError("Customer with email '{}' already exists")` otherwise
 
 ### 35p. Mod 1d — `update` constraint-name discrimination for phone duplicate error
 
-- [ ] In `src/customer/repository.rs::update`, wrap the unique-violation branch with `db_err.constraint() == Some("uq_customers_phone")` check
-- [ ] Return `DuplicateError("Customer with phone '{}' already exists")` on phone constraint hit
-- [ ] Fall through to existing `DuplicateError("Customer with email '{}' already exists")` otherwise
+- [x] In `src/customer/repository.rs::update`, wrap the unique-violation branch with `db_err.constraint() == Some("uq_customers_phone")` check
+- [x] Return `DuplicateError("Customer with phone '{}' already exists")` on phone constraint hit
+- [x] Fall through to existing `DuplicateError("Customer with email '{}' already exists")` otherwise
 
 ### 35q. Tests — duplicate-phone coverage for Mod 1c + Mod 1d
 
-- [ ] Add integration test: `POST /store/customers` with duplicate phone → HTTP 422, message contains `"phone"`
-- [ ] Add integration test: `POST /store/customers/me` with duplicate phone → HTTP 422, message contains `"phone"`
+- [x] Add integration test: `POST /store/customers` with duplicate phone → HTTP 422, message contains `"phone"` (`test_customer_duplicate_phone_returns_422`)
+- [x] Add integration test: `POST /store/customers/me` with duplicate phone → HTTP 422, message contains `"phone"` (`test_customer_update_to_duplicate_phone_returns_422`)
 - [ ] Add integration test: `POST /store/customers` with duplicate email still returns 422 with `"email"` message (regression)
 - [ ] Update README test count after new tests pass
 
 ### 35r. Documentation and verification
 
-- [ ] Update `docs/audit-master-checklist.md` — add T35 entries (S-38, S-39, B-33, B-34, B-35, L-18, C-5, C-6, C-7, K-13 revert, K-14)
-- [ ] Run full test suite on PostgreSQL — all pass
-- [ ] Run `cargo clippy -- -D warnings` — zero warnings
-- [ ] Run `cargo fmt --check` — clean
+- [x] Update `docs/audit-master-checklist.md` — add T35 entries (S-38, S-39, B-33, B-34, B-35, L-18, C-5, C-6, C-7, K-13 revert, K-14)
+- [x] Run full test suite on PostgreSQL — 262 pass
+- [x] Run `cargo clippy -- -D warnings` — zero warnings
+- [x] Run `cargo fmt --check` — clean
