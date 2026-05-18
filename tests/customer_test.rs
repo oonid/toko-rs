@@ -504,7 +504,7 @@ async fn test_admin_get_customer_not_found() {
     assert!(body["message"].as_str().unwrap().contains("not found"));
 }
 
-// --- Phone uniqueness constraint tests (store-modification.md) ---
+// --- Phone uniqueness tests (K-14: uq_customers_phone enforced for sapa-rs integration) ---
 
 #[tokio::test]
 async fn test_customer_duplicate_phone_returns_422() {
@@ -532,6 +532,35 @@ async fn test_customer_duplicate_phone_returns_422() {
     let body = body_json(resp).await;
     assert_eq!(body["type"], "duplicate_error");
     assert!(body["message"].as_str().unwrap().contains("phone"));
+}
+
+#[tokio::test]
+async fn test_customer_duplicate_email_returns_422_with_email_message() {
+    let (app, _) = setup_test_app().await;
+
+    let p1 = json!({"email": "dupemail@example.com", "first_name": "Dup1"});
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri("/store/customers")
+        .header("content-type", "application/json")
+        .body(Body::from(p1.to_string()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let p2 = json!({"email": "dupemail@example.com", "first_name": "Dup2"});
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri("/store/customers")
+        .header("content-type", "application/json")
+        .body(Body::from(p2.to_string()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let body = body_json(resp).await;
+    assert_eq!(body["type"], "duplicate_error");
+    assert!(body["message"].as_str().unwrap().contains("email"));
+    assert!(!body["message"].as_str().unwrap().contains("phone"));
 }
 
 #[tokio::test]
@@ -580,7 +609,10 @@ async fn test_customer_update_to_duplicate_phone_returns_422() {
         .body(Body::from(p2.to_string()))
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
-    let cus_id2 = body_json(resp).await["customer"]["id"].as_str().unwrap().to_string();
+    let cus_id2 = body_json(resp).await["customer"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     let update = json!({"phone": "0822111222"});
     let req = Request::builder()
@@ -600,8 +632,24 @@ async fn test_customer_update_to_duplicate_phone_returns_422() {
 #[tokio::test]
 async fn test_admin_list_customers_filter_by_phone() {
     let (app, _) = setup_test_app().await;
-    create_test_customer(&app, "phfilt1@example.com", "PhFilt", "One", "0888777666", None).await;
-    create_test_customer(&app, "phfilt2@example.com", "PhFilt", "Two", "0888777555", None).await;
+    create_test_customer(
+        &app,
+        "phfilt1@example.com",
+        "PhFilt",
+        "One",
+        "0888777666",
+        None,
+    )
+    .await;
+    create_test_customer(
+        &app,
+        "phfilt2@example.com",
+        "PhFilt",
+        "Two",
+        "0888777555",
+        None,
+    )
+    .await;
 
     let req = Request::builder()
         .method(Method::GET)
