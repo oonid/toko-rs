@@ -384,6 +384,7 @@ curl -s -X POST http://localhost:3000/store/carts/$CART_ID/complete | jq
       }
     ],
     "item_total": 675000,
+    "item_discount_total": 0,
     "total": 675000,
     "payment_status": "not_paid",
     "fulfillment_status": "not_fulfilled",
@@ -395,7 +396,8 @@ curl -s -X POST http://localhost:3000/store/carts/$CART_ID/complete | jq
       "transaction_total": 0,
       "paid_total": 0,
       "refunded_total": 0,
-      "accounting_total": 675000
+      "accounting_total": 675000,
+      "credit_line_total": 0
     },
     "fulfillments": [],
     "shipping_methods": []
@@ -529,7 +531,8 @@ curl -s http://localhost:3000/store/orders/$ORDER_ID2 \
     "transaction_total": 0,
     "paid_total": 0,
     "refunded_total": 0,
-    "accounting_total": 250000
+    "accounting_total": 250000,
+    "credit_line_total": 0
   }
 }
 ```
@@ -1271,11 +1274,11 @@ Error cases:
 ```bash
 # Already canceled → 400
 curl -s -X POST http://localhost:3000/admin/orders/$ORDER_ID/cancel | jq
-# { "code": "invalid_request_error", "type": "invalid_data", "message": "Order is already canceled" }
+# { "code": "invalid_request_error", "type": "invalid_data", "message": "Order cannot be canceled (already canceled or completed)" }
 
 # Already completed → 400
 curl -s -X POST http://localhost:3000/admin/orders/$ORDER_ID/cancel | jq
-# { "code": "invalid_request_error", "type": "invalid_data", "message": "Cannot cancel a completed order" }
+# { "code": "invalid_request_error", "type": "invalid_data", "message": "Order cannot be canceled (already canceled or completed)" }
 ```
 
 ### AC5 — Complete order (admin)
@@ -1301,12 +1304,12 @@ Error cases:
 ```bash
 # Already completed → 400
 curl -s -X POST http://localhost:3000/admin/orders/$ORDER_ID2/complete | jq
-# { "code": "invalid_request_error", "type": "invalid_data", "message": "Order is already completed" }
+# { "code": "invalid_request_error", "type": "invalid_data", "message": "Order cannot be completed (already completed or canceled)" }
 
 # Canceled order → 400
 curl -s -X POST http://localhost:3000/admin/orders/$ORDER_ID/cancel >/dev/null
 curl -s -X POST http://localhost:3000/admin/orders/$ORDER_ID/complete | jq
-# { "code": "invalid_request_error", "type": "invalid_data", "message": "Cannot complete a canceled order" }
+# { "code": "invalid_request_error", "type": "invalid_data", "message": "Order cannot be completed (already completed or canceled)" }
 ```
 
 ### AC6 — Fulfill order (admin)
@@ -1333,12 +1336,12 @@ Error cases:
 ```bash
 # Already fulfilled → 400
 curl -s -X POST http://localhost:3000/admin/orders/$ORDER_ID3/fulfill | jq
-# { "code": "invalid_request_error", "type": "invalid_data", "message": "Order is already fulfilled" }
+# { "code": "invalid_request_error", "type": "invalid_data", "message": "Order cannot be fulfilled (already fulfilled or canceled)" }
 
 # Canceled order → 400
 curl -s -X POST http://localhost:3000/admin/orders/$ORDER_ID/cancel >/dev/null
 curl -s -X POST http://localhost:3000/admin/orders/$ORDER_ID/fulfill | jq
-# { "code": "invalid_request_error", "type": "invalid_data", "message": "Cannot fulfill a canceled order" }
+# { "code": "invalid_request_error", "type": "invalid_data", "message": "Order cannot be fulfilled (already fulfilled or canceled)" }
 ```
 
 ### AC7 — Ship order (admin)
@@ -1365,12 +1368,12 @@ Error cases:
 ```bash
 # Ship without fulfilling → 400
 curl -s -X POST http://localhost:3000/admin/orders/$ORDER_ID3/ship | jq
-# { "code": "invalid_request_error", "type": "invalid_data", "message": "Order must be fulfilled before shipping" }
+# { "code": "invalid_request_error", "type": "invalid_data", "message": "Order cannot be shipped (must be fulfilled and not canceled)" }
 
 # Canceled order → 400
 curl -s -X POST http://localhost:3000/admin/orders/$ORDER_ID/cancel >/dev/null
 curl -s -X POST http://localhost:3000/admin/orders/$ORDER_ID/ship | jq
-# { "code": "invalid_request_error", "type": "invalid_data", "message": "Cannot ship a canceled order" }
+# { "code": "invalid_request_error", "type": "invalid_data", "message": "Order cannot be shipped (must be fulfilled and not canceled)" }
 ```
 
 ### AC8 — Capture payment (admin)
@@ -1395,7 +1398,8 @@ curl -s -X POST http://localhost:3000/admin/orders/$ORDER_ID4/capture-payment | 
     "transaction_total": 675000,
     "paid_total": 675000,
     "refunded_total": 0,
-    "accounting_total": 675000
+    "accounting_total": 675000,
+    "credit_line_total": 0
   }
 }
 ```
@@ -1405,6 +1409,11 @@ Error cases:
 ```bash
 # Already captured → 400
 curl -s -X POST http://localhost:3000/admin/orders/$ORDER_ID4/capture-payment | jq
+# { "code": "invalid_request_error", "type": "invalid_data", "message": "Payment cannot be captured" }
+
+# Canceled order → 400
+curl -s -X POST http://localhost:3000/admin/orders/$ORDER_ID/cancel >/dev/null
+curl -s -X POST http://localhost:3000/admin/orders/$ORDER_ID/capture-payment | jq
 # { "code": "invalid_request_error", "type": "invalid_data", "message": "Payment cannot be captured" }
 ```
 
@@ -1481,6 +1490,18 @@ curl -s -X POST http://localhost:3000/store/customers \
 ```json
 { "code": "invalid_request_error", "type": "duplicate_error", "message": "Customer with email 'budi@example.com' already exists" }
 ```
+
+**Duplicate phone registration (K-14 — phone uniqueness enforced):**
+```bash
+curl -s -X POST http://localhost:3000/store/customers \
+  -H 'Content-Type: application/json' \
+  -d '{"email": "other@example.com", "phone": "+6281234567890"}' | jq
+```
+```json
+{ "code": "invalid_request_error", "type": "duplicate_error", "message": "Customer with phone '+6281234567890' already exists" }
+```
+
+Note: `+6281234567890` is the seed customer Budi's phone. Phone uniqueness is enforced by a partial unique index (`WHERE deleted_at IS NULL AND phone IS NOT NULL`). Each live customer must have a unique phone — this enables SMS-keyed lookup in future phases.
 
 **Invalid email format:**
 ```bash
@@ -1643,6 +1664,8 @@ curl -s http://localhost:3000/admin/orders/$ORDER_ID/invoice | jq
     "invoice_number": "INV-0001",
     "date": "2026-05-01T...",
     "status": "latest",
+    "payment_status": "not_paid",
+    "payment_captured_at": null,
     "issuer": {
       "company_name": "Toko Sejahtera",
       "company_address": "Jl. Merdeka No. 10, Jakarta Pusat 10110",
@@ -1676,6 +1699,28 @@ curl -s http://localhost:3000/admin/orders/$ORDER_ID/invoice | jq
 
 Returns 404 if no config or no order.
 
+### AI3b: Invoice after payment capture
+
+After capturing payment (see AC8), regenerating the invoice reflects the new payment state:
+
+```bash
+# Capture payment first
+curl -s -X POST http://localhost:3000/admin/orders/$ORDER_ID/capture-payment >/dev/null
+
+# Fetch invoice again
+curl -s http://localhost:3000/admin/orders/$ORDER_ID/invoice | jq '.invoice | {invoice_number, payment_status, payment_captured_at}'
+```
+
+```json
+{
+  "invoice_number": "INV-0001",
+  "payment_status": "captured",
+  "payment_captured_at": "2026-05-01T12:34:56.789Z"
+}
+```
+
+The invoice is generated on-the-fly each time — there is no stored invoice document. `payment_captured_at` is the timestamp from the payment record's `captured_at` column.
+
 ---
 
 ## Reference Tables
@@ -1704,7 +1749,7 @@ Returns 404 if no config or no order.
 |---|---|---|
 | Budi Santoso | `cus_seed_budi` | `X-Customer-Id` header for order endpoints, `customer_id` in cart creation |
 
-### Endpoint summary (41 methods)
+### Endpoint summary (43 methods)
 
 | Method | Path | Section |
 |---|---|---|
@@ -1741,6 +1786,8 @@ Returns 404 if no config or no order.
 | GET | `/admin/customers` | AC1 |
 | GET | `/admin/customers/{id}` | AC2 |
 | GET | `/admin/carts` | AC3 |
+| GET | `/admin/orders` | (admin order list) |
+| GET | `/admin/orders/{id}` | (admin order detail) |
 | POST | `/admin/orders/{id}/cancel` | AC4 |
 | POST | `/admin/orders/{id}/complete` | AC5 |
 | POST | `/admin/orders/{id}/fulfill` | AC6 |
