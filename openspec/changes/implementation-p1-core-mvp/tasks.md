@@ -1667,8 +1667,8 @@ But each step is independent. Admin decides the order of operations.
 
 - [x] Add integration test: `POST /store/customers` with duplicate phone → HTTP 422, message contains `"phone"` (`test_customer_duplicate_phone_returns_422`)
 - [x] Add integration test: `POST /store/customers/me` with duplicate phone → HTTP 422, message contains `"phone"` (`test_customer_update_to_duplicate_phone_returns_422`)
-- [ ] Add integration test: `POST /store/customers` with duplicate email still returns 422 with `"email"` message (regression)
-- [ ] Update README test count after new tests pass
+- [x] Add integration test: `POST /store/customers` with duplicate email still returns 422 with `"email"` message (regression) — `test_customer_duplicate_email_returns_422_with_email_message`
+- [x] Update README test count after new tests pass — 263
 
 ### 35r. Documentation and verification
 
