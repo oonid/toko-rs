@@ -66,11 +66,12 @@ The following endpoints are present in both toko-rs and Medusa v2 with matching 
 | GET | `/admin/customers/:id` |
 
 ### Admin: Orders (partial)
-| Method | Path |
-|--------|------|
-| GET | `/admin/orders` |
-| GET | `/admin/orders/:id` |
-| POST | `/admin/orders/:id/cancel` |
+| Method | Path | Notes |
+|--------|------|-------|
+| GET | `/admin/orders` | |
+| GET | `/admin/orders/:id` | |
+| POST | `/admin/orders/:id/cancel` | |
+| POST | `/admin/orders/:id/complete` | with simplified state-machine semantics (no workflow engine) |
 
 ---
 
@@ -98,7 +99,6 @@ These endpoints exist in toko-rs but have no equivalent in Medusa v2's published
 ### Simplified Order Lifecycle Actions
 | Method | Path | Notes |
 |--------|------|-------|
-| POST | `/admin/orders/:id/complete` | Marks order complete. Medusa v2 uses workflow-based order completion tied to fulfillment and payment state; there is no direct `/orders/:id/complete` action. |
 | POST | `/admin/orders/:id/fulfill` | Sets `fulfillment_status = fulfilled`. Medusa v2 models fulfillment as a separate `/admin/fulfillments` resource with its own lifecycle. |
 | POST | `/admin/orders/:id/ship` | Sets `fulfillment_status = shipped`, records `shipped_at`. Medusa v2 handles this via fulfillment status update or shipping notification webhooks. |
 | POST | `/admin/orders/:id/capture-payment` | Sets `captured_at` on the payment record. Medusa v2 uses `/admin/payment-collections/:id/payment-sessions/:sid/capture`. |
@@ -132,6 +132,23 @@ toko-rs's `X-Customer-Id` header is a deliberate P1 simplification. It provides 
 | Fulfillment model | `fulfillment_status` column on orders | Separate `fulfillments` table with its own items, tracking, and metadata |
 
 toko-rs collapses the fulfillment sub-resource into direct order state transitions. This is intentional for P1 simplicity.
+
+### Order `cart_id` Field (K-13)
+| Aspect | toko-rs | Medusa v2 |
+|--------|---------|-----------|
+| `order.cart_id` in response | Exposed | Omitted from `defaultStoreOrderFields` and `defaultStoreRetrieveOrderFields` |
+| Rationale | Required for traceability: toko-rs exposes `GET /admin/carts` (K-11) for operational cart visibility; without `cart_id` on the order response there is no way to navigate from an order back to its originating cart. |
+
+This is an intentional extension (K-13). The `cart_id` column exists on `orders` for idempotency (D-24 / L-9); surfacing it in the response enables `GET /admin/carts?id=<cart_id>` lookups from any order.
+
+### Customer Phone Uniqueness (K-14)
+| Aspect | toko-rs | Medusa v2 |
+|--------|---------|-----------|
+| `customers.phone` uniqueness | Unique partial index `uq_customers_phone ON customers (phone) WHERE deleted_at IS NULL AND phone IS NOT NULL` | No uniqueness constraint on `phone` |
+| Duplicate phone POST/PATCH | HTTP 422 `duplicate_error` | HTTP 200 (allowed) |
+| Rationale | Required for sapa-rs SMS-keyed integration: customers are looked up by phone, so duplicates would make routing ambiguous. Implemented in migration `007_customers_phone_unique.sql` (PG + SQLite). | n/a |
+
+This is an intentional, permanent divergence (K-14). It is enforced at the DB layer (partial unique index) and the constraint name `uq_customers_phone` is mapped to `AppError::DuplicateError` in `src/customer/repository.rs` (`create` and `update`) so the wire-level response is the standard Medusa-shaped `duplicate_error` payload. Soft-deleted customers (`deleted_at IS NOT NULL`) and `phone = NULL` are excluded from the index, so reusing a phone after a soft-delete or registering multiple customers without phones is still allowed.
 
 ---
 
