@@ -56,9 +56,9 @@ pub struct InvoiceConfig {
 impl InvoiceConfig {
     pub fn is_configured(&self) -> bool {
         !self.company_name.is_empty()
-            || !self.company_address.is_empty()
-            || !self.company_phone.is_empty()
-            || !self.company_email.is_empty()
+            && !self.company_address.is_empty()
+            && !self.company_phone.is_empty()
+            && !self.company_email.is_empty()
     }
 }
 
