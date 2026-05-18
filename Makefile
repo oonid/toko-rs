@@ -28,7 +28,7 @@ docker-down:
 	docker compose down
 
 test-pg:
-	DATABASE_URL=postgres://postgres:postgres@localhost:5432/toko_test cargo test -- --test-threads=1
+	DATABASE_URL=postgres://postgres:postgres@localhost:5432/toko_test cargo test --jobs 1 -- --test-threads=1
 
 test-sqlite:
 	DATABASE_URL="sqlite::memory:" cargo test --features sqlite --no-default-features -- --test-threads=1
@@ -44,4 +44,4 @@ test-e2e-pg:
 	DATABASE_URL=postgres://postgres:postgres@localhost:5432/toko_test E2E_DATABASE_URL=postgres://postgres:postgres@localhost:5432/toko_e2e cargo test -- --test-threads=1
 
 cov:
-	cargo llvm-cov --summary-only
+	DATABASE_URL=postgres://postgres:postgres@localhost:5432/toko_test cargo llvm-cov --jobs 1 --summary-only -- --test-threads=1
