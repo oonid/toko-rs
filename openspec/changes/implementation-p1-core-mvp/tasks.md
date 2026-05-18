@@ -1506,39 +1506,39 @@ But each step is independent. Admin decides the order of operations.
 
 ### 34a. Add fulfillment endpoints (2 new admin routes)
 
-- [ ] 34a.1 Add `POST /admin/orders/:id/fulfill` — sets `orders.fulfillment_status = 'fulfilled'`, returns `{ order }`
-- [ ] 34a.2 Add `POST /admin/orders/:id/ship` — sets `orders.fulfillment_status = 'shipped'` and `orders.shipped_at = CURRENT_TIMESTAMP`, returns `{ order }`
-- [ ] 34a.3 Add validation: reject if order is canceled
-- [ ] 34a.4 Add validation: reject if order is already shipped (for fulfill), already fulfilled/shipped (for ship, only not_fulfilled → ship)
-- [ ] 34a.5 Add route handlers in `src/order/routes.rs`
-- [ ] 34a.6 Add repository methods: `fulfill_order(id)`, `ship_order(id)` in `src/order/repository.rs`
+- [x] 34a.1 Add `POST /admin/orders/:id/fulfill` — sets `orders.fulfillment_status = 'fulfilled'`, returns `{ order }`
+- [x] 34a.2 Add `POST /admin/orders/:id/ship` — sets `orders.fulfillment_status = 'shipped'` and `orders.shipped_at = CURRENT_TIMESTAMP`, returns `{ order }`
+- [x] 34a.3 Add validation: reject if order is canceled
+- [x] 34a.4 Add validation: reject if order is already shipped (for fulfill), already fulfilled/shipped (for ship, only not_fulfilled → ship)
+- [x] 34a.5 Add route handlers in `src/order/routes.rs`
+- [x] 34a.6 Add repository methods: `fulfill_order(id)`, `ship_order(id)` in `src/order/repository.rs`
 
 ### 34b. Add payment capture endpoint (1 new admin route)
 
-- [ ] 34b.1 Add `POST /admin/orders/:id/capture-payment` — sets `payment_records.status = 'captured'` and `payment_records.captured_at = CURRENT_TIMESTAMP`, returns `{ order }`
-- [ ] 34b.2 Add `PaymentRepository::capture(order_id)` method in `src/payment/repository.rs`
-- [ ] 34b.3 Add validation: reject if order is canceled
-- [ ] 34b.4 Add validation: reject if payment already captured
-- [ ] 34b.5 Add route handler in `src/order/routes.rs`
+- [x] 34b.1 Add `POST /admin/orders/:id/capture-payment` — sets `payment_records.status = 'captured'` and `payment_records.captured_at = CURRENT_TIMESTAMP`, returns `{ order }`
+- [x] 34b.2 Add `PaymentRepository::capture(order_id)` method in `src/payment/repository.rs`
+- [x] 34b.3 Add validation: reject if order is canceled (implicit — canceled order's payment is canceled, not capturable via status check)
+- [x] 34b.4 Add validation: reject if payment already captured
+- [x] 34b.5 Add route handler in `src/order/routes.rs`
 
 ### 34c. Database schema changes (migration 006)
 
-- [ ] 34c.1 Add `fulfillment_status TEXT NOT NULL DEFAULT 'not_fulfilled' CHECK (fulfillment_status IN ('not_fulfilled', 'fulfilled', 'shipped', 'canceled'))` to `orders` in PG migration
-- [ ] 34c.2 Add `shipped_at TIMESTAMPTZ` to `orders` in PG migration
-- [ ] 34c.3 Add same columns to SQLite migration
-- [ ] 34c.4 Add `captured_at TIMESTAMPTZ` to `payment_records` in PG migration
-- [ ] 34c.5 Add same to SQLite migration
-- [ ] 34c.6 Update `Order` model in `src/order/models.rs` with new fields
-- [ ] 34c.7 Update `PaymentRecord` model in `src/payment/models.rs` with `captured_at`
-- [ ] 34c.8 Update `cancel_order` to also set `fulfillment_status = 'canceled'`
-- [ ] 34c.9 DB recreation required (checksum changes)
+- [x] 34c.1 Add `fulfillment_status TEXT NOT NULL DEFAULT 'not_fulfilled' CHECK (fulfillment_status IN ('not_fulfilled', 'fulfilled', 'shipped', 'canceled'))` to `orders` in PG migration
+- [x] 34c.2 Add `shipped_at TIMESTAMPTZ` to `orders` in PG migration
+- [x] 34c.3 Add same columns to SQLite migration
+- [x] 34c.4 Add `captured_at TIMESTAMPTZ` to `payment_records` in PG migration
+- [x] 34c.5 Add same to SQLite migration
+- [x] 34c.6 Update `Order` model in `src/order/models.rs` with new fields
+- [x] 34c.7 Update `PaymentRecord` model in `src/payment/models.rs` with `captured_at`
+- [x] 34c.8 Update `cancel_order` to also set `fulfillment_status = 'canceled'`
+- [x] 34c.9 DB recreation required (checksum changes)
 
 ### 34d. Update fulfillment_status derivation to read from column
 
-- [ ] 34d.1 Remove `resolve_fulfillment_status()` logic from `load_items()` — read from `order.fulfillment_status` column directly
-- [ ] 34d.2 Remove `fulfillment_status` parameter from `OrderWithItems::from_items()` — read from `order.fulfillment_status` instead
-- [ ] 34d.3 Update all callers of `from_items()` — remove `fulfillment_status` arg
-- [ ] 34d.4 Update `OrderSummary` computation: set `paid_total` from payment amount when captured
+- [x] 34d.1 Remove `resolve_fulfillment_status()` logic from `load_items()` — read from `order.fulfillment_status` column directly
+- [x] 34d.2 Remove `fulfillment_status` parameter from `OrderWithItems::from_items()` — read from `order.fulfillment_status` instead
+- [x] 34d.3 Update all callers of `from_items()` — remove `fulfillment_status` arg
+- [x] 34d.4 Update `OrderSummary` computation: set `paid_total` from payment amount when captured
 
 ### 34e. Enrich invoice response with payment info
 
@@ -1548,34 +1548,131 @@ But each step is independent. Admin decides the order of operations.
 
 ### 34f. Update OrderSummary to reflect actual payment state
 
-- [ ] 34f.1 When payment is captured: `paid_total = payment.amount`, `transaction_total = payment.amount`, `pending_difference = original_order_total - paid_total`
-- [ ] 34f.2 When payment is not captured: all zeros for paid/transaction, `pending_difference = original_order_total`
-- [ ] 34f.3 Pass payment info into `from_items()` or compute in `load_items()`
+- [x] 34f.1 When payment is captured: `paid_total = payment.amount`, `transaction_total = payment.amount`, `pending_difference = original_order_total - paid_total`
+- [x] 34f.2 When payment is not captured: all zeros for paid/transaction, `pending_difference = original_order_total`
+- [x] 34f.3 Pass payment info into `from_items()` or compute in `load_items()`
 
 ### 34g. Tests
 
-- [ ] 34g.1 Test: fulfill pending order → fulfillment_status = "fulfilled"
-- [ ] 34g.2 Test: ship pending order → fulfillment_status = "shipped", shipped_at set
-- [ ] 34g.3 Test: fulfill already shipped → 400
-- [ ] 34g.4 Test: fulfill canceled order → 400
-- [ ] 34g.5 Test: capture payment → payment_status = "captured", captured_at set
-- [ ] 34g.6 Test: capture already captured → 400
-- [ ] 34g.7 Test: capture canceled order → 400
-- [ ] 34g.8 Test: cancel order sets fulfillment_status = "canceled"
-- [ ] 34g.9 Test: OrderSummary reflects captured payment (paid_total, pending_difference)
-- [ ] 34g.10 Test: invoice includes payment_status and captured_at when captured
-- [ ] 34g.11 Test: full lifecycle — create order → fulfill → ship → capture → complete
-- [ ] 34g.12 Update contract tests for new fields on order and invoice responses
+- [x] 34g.1 Test: fulfill pending order → fulfillment_status = "fulfilled"
+- [x] 34g.2 Test: ship pending order → fulfillment_status = "shipped", shipped_at set
+- [x] 34g.3 Test: fulfill already fulfilled → 400
+- [x] 34g.4 Test: fulfill canceled order → 400
+- [x] 34g.5 Test: capture payment → payment_status = "captured", captured_at set
+- [x] 34g.6 Test: capture already captured → 400
+- [ ] 34g.7 Test: capture payment on canceled order → 400
+- [x] 34g.8 Test: cancel order sets fulfillment_status = "canceled"
+- [x] 34g.9 Test: OrderSummary reflects captured payment (paid_total, pending_difference)
+- [ ] 34g.10 Test: invoice includes payment_status and captured_at when captured (blocked by 34e)
+- [x] 34g.11 Test: full lifecycle — create order → fulfill → ship → capture → complete (e2e)
+- [x] 34g.12 Update contract tests for new fields on order responses (fulfillment_status, shipped_at, credit_line_total)
 
 ### 34h. Documentation and verification
 
-- [ ] 34h.1 Update `docs/audit-master-checklist.md` with T34 entries
-- [ ] 34h.2 Update `docs/seed-data.md` — add lifecycle examples (fulfill, ship, capture, complete)
-- [ ] 34h.3 Update `README.md` — endpoint count 38→41 (3 new), new lifecycle section
-- [ ] 34h.4 Update `design.md` — Decisions 22-25, fulfillment/payment status architecture
-- [ ] 34h.5 Update `proposal.md` — capabilities
-- [ ] 34h.6 Write `docs/audit-p1-task34.md` — lifecycle extension report
-- [ ] 34h.7 Run full test suite on PostgreSQL — all pass
-- [ ] 34h.8 Run `cargo clippy -- -D warnings` — zero warnings
-- [ ] 34h.9 Run `cargo fmt --check` — clean
-- [ ] 34h.10 Run `cargo llvm-cov` — >90% coverage
+- [x] 34h.1 Update `docs/audit-master-checklist.md` with T34 entries
+- [x] 34h.2 Update `docs/seed-data.md` — add lifecycle examples (AC6–AC9: fulfill, ship, capture)
+- [x] 34h.3 Update `README.md` — 43 endpoint methods, 260 tests
+- [ ] 34h.4 ~~Update `design.md`~~ — file does not exist in this repo (N/A)
+- [ ] 34h.5 ~~Update `proposal.md`~~ — file does not exist in this repo (N/A)
+- [x] 34h.6 Write `docs/audit-p1-task34.md` — lifecycle extension report
+- [x] 34h.7 Run full test suite on PostgreSQL — 260 pass
+- [x] 34h.8 Run `cargo clippy -- -D warnings` — zero warnings
+- [x] 34h.9 Run `cargo fmt --check` — clean (fixed in T35 C-6)
+- [ ] 34h.10 Run `cargo llvm-cov` — >90% coverage (not yet verified)
+
+## 35. Task 35 — Post-T34 Compatibility Sweep (T35)
+
+### 35a. S-38 — OrderSummary missing `credit_line_total`
+
+- [x] Add `pub credit_line_total: i64` to `OrderSummary` struct in `src/order/models.rs`
+- [x] Initialize to 0 in `from_items()` alongside `refunded_total`
+
+### 35b. S-39 — CartWithItems and OrderWithItems missing `item_discount_total`
+
+- [x] Add `pub item_discount_total: i64` to `CartWithItems` in `src/cart/models.rs`
+- [x] Add `pub item_discount_total: i64` to `OrderWithItems` in `src/order/models.rs`
+- [x] Initialize to 0 in both `from_items()` implementations
+
+### 35c. Doc-1 — `p1_additions.md` misclassified `complete` and `cancel` as toko-rs additions
+
+- [x] Move `POST /admin/orders/:id/cancel` from section 2 to section 1 ("Admin: Orders (partial)") in `docs/p1_additions.md`
+- [x] Move `POST /admin/orders/:id/complete` from section 2 to section 1 with simplified state-machine semantics note
+- [x] Retain `fulfill`, `ship`, `capture-payment` in section 2 (genuine toko-rs additions)
+
+### 35d. Doc-2 — README test count stale
+
+- [x] Update `README.md` test count from 259 to 260
+
+### 35e. X-15 — OrderSummary raw_* BigNumber mirror fields (Deferred P2)
+
+- [ ] ~~Add 8 `raw_*` mirror fields to `OrderSummary` matching Medusa's `BigNumberRawValue` shape~~ — **Deferred P2**: toko-rs uses `i64` (integer cents); no BigNumber/raw representation exists. Not actionable until a precision-sensitive currency module is introduced. Tracked as X-15 in `docs/audit-master-checklist.md`.
+
+### 35f. V-13 — Multi-value id/status filters (Deferred P2)
+
+- [ ] ~~Support `?id=ord_1&id=ord_2` and `?status[]=pending&status[]=completed` on store and admin order list endpoints~~ — **Deferred P2**: requires `OneOrMany<String>` serde adapter and `IN ($1, $2, …)` SQL expansion; single-value filters cover all P1 use cases. Tracked as V-13 in `docs/audit-master-checklist.md`.
+
+### 35g. V-14 — Admin order list default limit 50 vs Medusa's 15 (Deferred P2)
+
+- [ ] ~~Change `AdminListOrdersParams.limit` default from 50 to 15 to match Medusa admin pagination~~ — **Deferred P2**: store-side default of 50 (L-7) is correct; admin-side divergence is cosmetic and does not affect P1 use cases. Tracked as V-14 in `docs/audit-master-checklist.md`.
+
+### 35h. B-33 — Order state-transition TOCTOU (read-then-update with no guard predicate)
+
+- [x] Embed guard condition in UPDATE WHERE clause for `cancel_order`: `AND status != 'canceled' AND status != 'completed'`
+- [x] Embed guard condition in UPDATE WHERE clause for `complete_order`: `AND status != 'completed' AND status != 'canceled'`
+- [x] Embed guard condition in UPDATE WHERE clause for `fulfill_order`: `AND fulfillment_status = 'not_fulfilled' AND status != 'canceled'`
+- [x] Embed guard condition in UPDATE WHERE clause for `ship_order`: `AND fulfillment_status = 'fulfilled' AND status != 'canceled'`
+- [x] Check `rows_affected() == 0` on each and return 400 `InvalidData` for already-transitioned orders
+
+### 35i. B-34 — `admin_cancel_order` silently discarded payment-cancel error
+
+- [x] Replace `let _ = state.repos.payment.cancel_by_order_id(&id).await;` with `state.repos.payment.cancel_by_order_id(&id).await?;` in `src/order/routes.rs`
+- [ ] ~~Wrap order cancel + payment cancel in a single DB transaction for atomic semantics~~ — **Deferred P2**: invasive refactor; error propagation half is sufficient for P1. Tracked as B-34 (tx) in `docs/audit-master-checklist.md`.
+
+### 35j. B-35 — Payment queries missing `deleted_at IS NULL` filter
+
+- [x] Add `AND deleted_at IS NULL` to `find_by_order_id` query in `src/payment/repository.rs`
+- [x] Add `AND deleted_at IS NULL` to `cancel_by_order_id` query in `src/payment/repository.rs`
+- [x] Add `AND deleted_at IS NULL` to `capture_by_order_id` query in `src/payment/repository.rs`
+- [x] Add `AND deleted_at IS NULL` to `resolve_payment_status` query in `src/order/repository.rs`
+
+### 35k. L-18 — `InvoiceConfig.is_configured()` used OR instead of AND
+
+- [x] Change `||` to `&&` across all four required fields (`company_name`, `company_address`, `company_phone`, `company_email`) in `src/config.rs:is_configured()`
+
+### 35l. C-5 — Test binary parallelism caused flaky tests on shared Postgres DB
+
+- [x] Change `test-pg` target in `Makefile` from `cargo test -- --test-threads=1` to `cargo test --jobs 1 -- --test-threads=1` to disable binary-level parallelism
+
+### 35m. C-6 — `cargo fmt` drift from T34 commit (703 lines)
+
+- [x] Run `cargo fmt` on `src/invoice/routes.rs`, `src/lib.rs`, `src/order/models.rs`, `src/order/repository.rs`, `src/order/routes.rs` — `cargo fmt --check` exits 0
+
+### 35n. C-7 — `clean_all_tables` missing `product_images` deletion
+
+- [x] Add `DELETE FROM product_images` between `product_variants` and `products` in `tests/common/mod.rs::clean_all_tables()`
+
+### 35o. Mod 1c — `create` constraint-name discrimination for phone duplicate error
+
+- [ ] In `src/customer/repository.rs::create`, wrap the unique-violation branch with `db_err.constraint() == Some("uq_customers_phone")` check
+- [ ] Return `DuplicateError("Customer with phone '{}' already exists")` on phone constraint hit
+- [ ] Fall through to existing `DuplicateError("Customer with email '{}' already exists")` otherwise
+
+### 35p. Mod 1d — `update` constraint-name discrimination for phone duplicate error
+
+- [ ] In `src/customer/repository.rs::update`, wrap the unique-violation branch with `db_err.constraint() == Some("uq_customers_phone")` check
+- [ ] Return `DuplicateError("Customer with phone '{}' already exists")` on phone constraint hit
+- [ ] Fall through to existing `DuplicateError("Customer with email '{}' already exists")` otherwise
+
+### 35q. Tests — duplicate-phone coverage for Mod 1c + Mod 1d
+
+- [ ] Add integration test: `POST /store/customers` with duplicate phone → HTTP 422, message contains `"phone"`
+- [ ] Add integration test: `POST /store/customers/me` with duplicate phone → HTTP 422, message contains `"phone"`
+- [ ] Add integration test: `POST /store/customers` with duplicate email still returns 422 with `"email"` message (regression)
+- [ ] Update README test count after new tests pass
+
+### 35r. Documentation and verification
+
+- [ ] Update `docs/audit-master-checklist.md` — add T35 entries (S-38, S-39, B-33, B-34, B-35, L-18, C-5, C-6, C-7, K-13 revert, K-14)
+- [ ] Run full test suite on PostgreSQL — all pass
+- [ ] Run `cargo clippy -- -D warnings` — zero warnings
+- [ ] Run `cargo fmt --check` — clean
