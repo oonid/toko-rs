@@ -64,16 +64,18 @@ impl PaymentRepository {
         &self,
         order_id: &str,
     ) -> Result<Option<PaymentRecord>, AppError> {
-        sqlx::query_as::<_, PaymentRecord>("SELECT * FROM payment_records WHERE order_id = $1")
-            .bind(order_id)
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(AppError::DatabaseError)
+        sqlx::query_as::<_, PaymentRecord>(
+            "SELECT * FROM payment_records WHERE order_id = $1 AND deleted_at IS NULL",
+        )
+        .bind(order_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(AppError::DatabaseError)
     }
 
     pub async fn cancel_by_order_id(&self, order_id: &str) -> Result<(), AppError> {
         sqlx::query(
-            "UPDATE payment_records SET status = 'canceled', updated_at = CURRENT_TIMESTAMP WHERE order_id = $1 AND status NOT IN ('captured', 'refunded')",
+            "UPDATE payment_records SET status = 'canceled', updated_at = CURRENT_TIMESTAMP WHERE order_id = $1 AND status NOT IN ('captured', 'refunded') AND deleted_at IS NULL",
         )
         .bind(order_id)
         .execute(&self.pool)
@@ -84,15 +86,13 @@ impl PaymentRepository {
 
     pub async fn capture_by_order_id(&self, order_id: &str) -> Result<PaymentRecord, AppError> {
         let result = sqlx::query_as::<_, PaymentRecord>(
-            "UPDATE payment_records SET status = 'captured', captured_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE order_id = $1 AND status IN ('pending', 'authorized') RETURNING *",
+            "UPDATE payment_records SET status = 'captured', captured_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE order_id = $1 AND status IN ('pending', 'authorized') AND deleted_at IS NULL RETURNING *",
         )
         .bind(order_id)
         .fetch_optional(&self.pool)
         .await
         .map_err(AppError::DatabaseError)?;
 
-        result.ok_or_else(|| {
-            AppError::InvalidData("Payment cannot be captured".to_string())
-        })
+        result.ok_or_else(|| AppError::InvalidData("Payment cannot be captured".to_string()))
     }
 }
