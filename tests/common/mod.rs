@@ -99,6 +99,10 @@ pub async fn clean_all_tables(pool: &toko_rs::db::DbPool) {
         .execute(pool)
         .await
         .unwrap();
+    sqlx::query("DELETE FROM product_images")
+        .execute(pool)
+        .await
+        .unwrap();
     sqlx::query("DELETE FROM products")
         .execute(pool)
         .await
