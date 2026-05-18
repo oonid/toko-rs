@@ -31,6 +31,8 @@ pub struct Invoice {
     pub invoice_number: String,
     pub date: DateTime<Utc>,
     pub status: String,
+    pub payment_status: String,
+    pub payment_captured_at: Option<DateTime<Utc>>,
     pub issuer: InvoiceIssuer,
     pub order: OrderWithItems,
     pub notes: Option<String>,
@@ -58,11 +60,18 @@ impl From<&crate::config::InvoiceConfig> for InvoiceIssuer {
 }
 
 impl Invoice {
-    pub fn from_order(config: &crate::config::InvoiceConfig, order: OrderWithItems) -> Self {
+    pub fn from_order(
+        config: &crate::config::InvoiceConfig,
+        order: OrderWithItems,
+        payment_captured_at: Option<DateTime<Utc>>,
+    ) -> Self {
+        let payment_status = order.payment_status.clone();
         Self {
             invoice_number: format!("INV-{:04}", order.order.display_id),
             date: order.order.created_at,
             status: "latest".to_string(),
+            payment_status,
+            payment_captured_at,
             issuer: InvoiceIssuer::from(config),
             notes: config.notes.clone(),
             order,
