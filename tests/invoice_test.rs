@@ -99,15 +99,9 @@ async fn test_get_config_returns_env_values() {
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
     assert_eq!(body["invoice_config"]["company_name"], "Toko Test");
-    assert_eq!(
-        body["invoice_config"]["company_address"],
-        "Jl. Test No. 1"
-    );
+    assert_eq!(body["invoice_config"]["company_address"], "Jl. Test No. 1");
     assert_eq!(body["invoice_config"]["company_phone"], "+628000000000");
-    assert_eq!(
-        body["invoice_config"]["company_email"],
-        "test@tokotest.com"
-    );
+    assert_eq!(body["invoice_config"]["company_email"], "test@tokotest.com");
 }
 
 #[tokio::test]
@@ -166,10 +160,7 @@ async fn test_get_invoice_generates_on_the_fly() {
 
     let inv = &body["invoice"];
     assert!(inv["invoice_number"].is_string());
-    assert!(inv["invoice_number"]
-        .as_str()
-        .unwrap()
-        .starts_with("INV-"));
+    assert!(inv["invoice_number"].as_str().unwrap().starts_with("INV-"));
     assert_eq!(inv["status"], "latest");
     assert!(inv["date"].is_string());
     assert!(inv["order"]["id"].is_string());
@@ -180,6 +171,9 @@ async fn test_get_invoice_generates_on_the_fly() {
     assert_eq!(inv["order"]["items"].as_array().unwrap().len(), 1);
     assert_eq!(inv["order"]["items"][0]["quantity"], 3);
     assert_eq!(inv["order"]["items"][0]["unit_price"], 50000);
+    // 34e.3: payment fields present on new (uncaptured) order
+    assert_eq!(inv["payment_status"], "not_paid");
+    assert!(inv["payment_captured_at"].is_null());
 }
 
 #[tokio::test]
@@ -259,6 +253,43 @@ async fn test_get_invoice_includes_order_totals() {
     assert_eq!(body["invoice"]["order"]["item_total"], 150000);
     assert_eq!(body["invoice"]["order"]["total"], 150000);
     assert_eq!(body["invoice"]["order"]["currency_code"], "idr");
+}
+
+#[tokio::test]
+async fn test_get_invoice_payment_status_when_captured() {
+    let (app, db) = common::setup_test_app_with_invoice(test_invoice_config()).await;
+    let pool = db.pool.clone();
+    let order_id = create_order_for_invoice(&app, &pool).await;
+
+    // Capture payment
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(axum::http::Method::POST)
+                .uri(format!("/admin/orders/{}/capture-payment", order_id))
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    // Fetch invoice
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/admin/orders/{}/invoice", order_id))
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+
+    assert_eq!(body["invoice"]["payment_status"], "captured");
+    assert!(body["invoice"]["payment_captured_at"].is_string());
 }
 
 #[tokio::test]
