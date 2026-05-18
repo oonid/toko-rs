@@ -397,6 +397,7 @@ mod tests {
             .run(&pool)
             .await
             .unwrap();
+        clean_seed_data(&pool).await;
         pool
     }
 
@@ -430,7 +431,6 @@ mod tests {
     #[tokio::test]
     async fn test_seed_creates_products_and_customer() {
         let pool = setup_seed_db().await;
-        clean_seed_data(&pool).await;
         let app_db = AppDb { pool: pool.clone() };
         run_seed(&app_db).await.unwrap();
 
@@ -459,7 +459,6 @@ mod tests {
     #[tokio::test]
     async fn test_seed_is_idempotent() {
         let pool = setup_seed_db().await;
-        clean_seed_data(&pool).await;
         let app_db = AppDb { pool: pool.clone() };
 
         run_seed(&app_db).await.unwrap();
@@ -520,7 +519,6 @@ mod tests {
     #[tokio::test]
     async fn test_seed_products_are_published() {
         let pool = setup_seed_db().await;
-        clean_seed_data(&pool).await;
         let app_db = AppDb { pool: pool.clone() };
         run_seed(&app_db).await.unwrap();
 
@@ -536,7 +534,6 @@ mod tests {
     #[tokio::test]
     async fn test_seed_variants_have_option_bindings() {
         let pool = setup_seed_db().await;
-        clean_seed_data(&pool).await;
         let app_db = AppDb { pool: pool.clone() };
         run_seed(&app_db).await.unwrap();
 
@@ -555,7 +552,6 @@ mod tests {
     #[tokio::test]
     async fn test_seed_customer_has_account() {
         let pool = setup_seed_db().await;
-        clean_seed_data(&pool).await;
         let app_db = AppDb { pool: pool.clone() };
         run_seed(&app_db).await.unwrap();
 
@@ -573,7 +569,6 @@ mod tests {
     #[tokio::test]
     async fn test_seed_variant_ranks_are_ordered() {
         let pool = setup_seed_db().await;
-        clean_seed_data(&pool).await;
         let app_db = AppDb { pool: pool.clone() };
         run_seed(&app_db).await.unwrap();
 

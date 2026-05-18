@@ -27,7 +27,10 @@ pub fn admin_router() -> Router<AppState> {
         .route("/admin/orders/{id}/complete", post(admin_complete_order))
         .route("/admin/orders/{id}/fulfill", post(admin_fulfill_order))
         .route("/admin/orders/{id}/ship", post(admin_ship_order))
-        .route("/admin/orders/{id}/capture-payment", post(admin_capture_payment))
+        .route(
+            "/admin/orders/{id}/capture-payment",
+            post(admin_capture_payment),
+        )
 }
 
 #[tracing::instrument(skip_all, fields(cart_id = %cart_id))]
@@ -87,7 +90,7 @@ async fn admin_cancel_order(
     Path(id): Path<String>,
 ) -> Result<Json<OrderResponse>, AppError> {
     let order = state.repos.order.cancel_order(&id).await?;
-    let _ = state.repos.payment.cancel_by_order_id(&id).await;
+    state.repos.payment.cancel_by_order_id(&id).await?;
     Ok(Json(OrderResponse { order }))
 }
 

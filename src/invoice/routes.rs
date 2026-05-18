@@ -10,7 +10,10 @@ use axum::{
 
 pub fn admin_router() -> Router<AppState> {
     Router::new()
-        .route("/admin/invoice-config", get(admin_get_config).post(admin_update_config))
+        .route(
+            "/admin/invoice-config",
+            get(admin_get_config).post(admin_update_config),
+        )
         .route("/admin/orders/{id}/invoice", get(admin_get_invoice))
 }
 
@@ -47,6 +50,8 @@ async fn admin_get_invoice(
         return Err(AppError::NotFound("Invoice config not found".into()));
     }
     let order = state.repos.order.find_by_id(&id).await?;
-    let invoice = Invoice::from_order(config, order);
+    let payment = state.repos.payment.find_by_order_id(&id).await?;
+    let payment_captured_at = payment.and_then(|p| p.captured_at);
+    let invoice = Invoice::from_order(config, order, payment_captured_at);
     Ok(Json(InvoiceResponse { invoice }))
 }

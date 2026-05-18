@@ -10,6 +10,7 @@ pub struct OrderSummary {
     pub transaction_total: i64,
     pub paid_total: i64,
     pub refunded_total: i64,
+    pub credit_line_total: i64,
     pub accounting_total: i64,
 }
 
@@ -136,6 +137,7 @@ pub struct OrderWithItems {
     pub credit_line_subtotal: i64,
     pub credit_line_tax_total: i64,
     pub discount_subtotal: i64,
+    pub item_discount_total: i64,
     pub payment_status: String,
     pub summary: OrderSummary,
     pub fulfillments: Vec<serde_json::Value>,
@@ -143,7 +145,12 @@ pub struct OrderWithItems {
 }
 
 impl OrderWithItems {
-    pub fn from_items(order: Order, mut items: Vec<OrderLineItem>, payment_status: &str, paid_total: i64) -> Self {
+    pub fn from_items(
+        order: Order,
+        mut items: Vec<OrderLineItem>,
+        payment_status: &str,
+        paid_total: i64,
+    ) -> Self {
         for item in &mut items {
             if let Some(ref snap) = item.snapshot {
                 let s = &snap.0;
@@ -239,6 +246,7 @@ impl OrderWithItems {
             credit_line_subtotal: 0,
             credit_line_tax_total: 0,
             discount_subtotal: 0,
+            item_discount_total: 0,
             items,
             payment_status: payment_status.to_string(),
             summary: OrderSummary {
@@ -248,6 +256,7 @@ impl OrderWithItems {
                 transaction_total: paid_total,
                 paid_total,
                 refunded_total: 0,
+                credit_line_total: 0,
                 accounting_total: item_total,
             },
             fulfillments: vec![],

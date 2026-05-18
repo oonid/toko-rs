@@ -569,11 +569,27 @@ async fn test_contract_order_detail_response_shape() {
     );
     assert_has_fields(
         &body["order"],
-        &["id", "display_id", "status", "items", "item_total", "total", "summary"],
+        &[
+            "id",
+            "display_id",
+            "status",
+            "items",
+            "item_total",
+            "total",
+            "summary",
+        ],
     );
     assert_has_fields(
         &body["order"]["summary"],
-        &["pending_difference", "current_order_total", "original_order_total", "transaction_total", "paid_total", "refunded_total", "accounting_total"],
+        &[
+            "pending_difference",
+            "current_order_total",
+            "original_order_total",
+            "transaction_total",
+            "paid_total",
+            "refunded_total",
+            "accounting_total",
+        ],
     );
 }
 

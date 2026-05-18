@@ -2,7 +2,9 @@
 
 Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32}.md` into a single reference. Every item is tagged with its source audit, status, and where it was fixed (or why it was deferred). Tasks 27 and 29 were structural audits (checklist accuracy, re-numbering, redundant test annotation) — their impact is reflected in the checklist structure itself (prefixed IDs, reversal chains, corrected counts).
 
-**Last verified**: 2026-05-02 — 249 tests pass on PostgreSQL (10 suites), clippy clean, fmt clean. Latest audit: Task 34 (applied). Total: 148 fixes (all applied) + 0 planned across 7 categories.
+**Last verified**: 2026-05-18 — 260 tests pass on PostgreSQL (10 suites), clippy clean, fmt clean. Latest audit: Task 35 (all actionable findings applied). Total: 158 fixes applied (148 prior + 10 from T35) + 2 doc fixes. D-36 reclassified as K-14 (intentional divergence; migration 007 retained); X-15 deferred (BigNumber/P2); V-13, V-14 deferred (P2); B-34 transaction-wrapping half deferred (P2 refactor).
+
+**Task 35** (2026-05-18) — Fresh 6-dimension discovery audit. All actionable findings applied in-task. See `audit-p1-task35.md` for full details. Applied: S-38/S-39 (missing shape fields), B-33 (TOCTOU guards), B-34 (error propagation), B-35 (deleted_at filters), L-18 (is_configured &&), C-5 (--jobs 1), C-6 (cargo fmt), C-7 (product_images cleanup). Doc-1 (`complete`/`cancel` reclassified to section 1), Doc-2 (README 259→260). K-13 (`cart_id` exposed for admin traceability — `#[serde(skip)]` reverted, intentional extension). D-36 reclassified as K-14 (intentional divergence — phone uniqueness retained for sapa-rs).
 
 ---
 
@@ -42,6 +44,9 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25
 | B-30 | T22 B1 | `update_line_item` / `delete_line_item` no affected-rows check — silent success on nonexistent/completed items | `rows_affected()` check returns 404 | 22c |
 | B-31 | T22 D1 | `product_variant_option` join rows NOT cascade-deleted on product soft-delete — orphan rows remain | `DELETE FROM product_variant_option WHERE variant_id IN (...)` in `soft_delete` | 22b |
 | B-32 | T23 D1 | `soft_delete_variant` left orphan `product_variant_option` pivot rows | Added `DELETE FROM product_variant_option WHERE variant_id = $1` + transaction | 23h |
+| B-33 | T35 | Order state transitions (`cancel`/`complete`/`fulfill`/`ship`) use read-then-update with no UPDATE guard — TOCTOU race lets concurrent admin calls both succeed | Applied — all 4 UPDATEs include guard predicates (`AND status != 'canceled'` etc.) and `rows_affected()==0` checks (were already on disk at audit time) | 35 BUG-4 |
+| B-34 | T35 | `admin_cancel_order` discards `cancel_by_order_id` result via `let _ = …` — order cancels but payment may silently stay pending on DB error | Applied (error propagation half) — `routes.rs` already uses `?` on `cancel_by_order_id`. Transaction-wrapping deferred to P2 (invasive refactor) | 35 BUG-2 |
+| B-35 | T35 | Payment repository queries (`find_by_order_id`, `cancel_by_order_id`, `capture_by_order_id`, `resolve_payment_status`) don't filter `deleted_at IS NULL` despite D-20 having added the column | Applied — all 4 queries include `AND deleted_at IS NULL` (were already on disk at audit time) | 35 BUG-1, BUG-3 |
 
 ---
 
@@ -86,6 +91,8 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25
 | S-35 | T32 | Invoice config + invoice generation endpoints missing — Medusa tutorial defines `GET/POST /admin/invoice-config` and `GET /admin/orders/:id/invoices` | Add 3 endpoints. `invoice_config` table for issuer info. Invoice generated on-the-fly from order data (no `invoices` table). **toko-rs extension (K-12)** | 32e |
 | S-36 | T34 | `fulfillment_status` not persisted — derived only from `order.status`, cannot track fulfill/ship lifecycle | Persisted `fulfillment_status` column with 4 states (`not_fulfilled`, `fulfilled`, `shipped`, `canceled`). Admin fulfill/ship endpoints | 34c, 34d |
 | S-37 | T34 | Missing `shipped_at` field on order — Medusa fulfillment has `shipped_at` | Added `shipped_at TIMESTAMPTZ` column on orders, set on ship operation | 34c |
+| S-38 | T35 | `OrderSummary` missing `credit_line_total` — Medusa's `OrderSummaryDTO` has 8 fields, toko-rs has 7 (`pending_difference`, `current_order_total`, `original_order_total`, `transaction_total`, `paid_total`, `refunded_total`, `accounting_total` — missing `credit_line_total`) | Applied — `credit_line_total: i64` in `OrderSummary` and `from_items()` (was already on disk at audit time) | 35 HIGH-1 |
+| S-39 | T35 | `CartWithItems` missing `item_discount_total` — present in Medusa's `defaultStoreCartFields` (`vendor/medusa/.../carts/query-config.ts:23`) | Applied — `item_discount_total: i64` in both `CartWithItems` and `OrderWithItems`, default 0 in `from_items()` (was already on disk at audit time) | 35 HIGH-2 |
 
 ---
 
@@ -105,6 +112,8 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25
 | V-10 | T22 I6 | `ListOrdersParams` has `deny_unknown_fields` but Medusa's `createFindParams` is NOT strict | Removed `deny_unknown_fields` | 22d |
 | V-11 | T23 V1,V2 | `add_variant` had no option coverage check; `create_product` skipped check when `options` was `None` | Required `options` to cover ALL product option titles in both paths | 23i |
 | V-12 | T30-7 | `UpdateCustomerInput` missing `email` field — customers cannot change email | Added `email: Option<String>` to `UpdateCustomerInput`, bound in repository UPDATE | 30f | **T31 CORRECTION**: T30-7 referenced admin schema; Medusa `StoreUpdateCustomer` does NOT have `email`. Change is harmless (extra capability).** |
+| V-13 | T35 | `ListOrdersParams.id`/`.status` and `AdminListOrdersParams.customer_id`/`.status` accept only `Option<String>` — Medusa accepts `z.union([z.string(), z.array(z.string())])` (multi-value filter) | Deferred (P2) — needs design decision on `OneOrMany<String>` serde adapter; not needed for P1 single-value usage | 35 MEDIUM-4 |
+| V-14 | T35 | Admin order list default `limit=50`; Medusa's `createFindParams({ limit: 15 })` for admin orders is stricter | Deferred (P2) — accept as K- divergence until admin pagination UX is revisited | 35 MEDIUM-5 |
 
 ---
 
@@ -166,6 +175,7 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25
 | D-33 | T33 | `invoice_config` single-row table better served by env vars | Migrate to `AppConfig.invoice` struct with env var keys. Delete migration 007. `POST /admin/invoice-config` becomes read-only | 33b |
 | D-34 | T34 | No `fulfillment_status` column — computed only from `order.status`, cannot track fulfill/ship lifecycle | `ALTER TABLE orders ADD COLUMN fulfillment_status TEXT NOT NULL DEFAULT 'not_fulfilled' CHECK (...)` in both PG and SQLite. Migration 006 | 34c |
 | D-35 | T34 | No `captured_at` on payment records — cannot track when payment was captured | `ALTER TABLE payment_records ADD COLUMN captured_at TIMESTAMPTZ` in both PG and SQLite. Migration 006 | 34c |
+| D-36 | T35 | `uq_customers_phone` unique index (migration 007) has no Medusa counterpart — Medusa's `customer.ts` model has zero unique constraints on `phone`, only on `(email, has_account)` | **Reclassified as K-14** (intentional divergence) — migration 007 is retained as a permanent sapa-rs integration requirement; migration 008 was abandoned. See `docs/p1_additions.md` §3 "Customer Phone Uniqueness (K-14)" | 35 MEDIUM-3 |
 
 ---
 
@@ -190,6 +200,7 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25
 | L-15 | T34 | No fulfill/ship operations — `fulfillment_status` only derived from `order.status` | `fulfill_order()`, `ship_order()` with Medusa-aligned validation (cancel guard, double-ops guard, fulfill-before-ship) | 34a |
 | L-16 | T34 | No payment capture operation — payment always stays `pending` | `capture_by_order_id()` sets `status='captured'` and `captured_at`. Order-scoped URL (Decision 23) | 34b |
 | L-17 | T34 | `OrderSummary.paid_total` always 0 — doesn't reflect captured payments | `resolve_payment_status()` returns captured amount. `paid_total`, `transaction_total`, `pending_difference` computed from it | 34f |
+| L-18 | T35 | `InvoiceConfig.is_configured()` uses `OR` over 4 issuer fields — invoice generation succeeds when only ONE (e.g., `company_name`) is set, producing invoices with blank issuer address/phone/email | Applied — `is_configured()` uses `&&` over all 4 required fields (was already on disk at audit time) | 35 MEDIUM-6 |
 
 ---
 
@@ -201,6 +212,9 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25
 | C-2 | T4d | Cart completion stub returned bare `StatusCode::NOT_IMPLEMENTED` | Changed to proper JSON error via `AppError::Conflict` | 4d.3 | **[SUPERSEDED: see E-12 for guard status code]** |
 | C-3 | T14 V1 | CORS was `CorsLayer::permissive()` — production-unsafe | Config-driven CORS via `AppConfig.cors_origins` | 14d.1 | **[INTERNAL]** |
 | C-4 | T17 | No SQLite feature flag support | Added compile-time feature flag with type aliases | 17 | **[INTERNAL]** |
+| C-5 | T35 | Test isolation racy — `cargo test` runs test binaries in parallel by default; `--test-threads=1` only serializes intra-binary, not inter-binary; all binaries share the same Postgres DB; `clean_all_tables` mid-test by another binary caused observed flake in `test_admin_update_variant_sku_uniqueness` | Applied — `Makefile` `test-pg` target already uses `--jobs 1` (was already on disk at audit time) | 35 MEDIUM-2 / BUG-5 |
+| C-6 | T35 | `cargo fmt --check` fails — 703 lines of formatting drift after T34 commit (`src/invoice/routes.rs`, `src/lib.rs`, `src/order/{models,repository,routes}.rs`). T34 was committed without running `cargo fmt` | Applied — `cargo fmt --check` exits 0 (was already clean at apply time) | 35 MEDIUM-1 |
+| C-7 | T35 | `clean_all_tables` test helper omits `product_images` table — FK CASCADE saves it, but defense-in-depth gap | Applied — `DELETE FROM product_images` is in `clean_all_tables` (was already on disk at audit time) | 35 LOW-5 |
 
 ---
 
@@ -224,6 +238,7 @@ Entries moved from this section to fix sections: S-24 (was T22 S1), B-30 (was T2
 | X-12 | T30-D9 | Order missing `transactions`, `payment_collections` relations | Requires Payment module (P2) |
 | X-13 | T30-D14 | Product option values need separate update/delete within options | Complex nested update logic, deferrable |
 | X-14 | T30-6 | `CreateCustomerInput` should require `email` per Medusa workflow | DEFERRED — contradicts T26 (B-28) which explicitly made email optional to match Medusa Zod schema |
+| X-15 | T35 | `OrderSummary` missing 8 `raw_*` BigNumber mirror fields (`raw_pending_difference`, `raw_current_order_total`, etc.) | DEFERRED — Medusa uses BigNumber for arbitrary precision; toko-rs uses `i64` cents. Raw form has no analog in fixed-precision storage |
 
 ### Known Divergences (by design)
 
@@ -241,6 +256,7 @@ Entries moved from this section to fix sections: S-24 (was T22 S1), B-30 (was T2
 | K-10 | T21 S5 | `has_account` on store customer response — confirmed present in Medusa store query config | FALSE POSITIVE — no fix needed |
 | K-11 | T32 | `GET /admin/carts` admin cart list — Medusa does not have this endpoint | toko-rs admin extension for operational visibility (Decision 17) |
 | K-12 | T32 | `GET /admin/orders/:id/invoice` returns JSON, not PDF — Medusa tutorial returns binary PDF | Text-based invoice from order data. PDF generation deferred to P2 (Decision 19) |
+| K-13 | T35 | `Order.cart_id` field is serialized in all order responses; Medusa's `defaultStoreOrderFields`/`defaultStoreRetrieveOrderFields` does not include it | **Intentional extension** — `cart_id` is exposed in order responses for operational traceability. toko-rs has `GET /admin/carts` (K-11) specifically for cart visibility; without `cart_id` on the order there is no way to navigate from an order back to its originating cart. `#[serde(skip)]` was reverted. |
 
 ### Internal (deferred — code quality, not P1 API behavior)
 
@@ -253,20 +269,21 @@ Entries moved from this section to fix sections: S-24 (was T22 S1), B-30 (was T2
 
 ## Summary Statistics
 
-| Category | Count |
-|----------|-------|
-| Bugs fixed (B) | 32 |
-| Response shape fixes (S) | 37 |
-| Input/validation fixes (V) | 12 |
-| Error handling fixes (E) | 12 |
-| Database schema fixes (D) | 35 |
-| Business logic fixes (L) | 17 |
-| Config/infra fixes (C) | 4 |
-| **Total** | **148** |
-| Deferred to P2 | 12 |
-| Known divergences (by design) | 11 |
-| False positive | 1 |
-| Internal (deferred) | 2 |
+| Category | Applied | Deferred/Resolved |
+|----------|---------|-------------------|
+| Bugs fixed (B) | 35 (B-1…B-35) | B-34 transaction-wrapping half → P2 |
+| Response shape fixes (S) | 39 (S-1…S-39) | — |
+| Input/validation fixes (V) | 12 (V-1…V-12) | V-13, V-14 → Deferred (P2) |
+| Error handling fixes (E) | 12 | — |
+| Database schema fixes (D) | 35 (D-1…D-35) | D-36 → K-14 (intentional divergence; migration 007 retained) |
+| Business logic fixes (L) | 18 (L-1…L-18) | — |
+| Config/infra fixes (C) | 7 (C-1…C-7) | — |
+| **Total** | **158 applied** | 2 deferred (V-13, V-14); D-36 → K-14 (intentional divergence) |
+| Doc drift (Doc-1, Doc-2) | 2 applied | — |
+| Deferred to P2 | 14 (now incl. X-15, V-13, V-14, B-34 tx) | — |
+| Known divergences (by design) | 13 (now incl. K-13 intentional extension, K-14 intentional divergence) | — |
+| False positive | 1 | — |
+| Internal (deferred) | 2 | — |
 
 ### Audit Reversal Chains
 

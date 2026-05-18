@@ -120,6 +120,7 @@ pub struct CartWithItems {
     pub credit_line_subtotal: i64,
     pub credit_line_tax_total: i64,
     pub discount_subtotal: i64,
+    pub item_discount_total: i64,
     pub shipping_discount_total: i64,
     pub original_shipping_discount_total: i64,
 }
@@ -221,6 +222,7 @@ impl CartWithItems {
             credit_line_subtotal: 0,
             credit_line_tax_total: 0,
             discount_subtotal: 0,
+            item_discount_total: 0,
             shipping_discount_total: 0,
             original_shipping_discount_total: 0,
             items,

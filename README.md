@@ -186,7 +186,7 @@ cargo run --features sqlite --no-default-features
 ```bash
 make docker-up                        # Start PostgreSQL
 
-# Integration tests (259 tests, requires PostgreSQL)
+# Integration tests (263 tests, requires PostgreSQL)
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/toko_test \
   cargo test -- --test-threads=1
 
@@ -268,7 +268,7 @@ make cov          # cargo llvm-cov
 
 ## Project Status
 
-**P1 (Core MVP) — Complete.** 259 tests, clippy-clean, 43 endpoint methods, 14 tables, 7 migrations.
+**P1 (Core MVP) — Complete.** 263 tests, clippy-clean, 43 endpoint methods, 14 tables, 7 migrations.
 
 The following are out of scope for P1 and planned for future phases:
 

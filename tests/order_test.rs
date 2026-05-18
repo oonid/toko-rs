@@ -1283,7 +1283,10 @@ async fn test_admin_shipped_order_has_shipped_at() {
     let resp = app.oneshot(req).await.unwrap();
     let body = body_json(resp).await;
     assert_eq!(body["order"]["fulfillment_status"], "shipped");
-    assert!(body["order"]["shipped_at"].is_string(), "shipped_at must be set");
+    assert!(
+        body["order"]["shipped_at"].is_string(),
+        "shipped_at must be set"
+    );
 }
 
 #[tokio::test]
@@ -1316,7 +1319,7 @@ async fn test_admin_capture_updates_payment_record() {
         .unwrap();
     app.clone().oneshot(req).await.unwrap();
 
-    let payment: (String, Option<chrono::DateTime<chrono::Utc>>,) =
+    let payment: (String, Option<chrono::DateTime<chrono::Utc>>) =
         sqlx::query_as("SELECT status, captured_at FROM payment_records WHERE order_id = $1")
             .bind(&order_id)
             .fetch_one(&pool)
@@ -1366,6 +1369,30 @@ async fn test_admin_capture_already_captured() {
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
 
+#[tokio::test]
+async fn test_admin_capture_payment_on_canceled_order() {
+    let (app, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+    let order_id = create_pending_order(&app, &pool).await;
+
+    // Cancel the order first
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(format!("/admin/orders/{}/cancel", order_id))
+        .body(Body::empty())
+        .unwrap();
+    app.clone().oneshot(req).await.unwrap();
+
+    // Attempt capture on canceled order → 400
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(format!("/admin/orders/{}/capture-payment", order_id))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
 // --- Admin order list / get (store-modification.md endpoints) ---
 
 #[tokio::test]
@@ -1401,45 +1428,70 @@ async fn test_admin_list_orders_filter_by_customer_id() {
     sqlx::query("INSERT INTO customers (id, first_name, email, has_account) VALUES ('cus_al2', 'Admin2', 'al2@test.com', TRUE) ON CONFLICT (id) DO NOTHING")
         .execute(&pool).await.unwrap();
 
-    let res = app.clone().oneshot(request(
-        Method::POST,
-        "/store/carts",
-        &json!({"currency_code": "idr", "customer_id": "cus_al2"}),
-    )).await.unwrap();
-    let cart_id = body_json(res).await["cart"]["id"].as_str().unwrap().to_string();
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            "/store/carts",
+            &json!({"currency_code": "idr", "customer_id": "cus_al2"}),
+        ))
+        .await
+        .unwrap();
+    let cart_id = body_json(res).await["cart"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
-    app.clone().oneshot(request(
-        Method::POST,
-        &format!("/store/carts/{}/line-items", cart_id),
-        &json!({"variant_id": "var_1", "quantity": 1}),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/line-items", cart_id),
+            &json!({"variant_id": "var_1", "quantity": 1}),
+        ))
+        .await
+        .unwrap();
 
-    let res = app.clone().oneshot(request(
-        Method::POST,
-        &format!("/store/carts/{}/complete", cart_id),
-        &json!(null),
-    )).await.unwrap();
-    let order_id2 = body_json(res).await["order"]["id"].as_str().unwrap().to_string();
+    let res = app
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            &format!("/store/carts/{}/complete", cart_id),
+            &json!(null),
+        ))
+        .await
+        .unwrap();
+    let order_id2 = body_json(res).await["order"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
-    let res = app.clone().oneshot(
-        Request::builder()
-            .method(Method::GET)
-            .uri("/admin/orders?customer_id=cus_test1")
-            .body(Body::empty())
-            .unwrap(),
-    ).await.unwrap();
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri("/admin/orders?customer_id=cus_test1")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(res.status(), StatusCode::OK);
     let body = body_json(res).await;
     assert_eq!(body["count"], 1);
     assert_eq!(body["orders"][0]["id"], order_id1.as_str());
 
-    let res = app.clone().oneshot(
-        Request::builder()
-            .method(Method::GET)
-            .uri("/admin/orders?customer_id=cus_al2")
-            .body(Body::empty())
-            .unwrap(),
-    ).await.unwrap();
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri("/admin/orders?customer_id=cus_al2")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(res.status(), StatusCode::OK);
     let body = body_json(res).await;
     assert_eq!(body["count"], 1);
@@ -1454,33 +1506,43 @@ async fn test_admin_list_orders_filter_by_status_canceled() {
     let order_id1 = create_pending_order(&app, &pool).await;
     let _order_id2 = create_pending_order(&app, &pool).await;
 
-    app.clone().oneshot(
-        Request::builder()
-            .method(Method::POST)
-            .uri(format!("/admin/orders/{}/cancel", order_id1))
-            .body(Body::empty())
-            .unwrap(),
-    ).await.unwrap();
+    app.clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri(format!("/admin/orders/{}/cancel", order_id1))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
 
-    let res = app.clone().oneshot(
-        Request::builder()
-            .method(Method::GET)
-            .uri("/admin/orders?status=canceled")
-            .body(Body::empty())
-            .unwrap(),
-    ).await.unwrap();
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri("/admin/orders?status=canceled")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(res.status(), StatusCode::OK);
     let body = body_json(res).await;
     assert_eq!(body["count"], 1);
     assert_eq!(body["orders"][0]["status"], "canceled");
 
-    let res = app.oneshot(
-        Request::builder()
-            .method(Method::GET)
-            .uri("/admin/orders?status=pending")
-            .body(Body::empty())
-            .unwrap(),
-    ).await.unwrap();
+    let res = app
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri("/admin/orders?status=pending")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(res.status(), StatusCode::OK);
     let body = body_json(res).await;
     assert_eq!(body["count"], 1);
@@ -1496,13 +1558,17 @@ async fn test_admin_list_orders_pagination() {
     create_pending_order(&app, &pool).await;
     create_pending_order(&app, &pool).await;
 
-    let res = app.clone().oneshot(
-        Request::builder()
-            .method(Method::GET)
-            .uri("/admin/orders?limit=2&offset=0")
-            .body(Body::empty())
-            .unwrap(),
-    ).await.unwrap();
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri("/admin/orders?limit=2&offset=0")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(res.status(), StatusCode::OK);
     let body = body_json(res).await;
     assert_eq!(body["orders"].as_array().unwrap().len(), 2);
@@ -1510,13 +1576,16 @@ async fn test_admin_list_orders_pagination() {
     assert_eq!(body["offset"], 0);
     assert_eq!(body["limit"], 2);
 
-    let res = app.oneshot(
-        Request::builder()
-            .method(Method::GET)
-            .uri("/admin/orders?limit=2&offset=2")
-            .body(Body::empty())
-            .unwrap(),
-    ).await.unwrap();
+    let res = app
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri("/admin/orders?limit=2&offset=2")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(res.status(), StatusCode::OK);
     let body = body_json(res).await;
     assert_eq!(body["orders"].as_array().unwrap().len(), 1);

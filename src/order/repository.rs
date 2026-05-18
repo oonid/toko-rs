@@ -333,17 +333,23 @@ impl OrderRepository {
 
         let (payment_status, paid_total) = self.resolve_payment_status(&order.id).await;
 
-        Ok(OrderWithItems::from_items(order, items, &payment_status, paid_total))
+        Ok(OrderWithItems::from_items(
+            order,
+            items,
+            &payment_status,
+            paid_total,
+        ))
     }
 
     async fn resolve_payment_status(&self, order_id: &str) -> (String, i64) {
-        let result: Option<(String, i64)> =
-            sqlx::query_as("SELECT status, amount FROM payment_records WHERE order_id = $1")
-                .bind(order_id)
-                .fetch_optional(&self.pool)
-                .await
-                .ok()
-                .flatten();
+        let result: Option<(String, i64)> = sqlx::query_as(
+            "SELECT status, amount FROM payment_records WHERE order_id = $1 AND deleted_at IS NULL",
+        )
+        .bind(order_id)
+        .fetch_optional(&self.pool)
+        .await
+        .ok()
+        .flatten();
 
         match result {
             Some((ref status, _amount)) if status == "authorized" => ("authorized".to_string(), 0),
@@ -355,97 +361,81 @@ impl OrderRepository {
     }
 
     pub async fn cancel_order(&self, id: &str) -> Result<OrderWithItems, AppError> {
-        let order = self.find_by_id(id).await?;
+        // Initial existence check to give a proper 404
+        let _order = self.find_by_id(id).await?;
 
-        if order.order.status == "canceled" {
-            return Err(AppError::InvalidData(
-                "Order is already canceled".to_string(),
-            ));
-        }
-        if order.order.status == "completed" {
-            return Err(AppError::InvalidData(
-                "Cannot cancel a completed order".to_string(),
-            ));
-        }
-
-        sqlx::query(
-            "UPDATE orders SET status = 'canceled', fulfillment_status = 'canceled', canceled_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+        let result = sqlx::query(
+            "UPDATE orders SET status = 'canceled', fulfillment_status = 'canceled', canceled_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND status != 'canceled' AND status != 'completed'",
         )
         .bind(id)
         .execute(&self.pool)
         .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(AppError::InvalidData(
+                "Order cannot be canceled (already canceled or completed)".to_string(),
+            ));
+        }
 
         self.find_by_id(id).await
     }
 
     pub async fn complete_order(&self, id: &str) -> Result<OrderWithItems, AppError> {
-        let order = self.find_by_id(id).await?;
+        // Initial existence check to give a proper 404
+        let _order = self.find_by_id(id).await?;
 
-        if order.order.status == "completed" {
-            return Err(AppError::InvalidData(
-                "Order is already completed".to_string(),
-            ));
-        }
-        if order.order.status == "canceled" {
-            return Err(AppError::InvalidData(
-                "Cannot complete a canceled order".to_string(),
-            ));
-        }
-
-        sqlx::query(
-            "UPDATE orders SET status = 'completed', updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+        let result = sqlx::query(
+            "UPDATE orders SET status = 'completed', updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND status != 'completed' AND status != 'canceled'",
         )
         .bind(id)
         .execute(&self.pool)
         .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(AppError::InvalidData(
+                "Order cannot be completed (already completed or canceled)".to_string(),
+            ));
+        }
 
         self.find_by_id(id).await
     }
 
     pub async fn fulfill_order(&self, id: &str) -> Result<OrderWithItems, AppError> {
-        let order = self.find_by_id(id).await?;
+        // Initial existence check to give a proper 404
+        let _order = self.find_by_id(id).await?;
 
-        if order.order.status == "canceled" {
-            return Err(AppError::InvalidData(
-                "Cannot fulfill a canceled order".to_string(),
-            ));
-        }
-        if order.order.fulfillment_status != "not_fulfilled" {
-            return Err(AppError::InvalidData(
-                "Order is already fulfilled".to_string(),
-            ));
-        }
-
-        sqlx::query(
-            "UPDATE orders SET fulfillment_status = 'fulfilled', updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+        let result = sqlx::query(
+            "UPDATE orders SET fulfillment_status = 'fulfilled', updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND fulfillment_status = 'not_fulfilled' AND status != 'canceled'",
         )
         .bind(id)
         .execute(&self.pool)
         .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(AppError::InvalidData(
+                "Order cannot be fulfilled (already fulfilled or canceled)".to_string(),
+            ));
+        }
 
         self.find_by_id(id).await
     }
 
     pub async fn ship_order(&self, id: &str) -> Result<OrderWithItems, AppError> {
-        let order = self.find_by_id(id).await?;
+        // Initial existence check to give a proper 404
+        let _order = self.find_by_id(id).await?;
 
-        if order.order.status == "canceled" {
-            return Err(AppError::InvalidData(
-                "Cannot ship a canceled order".to_string(),
-            ));
-        }
-        if order.order.fulfillment_status != "fulfilled" {
-            return Err(AppError::InvalidData(
-                "Order must be fulfilled before shipping".to_string(),
-            ));
-        }
-
-        sqlx::query(
-            "UPDATE orders SET fulfillment_status = 'shipped', shipped_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+        let result = sqlx::query(
+            "UPDATE orders SET fulfillment_status = 'shipped', shipped_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND fulfillment_status = 'fulfilled' AND status != 'canceled'",
         )
         .bind(id)
         .execute(&self.pool)
         .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(AppError::InvalidData(
+                "Order cannot be shipped (must be fulfilled and not canceled)".to_string(),
+            ));
+        }
 
         self.find_by_id(id).await
     }

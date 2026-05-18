@@ -31,7 +31,8 @@ async fn test_e2e_p1_full_lifecycle() {
     let products = body["products"].as_array().unwrap();
     assert_eq!(products.len(), 3);
     assert_eq!(body["count"], 3);
-    let titles: Vec<&str> = products.iter()
+    let titles: Vec<&str> = products
+        .iter()
         .map(|p| p["title"].as_str().unwrap())
         .collect();
     assert!(titles.contains(&"Kaos Polos"));
@@ -185,12 +186,16 @@ async fn test_e2e_p1_full_lifecycle() {
         )
         .await;
     assert_eq!(resp.status(), 200);
-    let cart_id2 = ctx.body(resp).await["cart"]["id"].as_str().unwrap().to_string();
+    let cart_id2 = ctx.body(resp).await["cart"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     ctx.post_json(
         &format!("/store/carts/{}/line-items", cart_id2),
         &json!({"variant_id": "var_seed_jeans_30", "quantity": 1}),
-    ).await;
+    )
+    .await;
 
     let resp = ctx
         .post_json(&format!("/store/carts/{}/complete", cart_id2), &json!(null))
@@ -262,7 +267,10 @@ async fn test_e2e_p1_full_lifecycle() {
         )
         .await;
     assert_eq!(resp.status(), 200);
-    assert_eq!(ctx.body(resp).await["customer"]["email"], "budi.new@example.com");
+    assert_eq!(
+        ctx.body(resp).await["customer"]["email"],
+        "budi.new@example.com"
+    );
 
     // ── A1: Admin create product with images, options, variants ───────────
     let resp = ctx
@@ -318,7 +326,13 @@ async fn test_e2e_p1_full_lifecycle() {
         )
         .await;
     assert_eq!(resp.status(), 200);
-    assert_eq!(ctx.body(resp).await["product"]["variants"].as_array().unwrap().len(), 3);
+    assert_eq!(
+        ctx.body(resp).await["product"]["variants"]
+            .as_array()
+            .unwrap()
+            .len(),
+        3
+    );
 
     // A8: Delete
     let resp = ctx.delete(&format!("/admin/products/{}", hoodie_id)).await;
@@ -361,19 +375,29 @@ async fn test_e2e_p1_full_lifecycle() {
     let resp = ctx
         .post_json("/store/carts", &json!({"currency_code": "idr"}))
         .await;
-    let cart_id3 = ctx.body(resp).await["cart"]["id"].as_str().unwrap().to_string();
+    let cart_id3 = ctx.body(resp).await["cart"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
     ctx.post_json(
         &format!("/store/carts/{}/line-items", cart_id3),
         &json!({"variant_id": "var_seed_kaos_m", "quantity": 1}),
-    ).await;
+    )
+    .await;
     let resp = ctx
         .post_json(&format!("/store/carts/{}/complete", cart_id3), &json!(null))
         .await;
-    let lifecycle_order_id = ctx.body(resp).await["order"]["id"].as_str().unwrap().to_string();
+    let lifecycle_order_id = ctx.body(resp).await["order"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     // ── AC4: Cancel guest order ────────────────────────────────────────────
     let resp = ctx
-        .post_json(&format!("/admin/orders/{}/cancel", guest_order_id), &json!(null))
+        .post_json(
+            &format!("/admin/orders/{}/cancel", guest_order_id),
+            &json!(null),
+        )
         .await;
     assert_eq!(resp.status(), 200);
     let body = ctx.body(resp).await;
@@ -382,13 +406,19 @@ async fn test_e2e_p1_full_lifecycle() {
 
     // Cannot cancel twice
     let resp = ctx
-        .post_json(&format!("/admin/orders/{}/cancel", guest_order_id), &json!(null))
+        .post_json(
+            &format!("/admin/orders/{}/cancel", guest_order_id),
+            &json!(null),
+        )
         .await;
     assert_eq!(resp.status(), 400);
 
     // ── AC8: Capture payment ──────────────────────────────────────────────
     let resp = ctx
-        .post_json(&format!("/admin/orders/{}/capture-payment", lifecycle_order_id), &json!(null))
+        .post_json(
+            &format!("/admin/orders/{}/capture-payment", lifecycle_order_id),
+            &json!(null),
+        )
         .await;
     assert_eq!(resp.status(), 200);
     let body = ctx.body(resp).await;
@@ -398,26 +428,41 @@ async fn test_e2e_p1_full_lifecycle() {
 
     // Cannot capture twice
     let resp = ctx
-        .post_json(&format!("/admin/orders/{}/capture-payment", lifecycle_order_id), &json!(null))
+        .post_json(
+            &format!("/admin/orders/{}/capture-payment", lifecycle_order_id),
+            &json!(null),
+        )
         .await;
     assert_eq!(resp.status(), 400);
 
     // ── AC6: Fulfill ───────────────────────────────────────────────────────
     let resp = ctx
-        .post_json(&format!("/admin/orders/{}/fulfill", lifecycle_order_id), &json!(null))
+        .post_json(
+            &format!("/admin/orders/{}/fulfill", lifecycle_order_id),
+            &json!(null),
+        )
         .await;
     assert_eq!(resp.status(), 200);
-    assert_eq!(ctx.body(resp).await["order"]["fulfillment_status"], "fulfilled");
+    assert_eq!(
+        ctx.body(resp).await["order"]["fulfillment_status"],
+        "fulfilled"
+    );
 
     // Cannot fulfill twice
     let resp = ctx
-        .post_json(&format!("/admin/orders/{}/fulfill", lifecycle_order_id), &json!(null))
+        .post_json(
+            &format!("/admin/orders/{}/fulfill", lifecycle_order_id),
+            &json!(null),
+        )
         .await;
     assert_eq!(resp.status(), 400);
 
     // ── AC7: Ship ─────────────────────────────────────────────────────────
     let resp = ctx
-        .post_json(&format!("/admin/orders/{}/ship", lifecycle_order_id), &json!(null))
+        .post_json(
+            &format!("/admin/orders/{}/ship", lifecycle_order_id),
+            &json!(null),
+        )
         .await;
     assert_eq!(resp.status(), 200);
     let body = ctx.body(resp).await;
@@ -426,14 +471,20 @@ async fn test_e2e_p1_full_lifecycle() {
 
     // ── AC5: Complete budi's order ────────────────────────────────────────
     let resp = ctx
-        .post_json(&format!("/admin/orders/{}/complete", budi_order_id), &json!(null))
+        .post_json(
+            &format!("/admin/orders/{}/complete", budi_order_id),
+            &json!(null),
+        )
         .await;
     assert_eq!(resp.status(), 200);
     assert_eq!(ctx.body(resp).await["order"]["status"], "completed");
 
     // Cannot complete twice
     let resp = ctx
-        .post_json(&format!("/admin/orders/{}/complete", budi_order_id), &json!(null))
+        .post_json(
+            &format!("/admin/orders/{}/complete", budi_order_id),
+            &json!(null),
+        )
         .await;
     assert_eq!(resp.status(), 400);
 
@@ -471,7 +522,9 @@ async fn test_e2e_p1_full_lifecycle() {
     assert_eq!(body["limit"], 2);
 
     // ── NEW: GET /admin/orders/{id} ────────────────────────────────────────
-    let resp = ctx.get(&format!("/admin/orders/{}", lifecycle_order_id)).await;
+    let resp = ctx
+        .get(&format!("/admin/orders/{}", lifecycle_order_id))
+        .await;
     assert_eq!(resp.status(), 200);
     let body = ctx.body(resp).await;
     assert_eq!(body["order"]["id"], lifecycle_order_id.as_str());
@@ -512,9 +565,15 @@ async fn test_e2e_p1_full_lifecycle() {
 
     // ── Error: empty cart checkout ─────────────────────────────────────────
     let resp = ctx.post_json("/store/carts", &json!({})).await;
-    let empty_cart_id = ctx.body(resp).await["cart"]["id"].as_str().unwrap().to_string();
+    let empty_cart_id = ctx.body(resp).await["cart"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
     let resp = ctx
-        .post_json(&format!("/store/carts/{}/complete", empty_cart_id), &json!(null))
+        .post_json(
+            &format!("/store/carts/{}/complete", empty_cart_id),
+            &json!(null),
+        )
         .await;
     assert_eq!(resp.status(), 400);
     assert_eq!(ctx.body(resp).await["type"], "invalid_data");
@@ -533,7 +592,10 @@ async fn test_e2e_p1_full_lifecycle() {
     let resp = ctx
         .post_json("/store/carts", &json!({"currency_code": "idr"}))
         .await;
-    let tmp_cart = ctx.body(resp).await["cart"]["id"].as_str().unwrap().to_string();
+    let tmp_cart = ctx.body(resp).await["cart"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
     let resp = ctx
         .post_json(
             &format!("/store/carts/{}/line-items", tmp_cart),
