@@ -1675,4 +1675,100 @@ But each step is independent. Admin decides the order of operations.
 - [x] Update `docs/audit-master-checklist.md` — add T35 entries (S-38, S-39, B-33, B-34, B-35, L-18, C-5, C-6, C-7, K-13 revert, K-14)
 - [x] Run full test suite on PostgreSQL — 262 pass
 - [x] Run `cargo clippy -- -D warnings` — zero warnings
+
+## 36. Task 36 — Admin Order Export (T36)
+
+Implements `GET /admin/orders/export` — a synchronous CSV download endpoint that queries orders from the database (with optional filters) and returns a CSV file directly in the HTTP response. No background job, file storage, or notification system required. See `specs/order-export/spec.md` and design.md Decision 26.
+
+### 36a. Dependency — add `csv` crate
+
+- [ ] Add `csv = "1"` to `[dependencies]` in `Cargo.toml`
+- [ ] Run `cargo check` — compiles clean
+
+### 36b. Types — `AdminExportOrdersParams` and `OrderExportRow`
+
+- [ ] Add `AdminExportOrdersParams` struct to `src/order/types.rs` with fields:
+  - `status: Option<String>` — filter by order status (`pending`, `completed`, `canceled`)
+  - `created_at_from: Option<chrono::DateTime<chrono::Utc>>` — lower bound on `created_at` (inclusive)
+  - `created_at_to: Option<chrono::DateTime<chrono::Utc>>` — upper bound on `created_at` (inclusive)
+  - `q: Option<String>` — partial case-insensitive match on `email`
+- [ ] Derive `serde::Deserialize` on `AdminExportOrdersParams` for query-string extraction
+- [ ] Add `OrderExportRow` struct to `src/order/types.rs` with fields:
+  - `id: String`, `display_id: i64`, `email: Option<String>`, `currency_code: String`
+  - `status: String`, `fulfillment_status: String`, `payment_status: String`
+  - `item_count: i64`, `total_cents: i64`
+  - `created_at: chrono::DateTime<chrono::Utc>`
+  - `shipped_at: Option<chrono::DateTime<chrono::Utc>>`
+  - `canceled_at: Option<chrono::DateTime<chrono::Utc>>`
+
+### 36c. Repository — `export_orders` method
+
+- [ ] Add `pub async fn export_orders(&self, params: &AdminExportOrdersParams) -> Result<Vec<OrderExportRow>, AppError>` to `OrderRepository` in `src/order/repository.rs`
+- [ ] Write a single SQL query using LEFT JOINs — do not loop and call `resolve_payment_status` per row:
+  ```sql
+  SELECT
+    o.id, o.display_id, o.email, o.currency_code,
+    o.status, o.fulfillment_status,
+    o.created_at, o.shipped_at, o.canceled_at,
+    COALESCE(pr.status, 'pending') AS raw_payment_status,
+    COUNT(li.id)                   AS item_count,
+    COALESCE(SUM(li.quantity * li.unit_price), 0) AS total_cents
+  FROM orders o
+  LEFT JOIN payment_records pr
+    ON pr.order_id = o.id AND pr.deleted_at IS NULL
+  LEFT JOIN order_line_items li
+    ON li.order_id = o.id AND li.deleted_at IS NULL
+  WHERE o.deleted_at IS NULL
+    AND ($1::text   IS NULL OR o.status = $1)
+    AND ($2::timestamptz IS NULL OR o.created_at >= $2)
+    AND ($3::timestamptz IS NULL OR o.created_at <= $3)
+    AND ($4::text   IS NULL OR o.email ILIKE '%' || $4 || '%')
+  GROUP BY o.id, pr.status
+  ORDER BY o.created_at ASC
+  ```
+- [ ] Apply the same `raw_payment_status → payment_status` mapping used in `resolve_payment_status`: `pending` → `not_paid`, `authorized` → `authorized`, `captured` → `captured`, `failed` → `not_paid`, `refunded` → `refunded`, `canceled` → `canceled`
+- [ ] Handle SQLite backend: replace `$N::type` placeholders with `?`, replace `ILIKE` with `LIKE` (feature-gated, same pattern as other repository methods)
+- [ ] Validate `status` param: if provided and not one of `pending`, `completed`, `canceled`, return `AppError::InvalidData("Invalid status filter: ...")`
+
+### 36d. Route handler — `admin_export_orders`
+
+- [ ] Add `pub async fn admin_export_orders` handler to `src/order/routes.rs`:
+  - Extract `Query(params): Query<AdminExportOrdersParams>`
+  - Call `state.repos.order.export_orders(&params).await?`
+  - Build CSV in-memory using `csv::Writer::from_writer(vec![])`:
+    - Write header row: `["Order ID", "Display ID", "Email", "Currency", "Status", "Fulfillment Status", "Payment Status", "Item Count", "Total (cents)", "Created At", "Shipped At", "Canceled At"]`
+    - Write one data row per `OrderExportRow`; format `Option` fields as empty string when `None`, timestamps as RFC 3339
+  - Finalize with `wtr.into_inner()` → `Vec<u8>`
+  - Return `(StatusCode::OK, [(CONTENT_TYPE, "text/csv; charset=utf-8"), (CONTENT_DISPOSITION, "attachment; filename=\"orders.csv\"")], bytes)` — implements `IntoResponse` directly, not `axum::Json`
+- [ ] Map `csv::Error` to `AppError::DatabaseError` (or a new `InternalError` variant) — do not let it panic
+
+### 36e. Router registration — order before `:id`
+
+- [ ] Register `.route("/admin/orders/export", get(admin_export_orders))` in `src/order/mod.rs` (or wherever the order router is assembled)
+- [ ] Verify the line appears **before** `.route("/admin/orders/:id", ...)` in the router builder chain — Axum evaluates routes in registration order for path-segment disambiguation
+
+### 36f. Integration tests
+
+Add tests to `tests/order_test.rs` (or a new `tests/order_export_test.rs` if the existing file exceeds 400 lines):
+
+- [ ] `test_admin_export_orders_returns_200_with_csv_content_type` — GET `/admin/orders/export` with one order in DB → 200, `Content-Type: text/csv`
+- [ ] `test_admin_export_orders_csv_has_correct_headers` — response body first line equals exact header string
+- [ ] `test_admin_export_orders_one_row_per_order` — three orders in DB → CSV has header + 3 data rows
+- [ ] `test_admin_export_orders_empty_db_returns_headers_only` — no orders → 200, header row only, no panic
+- [ ] `test_admin_export_orders_filter_by_status` — two completed + one pending, filter `?status=completed` → 2 data rows
+- [ ] `test_admin_export_orders_invalid_status_returns_400` — `?status=bogus` → 400 `invalid_data`
+- [ ] `test_admin_export_orders_filter_by_date_from` — orders at t1 and t2, filter `?created_at_from=t1+1s` → only t2 row
+- [ ] `test_admin_export_orders_filter_by_email` — orders with different emails, filter `?q=budi` → only matching rows
+- [ ] `test_admin_export_orders_payment_status_captured` — order with captured payment record → Payment Status column is `captured`
+- [ ] `test_admin_export_orders_item_count_and_total` — order with two line items → Item Count and Total (cents) columns are correct
+- [ ] `test_admin_export_orders_chronological_order` — three orders inserted in reverse time order → CSV rows appear oldest-first
+
+### 36g. Documentation and verification
+
+- [ ] Update `README.md` — add `GET /admin/orders/export` to the admin endpoint table (44 total endpoints)
+- [ ] Update `README.md` test count after new tests pass
+- [ ] Run full test suite on PostgreSQL — all tests pass
+- [ ] Run `cargo clippy -- -D warnings` — zero warnings
+- [ ] Run `cargo fmt --check` — clean
+- [ ] Run `cargo llvm-cov --summary-only` — line coverage remains >90%
 - [x] Run `cargo fmt --check` — clean

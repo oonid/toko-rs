@@ -194,4 +194,96 @@ mod tests {
         assert_eq!(default_currency_code(), "idr");
         assert_eq!(default_cors_origins(), "*");
     }
+
+    #[test]
+    fn test_invoice_config_is_configured_true() {
+        let invoice = InvoiceConfig {
+            company_name: "Test Corp".to_string(),
+            company_address: "123 Main St".to_string(),
+            company_phone: "555-1234".to_string(),
+            company_email: "test@example.com".to_string(),
+            company_logo: None,
+            notes: None,
+        };
+        assert!(invoice.is_configured());
+    }
+
+    #[test]
+    fn test_invoice_config_is_configured_false_empty_name() {
+        let invoice = InvoiceConfig {
+            company_name: "".to_string(),
+            company_address: "123 Main St".to_string(),
+            company_phone: "555-1234".to_string(),
+            company_email: "test@example.com".to_string(),
+            company_logo: None,
+            notes: None,
+        };
+        assert!(!invoice.is_configured());
+    }
+
+    #[test]
+    fn test_invoice_config_is_configured_false_empty_address() {
+        let invoice = InvoiceConfig {
+            company_name: "Test Corp".to_string(),
+            company_address: "".to_string(),
+            company_phone: "555-1234".to_string(),
+            company_email: "test@example.com".to_string(),
+            company_logo: None,
+            notes: None,
+        };
+        assert!(!invoice.is_configured());
+    }
+
+    #[test]
+    fn test_invoice_config_is_configured_false_empty_phone() {
+        let invoice = InvoiceConfig {
+            company_name: "Test Corp".to_string(),
+            company_address: "123 Main St".to_string(),
+            company_phone: "".to_string(),
+            company_email: "test@example.com".to_string(),
+            company_logo: None,
+            notes: None,
+        };
+        assert!(!invoice.is_configured());
+    }
+
+    #[test]
+    fn test_invoice_config_is_configured_false_empty_email() {
+        let invoice = InvoiceConfig {
+            company_name: "Test Corp".to_string(),
+            company_address: "123 Main St".to_string(),
+            company_phone: "555-1234".to_string(),
+            company_email: "".to_string(),
+            company_logo: None,
+            notes: None,
+        };
+        assert!(!invoice.is_configured());
+    }
+
+    #[test]
+    fn test_invoice_config_default() {
+        let invoice = InvoiceConfig::default();
+        assert_eq!(invoice.company_name, "");
+        assert_eq!(invoice.company_address, "");
+        assert_eq!(invoice.company_phone, "");
+        assert_eq!(invoice.company_email, "");
+        assert!(invoice.company_logo.is_none());
+        assert!(invoice.notes.is_none());
+        assert!(!invoice.is_configured());
+    }
+
+    #[test]
+    fn test_invoice_config_with_optional_fields() {
+        let invoice = InvoiceConfig {
+            company_name: "Test Corp".to_string(),
+            company_address: "123 Main St".to_string(),
+            company_phone: "555-1234".to_string(),
+            company_email: "test@example.com".to_string(),
+            company_logo: Some("logo.png".to_string()),
+            notes: Some("Payment terms: Net 30".to_string()),
+        };
+        assert!(invoice.is_configured());
+        assert_eq!(invoice.company_logo, Some("logo.png".to_string()));
+        assert_eq!(invoice.notes, Some("Payment terms: Net 30".to_string()));
+    }
 }

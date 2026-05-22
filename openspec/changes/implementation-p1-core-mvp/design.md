@@ -331,4 +331,16 @@ Recommended documented flow (not enforced):
 pending → fulfill → ship → (invoice available) → capture-payment → complete
 ```
 
-But admin can perform operations in any order. This matches Medusa's design where each operation is independent.
+### 26. Synchronous in-memory CSV export (no workflow engine)
+
+Medusa exports orders via an async background workflow (`exportOrdersWorkflow` with `backgroundExecution: true`): the API returns a `transaction_id` immediately (HTTP 202), a background step paginates orders, serializes to CSV, writes to file storage, and sends an in-app notification with a download URL. This requires a workflow engine, file storage module, and notification system.
+
+toko-rs P1 has none of those. `GET /admin/orders/export` generates the CSV synchronously inside the HTTP handler: it queries all matching orders in a single SQL statement (LEFT JOIN on `payment_records` and `order_line_items`), serializes to CSV bytes in-memory, and writes the bytes directly into the HTTP response body with `Content-Type: text/csv` and `Content-Disposition: attachment`.
+
+**Alternative considered**: Return a `202 Accepted` with a polling URL and store the CSV in the filesystem. Rejected: introduces a file lifecycle (creation, serving, cleanup), a separate fetch step, and a polling loop — none of which are warranted in P1 where order counts are small enough that generation completes in milliseconds.
+
+**Rationale**: The synchronous approach is zero-infrastructure — no background thread, no file on disk, no notification. It maps directly to the existing repository + routes pattern already used by every other endpoint. The HTTP client receives the file in the same request it made, which is simpler for API consumers. The trade-off is that very large datasets (hundreds of thousands of orders) would tie up a server thread; P1 datasets do not approach that scale.
+
+**Memory bound**: A single `OrderExportRow` is ~200 bytes of stack data. Serialized to CSV it is ~300 bytes per row. 10 000 orders → ~3 MB in-memory, well within acceptable limits for a development/small-scale production binary.
+
+**P2 consideration**: When order volume grows beyond ~50 000 rows, move to chunked streaming (`axum::body::StreamBody`) to avoid holding the full CSV in memory before sending. When a workflow engine is introduced (P2+), replace the synchronous handler with the Medusa-style async pattern: enqueue an export task, return `202 + task_id`, stream the result URL via notification or polling.

@@ -10,7 +10,7 @@ toko-rs is a Rust single-binary headless e-commerce backend inspired by MedusaJS
 
 - **Project scaffold**: Single Rust crate with axum + sqlx + SQLite, tracing, migrations, config
 - **12-table database schema**: products, product_options, product_option_values, product_variants, product_variant_options (pivot), product_images, customers, customer_addresses, carts, cart_line_items, orders, order_line_items, payment_records, _sequences. This is a simplification of Medusa's 40+ table schema — see `docs/database.md` for the full Medusa-to-toko-rs table mapping (which tables are implemented, collapsed into columns, or deferred to P2+). Invoice config stored as env vars (not a table). `idempotency_keys` table removed (dead code).
-- **20 Admin API endpoints**: Product CRUD + variant/option management (12), customer list+get (2), cart list (1), order cancel+complete+fulfill+ship+capture-payment (5), invoice config get/update (2), order invoice view (1)
+- **21 Admin API endpoints**: Product CRUD + variant/option management (12), customer list+get (2), cart list (1), order cancel+complete+fulfill+ship+capture-payment (5), order CSV export (1), invoice config get/update (2), order invoice view (1)
 - **14 Store API endpoints**: Product browsing, cart management, cart-to-order completion, order viewing, customer registration/profile
 - **Medusa-compatible error format**: `{"code": "...", "type": "...", "message": "..."}` per the Error schema in `specs/store.oas.yaml` and `specs/admin.oas.yaml` (copied from `vendor/medusa/`)
 - **Medusa-compatible response patterns**: Root wrapper (`{"product": {...}}`), list pagination (`{"products": [...], "count", "offset", "limit"}`)
@@ -28,7 +28,7 @@ toko-rs is a Rust single-binary headless e-commerce backend inspired by MedusaJS
 
 - `product-module`: Product, variant, option, and option-value CRUD for admin and store APIs (8 endpoints)
 - `cart-module`: Cart creation, line item management, cart completion flow (7 store endpoints), and admin cart list (1 admin endpoint)
-- `order-module`: Order generation from cart completion, order listing and detail retrieval (3 store endpoints), and admin order cancel/complete/fulfill/ship/capture-payment (5 admin endpoints). Order fulfillment_status persisted as column (not_fulfilled → fulfilled → shipped → canceled). Payment capture updates payment_records.status. Invoice enriched with payment info.
+- `order-module`: Order generation from cart completion, order listing and detail retrieval (3 store endpoints), and admin order cancel/complete/fulfill/ship/capture-payment (5 admin endpoints) and CSV export (1 admin endpoint). Order fulfillment_status persisted as column (not_fulfilled → fulfilled → shipped → canceled). Payment capture updates payment_records.status. Invoice enriched with payment info. CSV export is synchronous — built in-memory during the HTTP request, returned directly as `text/csv`. No background jobs or file storage required. See design.md Decision 26.
 - `customer-module`: Customer registration and profile management (3 store endpoints), and admin customer list+get (2 admin endpoints)
 - `invoice-module`: Invoice issuer config from env vars (2 admin endpoints) and on-the-fly invoice generation from order data (1 admin endpoint) — text-based, no PDF (P1)
 - `database-schema`: 14-table schema (products, product_options, product_option_values, product_variants, product_variant_options, product_images, customers, customer_addresses, carts, cart_line_items, orders, order_line_items, payment_records, _sequences) with soft delete, prefixed ULID IDs, and JSON metadata fields. Invoice config via env vars. `idempotency_keys` removed.
@@ -44,6 +44,6 @@ toko-rs is a Rust single-binary headless e-commerce backend inspired by MedusaJS
 
 - **New binary**: Single `toko-rs` executable serving both admin and store APIs on port 3000
 - **Database**: SQLite file `toko.db` in working directory (development), PostgreSQL-ready via sqlx AnyPool
-- **Dependencies**: 15 runtime crates (axum, sqlx, tokio, serde, validator, ulid, slug, dotenvy, thiserror, chrono, tracing, tower-http, tower, serde_json) + 4 dev crates
+- **Dependencies**: 16 runtime crates (axum, sqlx, tokio, serde, validator, ulid, slug, dotenvy, thiserror, chrono, tracing, tower-http, tower, serde_json, csv) + 4 dev crates
 - **No breaking changes**: Greenfield implementation
 - **Reference sources**: `vendor/medusa/` (git submodule, `develop` branch) — MedusaJS source as implementation reference. `specs/store.oas.yaml` and `specs/admin.oas.yaml` — OpenAPI 3.0 base schemas copied from `vendor/medusa/www/utils/generated/oas-output/base/`. Per-endpoint operation specs in `vendor/medusa/www/utils/generated/oas-output/operations/`. Medusa model definitions in `vendor/medusa/packages/modules/*/src/models/`
