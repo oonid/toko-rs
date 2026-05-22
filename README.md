@@ -133,11 +133,12 @@ src/
 |--------|------|-------------|
 | GET | `/admin/carts` | List carts (`id`, `customer_id` filters) |
 
-### Admin: Orders (7 endpoints)
+### Admin: Orders (8 endpoints)
 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/admin/orders` | List orders (`customer_id`, `status` filters, paginated) |
+| GET | `/admin/orders/export` | Export orders to CSV |
 | GET | `/admin/orders/:id` | Get order with line items |
 | POST | `/admin/orders/:id/cancel` | Cancel order (sets canceled_at, updates payment) |
 | POST | `/admin/orders/:id/complete` | Complete order |
@@ -186,7 +187,7 @@ cargo run --features sqlite --no-default-features
 ```bash
 make docker-up                        # Start PostgreSQL
 
-# Integration tests (263 tests, requires PostgreSQL)
+# Integration tests (274 tests, requires PostgreSQL)
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/toko_test \
   cargo test -- --test-threads=1
 
@@ -268,7 +269,7 @@ make cov          # cargo llvm-cov
 
 ## Project Status
 
-**P1 (Core MVP) — Complete.** 263 tests, clippy-clean, 43 endpoint methods, 14 tables, 7 migrations.
+**P1 (Core MVP) — Complete.** 274 tests, clippy-clean, 44 endpoint methods, 14 tables, 7 migrations.
 
 The following are out of scope for P1 and planned for future phases:
 
