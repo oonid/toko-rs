@@ -4,6 +4,7 @@ use crate::db::DbPool;
 use crate::error::AppError;
 use crate::payment::repository::PaymentRepository;
 use crate::types::generate_entity_id;
+use sqlx::Row;
 
 #[derive(Clone)]
 pub struct OrderRepository {
@@ -439,4 +440,161 @@ impl OrderRepository {
 
         self.find_by_id(id).await
     }
+
+    pub async fn export_orders(
+        &self,
+        params: &AdminExportOrdersParams,
+    ) -> Result<Vec<OrderExportRow>, AppError> {
+        // Validate status filter
+        if let Some(ref s) = params.status {
+            match s.as_str() {
+                "pending" | "completed" | "canceled" => {}
+                _ => {
+                    return Err(AppError::InvalidData(format!(
+                        "Invalid status filter: '{}'. Must be one of: pending, completed, canceled",
+                        s
+                    )))
+                }
+            }
+        }
+
+        let mut where_parts = vec!["o.deleted_at IS NULL".to_string()];
+        let mut binds: Vec<String> = Vec::new();
+        let mut idx = 1u32;
+
+        if let Some(ref s) = params.status {
+            where_parts.push(format!("o.status = ${}", idx));
+            binds.push(s.clone());
+            idx += 1;
+        }
+
+        if let Some(ref dt) = params.created_at_from {
+            where_parts.push(format!("o.created_at >= ${}::TIMESTAMPTZ", idx));
+            binds.push(dt.to_rfc3339());
+            idx += 1;
+        }
+
+        if let Some(ref dt) = params.created_at_to {
+            where_parts.push(format!("o.created_at <= ${}::TIMESTAMPTZ", idx));
+            binds.push(dt.to_rfc3339());
+            idx += 1;
+        }
+
+        if let Some(ref q) = params.q {
+            #[cfg(feature = "postgres")]
+            where_parts.push(format!("o.email ILIKE ${}", idx));
+            #[cfg(feature = "sqlite")]
+            where_parts.push(format!("o.email LIKE ${}", idx));
+            binds.push(format!("%{}%", q));
+            idx += 1;
+        }
+
+        let _ = idx; // suppress unused warning
+        let where_sql = where_parts.join(" AND ");
+
+        let query_sql = format!(
+            r#"
+            SELECT
+                o.id,
+                o.display_id,
+                o.email,
+                o.currency_code,
+                o.status,
+                o.fulfillment_status,
+                (SELECT status FROM payment_records WHERE order_id = o.id AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1) AS raw_payment_status,
+                (SELECT COALESCE(CAST(SUM(quantity) AS BIGINT), 0) FROM order_line_items WHERE order_id = o.id AND deleted_at IS NULL) AS item_count,
+                (SELECT COALESCE(CAST(SUM(quantity * unit_price) AS BIGINT), 0) FROM order_line_items WHERE order_id = o.id AND deleted_at IS NULL) AS total_cents,
+                o.created_at,
+                o.shipped_at,
+                o.canceled_at
+            FROM orders o
+            WHERE {where_sql}
+            ORDER BY o.created_at ASC
+            "#
+        );
+
+        let mut q = sqlx::query(&query_sql);
+        for b in &binds {
+            q = q.bind(b);
+        }
+
+        let rows: Vec<ExportRow> = q
+            .fetch_all(&self.pool)
+            .await?
+            .iter()
+            .map(|row| {
+                let id: String = row.get("id");
+                let display_id: i64 = row.get("display_id");
+                let email: Option<String> = row.get("email");
+                let currency_code: String = row.get("currency_code");
+                let status: String = row.get("status");
+                let fulfillment_status: String = row.get("fulfillment_status");
+                let raw_payment_status: Option<String> = row.get("raw_payment_status");
+                let item_count: i64 = row.get("item_count");
+                let total_cents: i64 = row.get("total_cents");
+                let created_at: chrono::DateTime<chrono::Utc> = row.get("created_at");
+                let shipped_at: Option<chrono::DateTime<chrono::Utc>> = row.get("shipped_at");
+                let canceled_at: Option<chrono::DateTime<chrono::Utc>> = row.get("canceled_at");
+                ExportRow {
+                    id,
+                    display_id,
+                    email,
+                    currency_code,
+                    status,
+                    fulfillment_status,
+                    raw_payment_status,
+                    item_count,
+                    total_cents,
+                    created_at,
+                    shipped_at,
+                    canceled_at,
+                }
+            })
+            .collect();
+
+        let result = rows
+            .into_iter()
+            .map(|row| {
+                let payment_status = match row.raw_payment_status.as_deref() {
+                    Some("authorized") => "authorized".to_string(),
+                    Some("captured") => "captured".to_string(),
+                    Some("refunded") => "refunded".to_string(),
+                    Some("canceled") => "canceled".to_string(),
+                    _ => "not_paid".to_string(),
+                };
+                OrderExportRow {
+                    id: row.id,
+                    display_id: row.display_id,
+                    email: row.email,
+                    currency_code: row.currency_code,
+                    status: row.status,
+                    fulfillment_status: row.fulfillment_status,
+                    payment_status,
+                    item_count: row.item_count,
+                    total_cents: row.total_cents,
+                    created_at: row.created_at,
+                    shipped_at: row.shipped_at,
+                    canceled_at: row.canceled_at,
+                }
+            })
+            .collect();
+
+        Ok(result)
+    }
+}
+
+#[derive(Debug, sqlx::FromRow)]
+struct ExportRow {
+    id: String,
+    display_id: i64,
+    email: Option<String>,
+    currency_code: String,
+    status: String,
+    fulfillment_status: String,
+    raw_payment_status: Option<String>,
+    item_count: i64,
+    total_cents: i64,
+    created_at: chrono::DateTime<chrono::Utc>,
+    shipped_at: Option<chrono::DateTime<chrono::Utc>>,
+    canceled_at: Option<chrono::DateTime<chrono::Utc>>,
 }

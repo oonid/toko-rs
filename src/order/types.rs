@@ -92,3 +92,26 @@ impl AdminListOrdersParams {
         self.limit.min(100)
     }
 }
+
+#[derive(Debug, Deserialize)]
+pub struct AdminExportOrdersParams {
+    pub status: Option<String>,
+    pub created_at_from: Option<chrono::DateTime<chrono::Utc>>,
+    pub created_at_to: Option<chrono::DateTime<chrono::Utc>>,
+    pub q: Option<String>,
+}
+
+pub struct OrderExportRow {
+    pub id: String,
+    pub display_id: i64,
+    pub email: Option<String>,
+    pub currency_code: String,
+    pub status: String,
+    pub fulfillment_status: String,
+    pub payment_status: String,
+    pub item_count: i64,
+    pub total_cents: i64,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub shipped_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub canceled_at: Option<chrono::DateTime<chrono::Utc>>,
+}
