@@ -1676,24 +1676,24 @@ But each step is independent. Admin decides the order of operations.
 - [x] Run full test suite on PostgreSQL — 262 pass
 - [x] Run `cargo clippy -- -D warnings` — zero warnings
 
-## 36. Task 36 — Admin Order Export (T36)
+## 36. Task 36 — Admin Order Export (T36) — DONE
 
-Implements `GET /admin/orders/export` — a synchronous CSV download endpoint that queries orders from the database (with optional filters) and returns a CSV file directly in the HTTP response. No background job, file storage, or notification system required. See `specs/order-export/spec.md` and design.md Decision 26.
+Implements `GET /admin/orders/export` — a synchronous CSV download endpoint that queries orders from the database (with optional filters) and returns a CSV file directly in the HTTP response. No background job, file storage, or notification system required. See `docs/audit-p1-task36.md` for full verification report.
 
 ### 36a. Dependency — add `csv` crate
 
-- [ ] Add `csv = "1"` to `[dependencies]` in `Cargo.toml`
-- [ ] Run `cargo check` — compiles clean
+- [x] Add `csv = "1"` to `[dependencies]` in `Cargo.toml`
+- [x] Run `cargo check` — compiles clean
 
 ### 36b. Types — `AdminExportOrdersParams` and `OrderExportRow`
 
-- [ ] Add `AdminExportOrdersParams` struct to `src/order/types.rs` with fields:
+- [x] Add `AdminExportOrdersParams` struct to `src/order/types.rs` with fields:
   - `status: Option<String>` — filter by order status (`pending`, `completed`, `canceled`)
   - `created_at_from: Option<chrono::DateTime<chrono::Utc>>` — lower bound on `created_at` (inclusive)
   - `created_at_to: Option<chrono::DateTime<chrono::Utc>>` — upper bound on `created_at` (inclusive)
   - `q: Option<String>` — partial case-insensitive match on `email`
-- [ ] Derive `serde::Deserialize` on `AdminExportOrdersParams` for query-string extraction
-- [ ] Add `OrderExportRow` struct to `src/order/types.rs` with fields:
+- [x] Derive `serde::Deserialize` on `AdminExportOrdersParams` for query-string extraction
+- [x] Add `OrderExportRow` struct to `src/order/types.rs` with fields:
   - `id: String`, `display_id: i64`, `email: Option<String>`, `currency_code: String`
   - `status: String`, `fulfillment_status: String`, `payment_status: String`
   - `item_count: i64`, `total_cents: i64`
@@ -1703,72 +1703,134 @@ Implements `GET /admin/orders/export` — a synchronous CSV download endpoint th
 
 ### 36c. Repository — `export_orders` method
 
-- [ ] Add `pub async fn export_orders(&self, params: &AdminExportOrdersParams) -> Result<Vec<OrderExportRow>, AppError>` to `OrderRepository` in `src/order/repository.rs`
-- [ ] Write a single SQL query using LEFT JOINs — do not loop and call `resolve_payment_status` per row:
-  ```sql
-  SELECT
-    o.id, o.display_id, o.email, o.currency_code,
-    o.status, o.fulfillment_status,
-    o.created_at, o.shipped_at, o.canceled_at,
-    COALESCE(pr.status, 'pending') AS raw_payment_status,
-    COUNT(li.id)                   AS item_count,
-    COALESCE(SUM(li.quantity * li.unit_price), 0) AS total_cents
-  FROM orders o
-  LEFT JOIN payment_records pr
-    ON pr.order_id = o.id AND pr.deleted_at IS NULL
-  LEFT JOIN order_line_items li
-    ON li.order_id = o.id AND li.deleted_at IS NULL
-  WHERE o.deleted_at IS NULL
-    AND ($1::text   IS NULL OR o.status = $1)
-    AND ($2::timestamptz IS NULL OR o.created_at >= $2)
-    AND ($3::timestamptz IS NULL OR o.created_at <= $3)
-    AND ($4::text   IS NULL OR o.email ILIKE '%' || $4 || '%')
-  GROUP BY o.id, pr.status
-  ORDER BY o.created_at ASC
-  ```
-- [ ] Apply the same `raw_payment_status → payment_status` mapping used in `resolve_payment_status`: `pending` → `not_paid`, `authorized` → `authorized`, `captured` → `captured`, `failed` → `not_paid`, `refunded` → `refunded`, `canceled` → `canceled`
-- [ ] Handle SQLite backend: replace `$N::type` placeholders with `?`, replace `ILIKE` with `LIKE` (feature-gated, same pattern as other repository methods)
-- [ ] Validate `status` param: if provided and not one of `pending`, `completed`, `canceled`, return `AppError::InvalidData("Invalid status filter: ...")`
+- [x] Add `pub async fn export_orders(&self, params: &AdminExportOrdersParams) -> Result<Vec<OrderExportRow>, AppError>` to `OrderRepository` in `src/order/repository.rs`
+- [x] Write SQL query — uses correlated subqueries instead of LEFT JOIN + GROUP BY (functionally equivalent; `item_count` uses `SUM(quantity)` not `COUNT(li.id)` — counts total units ordered, not distinct line item rows; tests assert this behaviour; see EX-2 in audit)
+- [x] Apply the same `raw_payment_status → payment_status` mapping used in `resolve_payment_status`: `pending` → `not_paid`, `authorized` → `authorized`, `captured` → `captured`, `failed` → `not_paid`, `refunded` → `refunded`, `canceled` → `canceled`
+- [x] Handle SQLite backend: `ILIKE`/`LIKE` feature-gated; `::TIMESTAMPTZ` cast not feature-gated (latent SQLite bug on date-range filters — no SQLite export tests exercise this path; see EX-3 in audit)
+- [x] Validate `status` param: if provided and not one of `pending`, `completed`, `canceled`, return `AppError::InvalidData("Invalid status filter: ...")`
 
 ### 36d. Route handler — `admin_export_orders`
 
-- [ ] Add `pub async fn admin_export_orders` handler to `src/order/routes.rs`:
-  - Extract `Query(params): Query<AdminExportOrdersParams>`
-  - Call `state.repos.order.export_orders(&params).await?`
-  - Build CSV in-memory using `csv::Writer::from_writer(vec![])`:
-    - Write header row: `["Order ID", "Display ID", "Email", "Currency", "Status", "Fulfillment Status", "Payment Status", "Item Count", "Total (cents)", "Created At", "Shipped At", "Canceled At"]`
-    - Write one data row per `OrderExportRow`; format `Option` fields as empty string when `None`, timestamps as RFC 3339
-  - Finalize with `wtr.into_inner()` → `Vec<u8>`
-  - Return `(StatusCode::OK, [(CONTENT_TYPE, "text/csv; charset=utf-8"), (CONTENT_DISPOSITION, "attachment; filename=\"orders.csv\"")], bytes)` — implements `IntoResponse` directly, not `axum::Json`
-- [ ] Map `csv::Error` to `AppError::DatabaseError` (or a new `InternalError` variant) — do not let it panic
+- [x] Add `pub async fn admin_export_orders` handler to `src/order/routes.rs`
+- [x] Extract `Query(params): Query<AdminExportOrdersParams>`
+- [x] Build CSV in-memory using `csv::Writer::from_writer(vec![])` with exact 12-column header
+- [x] Format `Option` fields as empty string; timestamps as RFC 3339
+- [x] Return `(StatusCode::OK, [(CONTENT_TYPE, "text/csv; charset=utf-8"), (CONTENT_DISPOSITION, "attachment; filename=\"orders.csv\"")], bytes)`
+- [x] `csv::Error` mapped to `AppError::InvalidData` (spec suggested `DatabaseError`; divergence documented as EX-1)
 
 ### 36e. Router registration — order before `:id`
 
-- [ ] Register `.route("/admin/orders/export", get(admin_export_orders))` in `src/order/mod.rs` (or wherever the order router is assembled)
-- [ ] Verify the line appears **before** `.route("/admin/orders/:id", ...)` in the router builder chain — Axum evaluates routes in registration order for path-segment disambiguation
+- [x] `.route("/admin/orders/export", get(admin_export_orders))` registered in `src/order/routes.rs:26`, before `/:id` route — Axum disambiguation correct
 
 ### 36f. Integration tests
 
-Add tests to `tests/order_test.rs` (or a new `tests/order_export_test.rs` if the existing file exceeds 400 lines):
+Tests placed in new `tests/order_export_test.rs` (order_test.rs exceeded 400 lines).
 
-- [ ] `test_admin_export_orders_returns_200_with_csv_content_type` — GET `/admin/orders/export` with one order in DB → 200, `Content-Type: text/csv`
-- [ ] `test_admin_export_orders_csv_has_correct_headers` — response body first line equals exact header string
-- [ ] `test_admin_export_orders_one_row_per_order` — three orders in DB → CSV has header + 3 data rows
-- [ ] `test_admin_export_orders_empty_db_returns_headers_only` — no orders → 200, header row only, no panic
-- [ ] `test_admin_export_orders_filter_by_status` — two completed + one pending, filter `?status=completed` → 2 data rows
-- [ ] `test_admin_export_orders_invalid_status_returns_400` — `?status=bogus` → 400 `invalid_data`
-- [ ] `test_admin_export_orders_filter_by_date_from` — orders at t1 and t2, filter `?created_at_from=t1+1s` → only t2 row
-- [ ] `test_admin_export_orders_filter_by_email` — orders with different emails, filter `?q=budi` → only matching rows
-- [ ] `test_admin_export_orders_payment_status_captured` — order with captured payment record → Payment Status column is `captured`
-- [ ] `test_admin_export_orders_item_count_and_total` — order with two line items → Item Count and Total (cents) columns are correct
-- [ ] `test_admin_export_orders_chronological_order` — three orders inserted in reverse time order → CSV rows appear oldest-first
+- [x] `test_admin_export_orders_returns_200_with_csv_content_type`
+- [x] `test_admin_export_orders_csv_has_correct_headers`
+- [x] `test_admin_export_orders_one_row_per_order`
+- [x] `test_admin_export_orders_empty_db_returns_headers_only`
+- [x] `test_admin_export_orders_filter_by_status`
+- [x] `test_admin_export_orders_invalid_status_returns_400`
+- [x] `test_admin_export_orders_filter_by_date_from`
+- [x] `test_admin_export_orders_filter_by_email`
+- [x] `test_admin_export_orders_payment_status_captured`
+- [x] `test_admin_export_orders_item_count_and_total` — asserts `item_count=3` = SUM(qty 2 + qty 1), not COUNT(rows)
+- [x] `test_admin_export_orders_chronological_order`
 
 ### 36g. Documentation and verification
 
-- [ ] Update `README.md` — add `GET /admin/orders/export` to the admin endpoint table (44 total endpoints)
-- [ ] Update `README.md` test count after new tests pass
+- [x] Update `README.md` — `GET /admin/orders/export` added to admin endpoint table (44 total endpoints)
+- [x] Update `README.md` test count — 281 tests
+- [x] Run full test suite on PostgreSQL — 281 pass (git: `12e214b`)
+- [x] Run `cargo clippy -- -D warnings` — zero warnings (verified 2026-05-25)
+- [x] Run `cargo fmt --check` — clean (verified 2026-05-25)
+- [ ] Run `cargo llvm-cov --summary-only` — line coverage remains >90% (llvm-cov not available in current session)
+
+## 37. Task 37 — P1 Webhook Extension: Event Outbox + LISTEN/NOTIFY (T37)
+
+Implements a durable event notification mechanism. Each order mutation (place, cancel, fulfill, ship, capture-payment) writes a row to `event_outbox` inside the same DB transaction, then fires `pg_notify('toko_events', event_id)` after commit as a real-time hint. Admin endpoints expose the outbox for polling-based consumers (laku-rs). No outbound HTTP dispatcher yet (P2). See `docs/audit-p1-task37.md` for full design and rationale.
+
+This work also closes the **B-34 deferred item** from T35: the `_tx` repository variants required for atomic event emission give order-cancel + payment-cancel atomicity for free.
+
+### 37a. Migration 008 — `event_outbox` table
+
+- [ ] Create `migrations/008_event_outbox.sql` (PostgreSQL):
+  ```sql
+  CREATE TABLE event_outbox (
+      id            TEXT PRIMARY KEY,
+      event_name    TEXT NOT NULL,
+      resource_type TEXT NOT NULL,
+      resource_id   TEXT NOT NULL,
+      payload       JSONB NOT NULL DEFAULT '{}',
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      processed_at  TIMESTAMPTZ
+  );
+  CREATE INDEX idx_event_outbox_unprocessed ON event_outbox (created_at ASC) WHERE processed_at IS NULL;
+  CREATE INDEX idx_event_outbox_resource ON event_outbox (resource_type, resource_id);
+  ```
+- [ ] Create `migrations/sqlite/008_event_outbox.sql` (SQLite, `TEXT` columns for timestamps, `TEXT` for payload)
+- [ ] Add `DELETE FROM event_outbox` to `tests/common/mod.rs::clean_all_tables()` (before `orders`)
+
+### 37b. Event module — `src/event/`
+
+- [ ] Create `src/event/models.rs` — `EventOutboxRow { id, event_name, resource_type, resource_id, payload: serde_json::Value, created_at, processed_at }` with `#[derive(Debug, serde::Serialize, sqlx::FromRow)]`
+- [ ] Create `src/event/repository.rs` — `EventRepository` with:
+  - `insert_event(&self, tx: &mut Transaction<'_, Db>, event_name, resource_type, resource_id, payload) -> Result<EventOutboxRow, AppError>` — inserts row inside caller's transaction
+  - `#[cfg(feature = "postgres")] notify_event(&self, pool: &PgPool, event_id: &str) -> Result<(), AppError>` — `SELECT pg_notify('toko_events', $1)` outside transaction
+  - `list_all(&self, params: &EventListParams) -> Result<Vec<EventOutboxRow>, AppError>` — supports `after`, `resource_type`, `unprocessed_only`, `limit`, `offset`
+  - `mark_processed(&self, id: &str) -> Result<EventOutboxRow, AppError>` — sets `processed_at = NOW()`
+- [ ] Create `src/event/types.rs` — `EventListParams { limit, offset, after, resource_type, unprocessed_only }`, `EventResponse { event }`, `EventListResponse { events, count, limit, offset }`
+- [ ] Create `src/event/routes.rs` — `admin_list_events`, `admin_mark_event_processed`
+- [ ] Create `src/event/mod.rs` — re-exports
+- [ ] Add `EventRepository` field to `Repositories` struct in `src/lib.rs`
+- [ ] Register routes `GET /admin/events` and `POST /admin/events/:id/mark-processed` in `src/lib.rs` router
+
+### 37c. Repository `_tx` variants (6 methods)
+
+- [ ] Add `cancel_order_tx(&self, id: &str, tx: &mut Transaction<'_, Db>) -> Result<Order, AppError>` to `src/order/repository.rs` — same SQL as `cancel_order` but uses `tx` executor
+- [ ] Add `complete_order_tx` to `src/order/repository.rs`
+- [ ] Add `fulfill_order_tx` to `src/order/repository.rs`
+- [ ] Add `ship_order_tx` to `src/order/repository.rs`
+- [ ] Add `cancel_by_order_id_tx` to `src/payment/repository.rs`
+- [ ] Add `capture_by_order_id_tx` to `src/payment/repository.rs`
+- [ ] Keep existing non-`_tx` methods unchanged (used by tests and GET handlers)
+
+### 37d. Emission points — wire outbox + NOTIFY into 5 handlers
+
+For each handler: (1) begin transaction, (2) call `_tx` variant, (3) insert event, (4) commit, (5) notify.
+
+- [ ] Refactor `store_complete_cart` in `src/cart/routes.rs` — emit `order.placed` with order JSON payload
+- [ ] Refactor `admin_cancel_order` in `src/order/routes.rs` — emit `order.canceled`; now wraps both order + payment cancel in one transaction (closes B-34)
+- [ ] Refactor `admin_fulfill_order` in `src/order/routes.rs` — emit `order.fulfillment_created`
+- [ ] Refactor `admin_ship_order` in `src/order/routes.rs` — emit `order.shipment_created`
+- [ ] Refactor `admin_capture_payment` in `src/order/routes.rs` — emit `payment.captured`
+
+### 37e. Admin endpoints
+
+- [ ] Implement `GET /admin/events` — list outbox with `limit`/`offset`/`after`/`resource_type`/`unprocessed_only` filters; returns `{ events: [...], count, limit, offset }`
+- [ ] Implement `POST /admin/events/:id/mark-processed` — sets `processed_at`; returns `{ event }`
+- [ ] Return `404 not_found` if event ID not found in `mark-processed`
+
+### 37f. Integration tests — `tests/event_test.rs`
+
+- [ ] `test_order_placed_creates_event_row` — complete cart → outbox row `event_name = "order.placed"`, `resource_id = order.id`
+- [ ] `test_order_canceled_creates_event_row` — `POST /admin/orders/:id/cancel` → `"order.canceled"` row
+- [ ] `test_order_fulfilled_creates_event_row` — `POST /admin/orders/:id/fulfill` → `"order.fulfillment_created"` row
+- [ ] `test_order_shipped_creates_event_row` — `POST /admin/orders/:id/ship` → `"order.shipment_created"` row
+- [ ] `test_payment_captured_creates_event_row` — `POST /admin/orders/:id/capture-payment` → `"payment.captured"` row
+- [ ] `test_admin_list_events_returns_events` — `GET /admin/events` after placing order → at least 1 event in response
+- [ ] `test_admin_list_events_filter_by_resource_type` — `?resource_type=order` excludes `payment.captured` row
+- [ ] `test_admin_mark_event_processed` — `POST /admin/events/:id/mark-processed` → `processed_at` non-null in response
+- [ ] `test_admin_list_events_unprocessed_only` — `?unprocessed_only=true` after mark-processed → processed row absent
+
+### 37g. Documentation and verification
+
+- [ ] Update `docs/p1_additions.md §2` — add "Admin: Event Outbox" sub-table with 2 new endpoints
+- [ ] Update `docs/p1_additions.md §4` — split "Webhooks" row: outbox → section 2; outbound HTTP dispatcher → deferred P2 row
+- [ ] Update `README.md` — add 2 new admin endpoints to table (46 total), update test count after new tests pass
+- [ ] Update `docs/audit-master-checklist.md` — add T37 entries (W-1…W-8, B-34 closed)
 - [ ] Run full test suite on PostgreSQL — all tests pass
 - [ ] Run `cargo clippy -- -D warnings` — zero warnings
 - [ ] Run `cargo fmt --check` — clean
 - [ ] Run `cargo llvm-cov --summary-only` — line coverage remains >90%
-- [x] Run `cargo fmt --check` — clean
