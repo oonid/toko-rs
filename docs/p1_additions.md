@@ -96,6 +96,19 @@ These endpoints exist in toko-rs but have no equivalent in Medusa v2's published
 | POST | `/admin/invoice-config` | Read-only — same as GET; returns current env-based config. |
 | GET | `/admin/orders/:id/invoice` | On-the-fly invoice generation in JSON (or PDF if rendered by client). No equivalent in Medusa v2. |
 
+### Admin: Event Outbox
+| Method | Path | Notes |
+|--------|------|-------|
+| GET | `/admin/events` | List event outbox. Supports `after` (ISO timestamp cursor), `resource_type`, `unprocessed_only` filters. |
+| POST | `/admin/events/:id/mark-processed` | Mark event as processed (consumer ACK). |
+
+### Admin: Webhook Subscriptions
+| Method | Path | Notes |
+|--------|------|-------|
+| POST | `/admin/webhooks` | Register a webhook subscription. Body: `{ url, events: [...], secret }`. Returns `{ webhook }`. |
+| GET | `/admin/webhooks` | List all webhook subscriptions. Returns `{ webhooks, count }`. |
+| DELETE | `/admin/webhooks/{id}` | Delete a webhook subscription. Returns 204 No Content. |
+
 ### Simplified Order Lifecycle Actions
 | Method | Path | Notes |
 |--------|------|-------|
@@ -174,4 +187,4 @@ The following Medusa v2 capabilities are out of scope for toko-rs P1 and planned
 | Draft orders | `/admin/draft-orders` | Admin cart listing covers the use case partially |
 | Customer groups | `/admin/customer-groups` | Segmentation deferred |
 | File / image upload | `/admin/uploads` | Images stored as URL strings; no upload service |
-| Webhooks | `/admin/api-keys`, event bus | No event system in P1 |
+| Webhook retry queue / dead-letter | — | Retry on delivery failure and dead-letter storage deferred to P2 |

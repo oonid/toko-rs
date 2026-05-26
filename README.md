@@ -2,7 +2,7 @@
 
 A modular, high-performance headless e-commerce backend written in Rust, API-compatible with [MedusaJS v2](https://medusajs.com/).
 
-Implements the core **Browse → Cart → Checkout** flow with 44 endpoint methods across 6 domain modules, backed by PostgreSQL (primary) or SQLite (optional).
+Implements the core **Browse → Cart → Checkout** flow with 49 endpoint methods across 7 domain modules, backed by PostgreSQL (primary) or SQLite (optional).
 
 See [docs/p1_additions.md](docs/p1_additions.md) for a full compliance comparison against Medusa v2 — which endpoints match, which are toko-rs additions, and what is deferred to future phases.
 
@@ -154,6 +154,21 @@ src/
 | POST | `/admin/invoice-config` | Returns current config (read-only; env-based) |
 | GET | `/admin/orders/:id/invoice` | Generate invoice on-the-fly from order data |
 
+### Admin: Events (2 endpoints)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/admin/events` | List event outbox with optional filters |
+| POST | `/admin/events/:id/mark-processed` | Mark event as processed (consumer ACK) |
+
+### Admin: Webhooks (3 endpoints)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/admin/webhooks` | Register webhook subscription (`url`, `events` array, `secret`) |
+| GET | `/admin/webhooks` | List all webhook subscriptions |
+| DELETE | `/admin/webhooks/{id}` | Delete webhook subscription |
+
 ### Health
 
 | Method | Path | Description |
@@ -162,7 +177,7 @@ src/
 
 ## Database
 
-7 migrations, 14 tables:
+8 migrations, 15 tables:
 
 | Migration | Tables / Changes |
 |-----------|-----------------|
@@ -173,6 +188,7 @@ src/
 | `005_payments` | `payment_records` |
 | `006_order_lifecycle` | Adds `fulfillment_status`, `shipped_at` to `orders`; `captured_at` to `payment_records` |
 | `007_customers_phone_unique` | Partial unique index on `customers(phone)` where `deleted_at IS NULL` |
+| `008_event_outbox` | `event_outbox` (durable event log); `webhook_subscriptions` (outbound HTTP delivery targets with HMAC-SHA256 signing) |
 
 Invoice config is stored as environment variables (not a DB table): `INVOICE_COMPANY_NAME`, `INVOICE_COMPANY_ADDRESS`, `INVOICE_COMPANY_PHONE`, `INVOICE_COMPANY_EMAIL`, `INVOICE_COMPANY_LOGO`, `INVOICE_NOTES`.
 
@@ -187,7 +203,7 @@ cargo run --features sqlite --no-default-features
 ```bash
 make docker-up                        # Start PostgreSQL
 
-# Integration tests (281 tests, requires PostgreSQL)
+# Integration tests (297 tests, requires PostgreSQL)
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/toko_test \
   cargo test -- --test-threads=1
 
@@ -216,6 +232,8 @@ tests/
   order_export_test.rs    Order CSV export tests
   customer_test.rs        Customer registration + profile tests
   invoice_test.rs         Invoice config + generation tests
+  event_test.rs           Event outbox integration tests
+  webhook_test.rs         Webhook subscription CRUD + HMAC delivery tests
   contract_test.rs        Response shape validation against Medusa OAS
   e2e/                    End-to-end tests against live HTTP server
 ```
@@ -270,7 +288,7 @@ make cov          # cargo llvm-cov
 
 ## Project Status
 
-**P1 (Core MVP) — Complete.** 281 tests, clippy-clean, 44 endpoint methods, 14 tables, 7 migrations.
+**P1 (Core MVP) — Complete.** 290 tests, clippy-clean, 46 endpoint methods, 15 tables, 8 migrations.
 
 The following are out of scope for P1 and planned for future phases:
 

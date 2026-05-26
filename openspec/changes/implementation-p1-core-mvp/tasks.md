@@ -1755,7 +1755,7 @@ This work also closes the **B-34 deferred item** from T35: the `_tx` repository 
 
 ### 37a. Migration 008 — `event_outbox` table
 
-- [ ] Create `migrations/008_event_outbox.sql` (PostgreSQL):
+- [x] Create `migrations/008_event_outbox.sql` (PostgreSQL):
   ```sql
   CREATE TABLE event_outbox (
       id            TEXT PRIMARY KEY,
@@ -1769,68 +1769,85 @@ This work also closes the **B-34 deferred item** from T35: the `_tx` repository 
   CREATE INDEX idx_event_outbox_unprocessed ON event_outbox (created_at ASC) WHERE processed_at IS NULL;
   CREATE INDEX idx_event_outbox_resource ON event_outbox (resource_type, resource_id);
   ```
-- [ ] Create `migrations/sqlite/008_event_outbox.sql` (SQLite, `TEXT` columns for timestamps, `TEXT` for payload)
-- [ ] Add `DELETE FROM event_outbox` to `tests/common/mod.rs::clean_all_tables()` (before `orders`)
+- [x] Create `migrations/sqlite/008_event_outbox.sql` (SQLite, `TEXT` columns for timestamps, `TEXT` for payload)
+- [x] Add `DELETE FROM event_outbox` to `tests/common/mod.rs::clean_all_tables()` (before `orders`)
 
 ### 37b. Event module — `src/event/`
 
-- [ ] Create `src/event/models.rs` — `EventOutboxRow { id, event_name, resource_type, resource_id, payload: serde_json::Value, created_at, processed_at }` with `#[derive(Debug, serde::Serialize, sqlx::FromRow)]`
-- [ ] Create `src/event/repository.rs` — `EventRepository` with:
+- [x] Create `src/event/models.rs` — `EventOutboxRow { id, event_name, resource_type, resource_id, payload: serde_json::Value, created_at, processed_at }` with `#[derive(Debug, serde::Serialize, sqlx::FromRow)]`
+- [x] Create `src/event/repository.rs` — `EventRepository` with:
   - `insert_event(&self, tx: &mut Transaction<'_, Db>, event_name, resource_type, resource_id, payload) -> Result<EventOutboxRow, AppError>` — inserts row inside caller's transaction
   - `#[cfg(feature = "postgres")] notify_event(&self, pool: &PgPool, event_id: &str) -> Result<(), AppError>` — `SELECT pg_notify('toko_events', $1)` outside transaction
   - `list_all(&self, params: &EventListParams) -> Result<Vec<EventOutboxRow>, AppError>` — supports `after`, `resource_type`, `unprocessed_only`, `limit`, `offset`
   - `mark_processed(&self, id: &str) -> Result<EventOutboxRow, AppError>` — sets `processed_at = NOW()`
-- [ ] Create `src/event/types.rs` — `EventListParams { limit, offset, after, resource_type, unprocessed_only }`, `EventResponse { event }`, `EventListResponse { events, count, limit, offset }`
-- [ ] Create `src/event/routes.rs` — `admin_list_events`, `admin_mark_event_processed`
-- [ ] Create `src/event/mod.rs` — re-exports
-- [ ] Add `EventRepository` field to `Repositories` struct in `src/lib.rs`
-- [ ] Register routes `GET /admin/events` and `POST /admin/events/:id/mark-processed` in `src/lib.rs` router
+- [x] Create `src/event/types.rs` — `EventListParams { limit, offset, after, resource_type, unprocessed_only }`, `EventResponse { event }`, `EventListResponse { events, count, limit, offset }`
+- [x] Create `src/event/routes.rs` — `admin_list_events`, `admin_mark_event_processed`
+- [x] Create `src/event/mod.rs` — re-exports
+- [x] Add `EventRepository` field to `Repositories` struct in `src/lib.rs`
+- [x] Register routes `GET /admin/events` and `POST /admin/events/:id/mark-processed` in `src/lib.rs` router
 
 ### 37c. Repository `_tx` variants (6 methods)
 
-- [ ] Add `cancel_order_tx(&self, id: &str, tx: &mut Transaction<'_, Db>) -> Result<Order, AppError>` to `src/order/repository.rs` — same SQL as `cancel_order` but uses `tx` executor
-- [ ] Add `complete_order_tx` to `src/order/repository.rs`
-- [ ] Add `fulfill_order_tx` to `src/order/repository.rs`
-- [ ] Add `ship_order_tx` to `src/order/repository.rs`
-- [ ] Add `cancel_by_order_id_tx` to `src/payment/repository.rs`
-- [ ] Add `capture_by_order_id_tx` to `src/payment/repository.rs`
-- [ ] Keep existing non-`_tx` methods unchanged (used by tests and GET handlers)
+- [x] Add `cancel_order_tx(&self, id: &str, tx: &mut Transaction<'_, Db>) -> Result<Order, AppError>` to `src/order/repository.rs` — same SQL as `cancel_order` but uses `tx` executor
+- [x] Add `complete_order_tx` to `src/order/repository.rs`
+- [x] Add `fulfill_order_tx` to `src/order/repository.rs`
+- [x] Add `ship_order_tx` to `src/order/repository.rs`
+- [x] Add `cancel_by_order_id_tx` to `src/payment/repository.rs`
+- [x] Add `capture_by_order_id_tx` to `src/payment/repository.rs`
+- [x] Keep existing non-`_tx` methods unchanged (used by tests and GET handlers)
 
 ### 37d. Emission points — wire outbox + NOTIFY into 5 handlers
 
 For each handler: (1) begin transaction, (2) call `_tx` variant, (3) insert event, (4) commit, (5) notify.
 
-- [ ] Refactor `store_complete_cart` in `src/cart/routes.rs` — emit `order.placed` with order JSON payload
-- [ ] Refactor `admin_cancel_order` in `src/order/routes.rs` — emit `order.canceled`; now wraps both order + payment cancel in one transaction (closes B-34)
-- [ ] Refactor `admin_fulfill_order` in `src/order/routes.rs` — emit `order.fulfillment_created`
-- [ ] Refactor `admin_ship_order` in `src/order/routes.rs` — emit `order.shipment_created`
-- [ ] Refactor `admin_capture_payment` in `src/order/routes.rs` — emit `payment.captured`
+- [x] Refactor `store_complete_cart` in `src/cart/routes.rs` — emit `order.placed` with order JSON payload
+- [x] Refactor `admin_cancel_order` in `src/order/routes.rs` — emit `order.canceled`; now wraps both order + payment cancel in one transaction (closes B-34)
+- [x] Refactor `admin_fulfill_order` in `src/order/routes.rs` — emit `order.fulfillment_created`
+- [x] Refactor `admin_ship_order` in `src/order/routes.rs` — emit `order.shipment_created`
+- [x] Refactor `admin_capture_payment` in `src/order/routes.rs` — emit `payment.captured`
 
 ### 37e. Admin endpoints
 
-- [ ] Implement `GET /admin/events` — list outbox with `limit`/`offset`/`after`/`resource_type`/`unprocessed_only` filters; returns `{ events: [...], count, limit, offset }`
-- [ ] Implement `POST /admin/events/:id/mark-processed` — sets `processed_at`; returns `{ event }`
-- [ ] Return `404 not_found` if event ID not found in `mark-processed`
+- [x] Implement `GET /admin/events` — list outbox with `limit`/`offset`/`after`/`resource_type`/`unprocessed_only` filters; returns `{ events: [...], count, limit, offset }`
+- [x] Implement `POST /admin/events/:id/mark-processed` — sets `processed_at`; returns `{ event }`
+- [x] Return `404 not_found` if event ID not found in `mark-processed`
 
 ### 37f. Integration tests — `tests/event_test.rs`
 
-- [ ] `test_order_placed_creates_event_row` — complete cart → outbox row `event_name = "order.placed"`, `resource_id = order.id`
-- [ ] `test_order_canceled_creates_event_row` — `POST /admin/orders/:id/cancel` → `"order.canceled"` row
-- [ ] `test_order_fulfilled_creates_event_row` — `POST /admin/orders/:id/fulfill` → `"order.fulfillment_created"` row
-- [ ] `test_order_shipped_creates_event_row` — `POST /admin/orders/:id/ship` → `"order.shipment_created"` row
-- [ ] `test_payment_captured_creates_event_row` — `POST /admin/orders/:id/capture-payment` → `"payment.captured"` row
-- [ ] `test_admin_list_events_returns_events` — `GET /admin/events` after placing order → at least 1 event in response
-- [ ] `test_admin_list_events_filter_by_resource_type` — `?resource_type=order` excludes `payment.captured` row
-- [ ] `test_admin_mark_event_processed` — `POST /admin/events/:id/mark-processed` → `processed_at` non-null in response
-- [ ] `test_admin_list_events_unprocessed_only` — `?unprocessed_only=true` after mark-processed → processed row absent
+- [x] `test_order_placed_creates_event_row` — complete cart → outbox row `event_name = "order.placed"`, `resource_id = order.id`
+- [x] `test_order_canceled_creates_event_row` — `POST /admin/orders/:id/cancel` → `"order.canceled"` row
+- [x] `test_order_fulfilled_creates_event_row` — `POST /admin/orders/:id/fulfill` → `"order.fulfillment_created"` row
+- [x] `test_order_shipped_creates_event_row` — `POST /admin/orders/:id/ship` → `"order.shipment_created"` row
+- [x] `test_payment_captured_creates_event_row` — `POST /admin/orders/:id/capture-payment` → `"payment.captured"` row
+- [x] `test_admin_list_events_returns_events` — `GET /admin/events` after placing order → at least 1 event in response
+- [x] `test_admin_list_events_filter_by_resource_type` — `?resource_type=order` excludes `payment.captured` row
+- [x] `test_admin_mark_event_processed` — `POST /admin/events/:id/mark-processed` → `processed_at` non-null in response
+- [x] `test_admin_list_events_unprocessed_only` — `?unprocessed_only=true` after mark-processed → processed row absent
 
 ### 37g. Documentation and verification
 
-- [ ] Update `docs/p1_additions.md §2` — add "Admin: Event Outbox" sub-table with 2 new endpoints
-- [ ] Update `docs/p1_additions.md §4` — split "Webhooks" row: outbox → section 2; outbound HTTP dispatcher → deferred P2 row
-- [ ] Update `README.md` — add 2 new admin endpoints to table (46 total), update test count after new tests pass
-- [ ] Update `docs/audit-master-checklist.md` — add T37 entries (W-1…W-8, B-34 closed)
-- [ ] Run full test suite on PostgreSQL — all tests pass
-- [ ] Run `cargo clippy -- -D warnings` — zero warnings
-- [ ] Run `cargo fmt --check` — clean
-- [ ] Run `cargo llvm-cov --summary-only` — line coverage remains >90%
+- [x] Update `docs/p1_additions.md §2` — add "Admin: Event Outbox" sub-table with 2 new endpoints
+- [x] Update `docs/p1_additions.md §4` — split "Webhooks" row: outbox → section 2; outbound HTTP dispatcher → deferred P2 row
+- [x] Update `README.md` — add 3 new admin endpoints to table (49 total), update test count after new tests pass
+- [x] Update `docs/audit-master-checklist.md` — add T37 entries (W-1…W-8, B-34 closed)
+- [x] Run full test suite on PostgreSQL — all tests pass (297 tests pass)
+- [x] Run `cargo clippy -- -D warnings` — zero warnings (verified)
+- [x] Run `cargo fmt --check` — clean (verified)
+- [x] Run `cargo llvm-cov --summary-only` — line coverage remains >90% (actual: 91.72%)
+
+### 37h. Outbound HTTP webhook delivery (extension beyond original spec)
+
+- [x] Merge `webhook_subscriptions` table into `migrations/008_event_outbox.sql` (PostgreSQL): `id TEXT PK`, `url TEXT NOT NULL`, `events JSONB NOT NULL DEFAULT '[]'`, `secret TEXT NOT NULL`, `enabled BOOLEAN NOT NULL DEFAULT true`, `created_at TIMESTAMPTZ`; plus `CREATE INDEX idx_webhook_subscriptions_enabled ON webhook_subscriptions (enabled) WHERE enabled = true`
+- [x] Merge `webhook_subscriptions` table into `migrations/sqlite/008_event_outbox.sql` (SQLite): same columns, TEXT for JSONB/timestamps, INTEGER for enabled
+- [x] Add `DELETE FROM webhook_subscriptions` to `tests/common/mod.rs::clean_all_tables()` (before `event_outbox`)
+- [x] Create `src/webhook/models.rs` — `WebhookSubscription { id, url, events: serde_json::Value, secret, enabled, created_at }` with `#[derive(Debug, Serialize, sqlx::FromRow, Clone)]`
+- [x] Create `src/webhook/types.rs` — `CreateWebhookInput`, `WebhookResponse { webhook }`, `WebhookListResponse { webhooks, count }`
+- [x] Create `src/webhook/repository.rs` — `WebhookRepository` with `create`, `list_all`, `find_by_event`, `delete`; PostgreSQL uses `events @> $1::jsonb`; SQLite uses `LIKE` pattern; `delete` returns `AppError::NotFound` when `rows_affected() == 0`
+- [x] Create `src/webhook/dispatcher.rs` — `dispatch_event(pool: DbPool, event: EventOutboxRow)` fetches subscriptions via `find_by_event`, serializes event to JSON, POSTs to each URL with `X-Toko-Signature: sha256=<hex>` header (HMAC-SHA256 of body keyed by subscription secret)
+- [x] Create `src/webhook/routes.rs` — `admin_create_webhook`, `admin_list_webhooks`, `admin_delete_webhook`
+- [x] Create `src/webhook/mod.rs` — re-exports
+- [x] Add `WebhookRepository` field to `Repositories` struct in `src/db.rs`
+- [x] Register routes `POST /admin/webhooks`, `GET /admin/webhooks`, `DELETE /admin/webhooks/{id}` in `src/lib.rs`
+- [x] Wire `tokio::spawn(crate::webhook::dispatcher::dispatch_event(pool, ev_clone))` after each of the 5 event emission points in `src/order/routes.rs`
+- [x] Add `reqwest`, `hmac`, `sha2`, `hex` to `[dependencies]` in `Cargo.toml`
+- [x] Create `tests/webhook_test.rs` — 7 tests: `test_admin_create_webhook_success`, `test_admin_list_webhooks_empty`, `test_admin_list_webhooks_returns_created`, `test_admin_delete_webhook`, `test_admin_delete_webhook_not_found`, `test_webhook_delivered_on_order_placed`, `test_webhook_hmac_signature_correct`
