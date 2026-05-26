@@ -1,10 +1,12 @@
 use crate::cart::repository::CartRepository;
 use crate::customer::repository::CustomerRepository;
 use crate::error::AppError;
+use crate::event::repository::EventRepository;
 use crate::invoice::repository::InvoiceRepository;
 use crate::order::repository::OrderRepository;
 use crate::payment::repository::PaymentRepository;
 use crate::product::repository::ProductRepository;
+use crate::webhook::repository::WebhookRepository;
 
 #[cfg(feature = "postgres")]
 use sqlx::postgres::{PgPool, PgPoolOptions};
@@ -45,6 +47,8 @@ pub struct Repositories {
     pub order: OrderRepository,
     pub payment: PaymentRepository,
     pub invoice: InvoiceRepository,
+    pub event: EventRepository,
+    pub webhook: WebhookRepository,
 }
 
 pub async fn create_db(
@@ -75,6 +79,8 @@ pub async fn create_db(
         order: OrderRepository::new(pool.clone()),
         payment: PaymentRepository::new(pool.clone()),
         invoice: InvoiceRepository::new(invoice_config),
+        event: EventRepository::new(pool.clone()),
+        webhook: WebhookRepository::new(pool.clone()),
     };
 
     Ok((AppDb { pool }, repos))

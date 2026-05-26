@@ -55,6 +55,14 @@ pub async fn setup_test_app_with_invoice(
 }
 
 pub async fn clean_all_tables(pool: &toko_rs::db::DbPool) {
+    sqlx::query("DELETE FROM webhook_subscriptions")
+        .execute(pool)
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM event_outbox")
+        .execute(pool)
+        .await
+        .unwrap();
     sqlx::query("DELETE FROM payment_records")
         .execute(pool)
         .await

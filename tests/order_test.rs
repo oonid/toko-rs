@@ -1627,3 +1627,181 @@ async fn test_admin_get_order_not_found() {
     let body = body_json(resp).await;
     assert_eq!(body["type"], "not_found");
 }
+
+#[tokio::test]
+async fn test_payment_cancel_by_order_id() {
+    let (_, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+
+    // Setup: insert product/variant, create cart+line item, create order
+    sqlx::query("INSERT INTO products (id, title, handle, status) VALUES ('prod_cbo', 'P', 'p', 'published') ON CONFLICT (id) DO NOTHING")
+        .execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO product_variants (id, product_id, title, price) VALUES ('var_cbo', 'prod_cbo', 'V', 500) ON CONFLICT (id) DO NOTHING")
+        .execute(&pool).await.unwrap();
+
+    let cart_repo = toko_rs::cart::repository::CartRepository::new(pool.clone(), "idr".to_string());
+    let input = toko_rs::cart::types::CreateCartInput {
+        customer_id: None,
+        email: None,
+        currency_code: Some("idr".to_string()),
+        shipping_address: None,
+        billing_address: None,
+        metadata: None,
+    };
+    let cart = cart_repo.create_cart(input).await.unwrap();
+
+    sqlx::query("INSERT INTO cart_line_items (id, cart_id, title, quantity, unit_price, variant_id, product_id) VALUES ('cli_cbo', $1, 'V', 1, 500, 'var_cbo', 'prod_cbo')")
+        .bind(&cart.cart.id)
+        .execute(&pool).await.unwrap();
+
+    let order_repo = toko_rs::order::repository::OrderRepository::new(pool.clone());
+    let order = order_repo.create_from_cart(&cart.cart.id).await.unwrap();
+    let order_id = order.order.id.clone();
+
+    let repo = toko_rs::payment::repository::PaymentRepository::new(pool.clone());
+
+    // Verify payment starts as pending
+    let before = repo.find_by_order_id(&order_id).await.unwrap().unwrap();
+    assert_eq!(before.status, "pending");
+
+    // Cancel via non-tx method
+    repo.cancel_by_order_id(&order_id).await.unwrap();
+
+    // Verify status changed to canceled
+    let after = repo.find_by_order_id(&order_id).await.unwrap().unwrap();
+    assert_eq!(after.status, "canceled");
+
+    // Idempotent: canceling again should not error (WHERE clause filters it out)
+    repo.cancel_by_order_id(&order_id).await.unwrap();
+
+    // Still canceled
+    let still = repo.find_by_order_id(&order_id).await.unwrap().unwrap();
+    assert_eq!(still.status, "canceled");
+}
+
+#[tokio::test]
+async fn test_payment_capture_by_order_id_success() {
+    let (_, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+
+    // Setup: insert product/variant, create cart+line item, create order
+    sqlx::query("INSERT INTO products (id, title, handle, status) VALUES ('prod_cbo2', 'P2', 'p2', 'published') ON CONFLICT (id) DO NOTHING")
+        .execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO product_variants (id, product_id, title, price) VALUES ('var_cbo2', 'prod_cbo2', 'V2', 500) ON CONFLICT (id) DO NOTHING")
+        .execute(&pool).await.unwrap();
+
+    let cart_repo = toko_rs::cart::repository::CartRepository::new(pool.clone(), "idr".to_string());
+    let input = toko_rs::cart::types::CreateCartInput {
+        customer_id: None,
+        email: None,
+        currency_code: Some("idr".to_string()),
+        shipping_address: None,
+        billing_address: None,
+        metadata: None,
+    };
+    let cart = cart_repo.create_cart(input).await.unwrap();
+
+    sqlx::query("INSERT INTO cart_line_items (id, cart_id, title, quantity, unit_price, variant_id, product_id) VALUES ('cli_cbo2', $1, 'V2', 1, 500, 'var_cbo2', 'prod_cbo2')")
+        .bind(&cart.cart.id)
+        .execute(&pool).await.unwrap();
+
+    let order_repo = toko_rs::order::repository::OrderRepository::new(pool.clone());
+    let order = order_repo.create_from_cart(&cart.cart.id).await.unwrap();
+    let order_id = order.order.id.clone();
+
+    let repo = toko_rs::payment::repository::PaymentRepository::new(pool.clone());
+
+    // Capture payment via non-tx method
+    let captured = repo.capture_by_order_id(&order_id).await.unwrap();
+    assert_eq!(captured.status, "captured");
+    assert!(captured.captured_at.is_some());
+    assert_eq!(captured.order_id, order_id);
+}
+
+#[tokio::test]
+async fn test_payment_capture_by_order_id_already_captured() {
+    let (_, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+
+    // Setup: insert product/variant, create cart+line item, create order
+    sqlx::query("INSERT INTO products (id, title, handle, status) VALUES ('prod_cbo3', 'P3', 'p3', 'published') ON CONFLICT (id) DO NOTHING")
+        .execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO product_variants (id, product_id, title, price) VALUES ('var_cbo3', 'prod_cbo3', 'V3', 500) ON CONFLICT (id) DO NOTHING")
+        .execute(&pool).await.unwrap();
+
+    let cart_repo = toko_rs::cart::repository::CartRepository::new(pool.clone(), "idr".to_string());
+    let input = toko_rs::cart::types::CreateCartInput {
+        customer_id: None,
+        email: None,
+        currency_code: Some("idr".to_string()),
+        shipping_address: None,
+        billing_address: None,
+        metadata: None,
+    };
+    let cart = cart_repo.create_cart(input).await.unwrap();
+
+    sqlx::query("INSERT INTO cart_line_items (id, cart_id, title, quantity, unit_price, variant_id, product_id) VALUES ('cli_cbo3', $1, 'V3', 1, 500, 'var_cbo3', 'prod_cbo3')")
+        .bind(&cart.cart.id)
+        .execute(&pool).await.unwrap();
+
+    let order_repo = toko_rs::order::repository::OrderRepository::new(pool.clone());
+    let order = order_repo.create_from_cart(&cart.cart.id).await.unwrap();
+    let order_id = order.order.id.clone();
+
+    let repo = toko_rs::payment::repository::PaymentRepository::new(pool.clone());
+
+    // First capture succeeds
+    repo.capture_by_order_id(&order_id).await.unwrap();
+
+    // Second capture fails: payment is now 'captured', not in ('pending','authorized')
+    let err = repo.capture_by_order_id(&order_id).await.unwrap_err();
+    match err {
+        toko_rs::error::AppError::InvalidData(msg) => {
+            assert!(msg.contains("cannot be captured") || msg.contains("Payment"), "msg: {msg}");
+        }
+        other => panic!("expected InvalidData, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_payment_cancel_by_order_id_already_captured() {
+    let (_, db) = common::setup_test_app().await;
+    let pool = db.pool.clone();
+
+    // Setup: insert product/variant, create cart+line item, create order
+    sqlx::query("INSERT INTO products (id, title, handle, status) VALUES ('prod_cbo4', 'P4', 'p4', 'published') ON CONFLICT (id) DO NOTHING")
+        .execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO product_variants (id, product_id, title, price) VALUES ('var_cbo4', 'prod_cbo4', 'V4', 500) ON CONFLICT (id) DO NOTHING")
+        .execute(&pool).await.unwrap();
+
+    let cart_repo = toko_rs::cart::repository::CartRepository::new(pool.clone(), "idr".to_string());
+    let input = toko_rs::cart::types::CreateCartInput {
+        customer_id: None,
+        email: None,
+        currency_code: Some("idr".to_string()),
+        shipping_address: None,
+        billing_address: None,
+        metadata: None,
+    };
+    let cart = cart_repo.create_cart(input).await.unwrap();
+
+    sqlx::query("INSERT INTO cart_line_items (id, cart_id, title, quantity, unit_price, variant_id, product_id) VALUES ('cli_cbo4', $1, 'V4', 1, 500, 'var_cbo4', 'prod_cbo4')")
+        .bind(&cart.cart.id)
+        .execute(&pool).await.unwrap();
+
+    let order_repo = toko_rs::order::repository::OrderRepository::new(pool.clone());
+    let order = order_repo.create_from_cart(&cart.cart.id).await.unwrap();
+    let order_id = order.order.id.clone();
+
+    let repo = toko_rs::payment::repository::PaymentRepository::new(pool.clone());
+
+    // First capture it
+    repo.capture_by_order_id(&order_id).await.unwrap();
+
+    // Trying to cancel a captured payment: WHERE excludes captured → no rows updated, no error
+    repo.cancel_by_order_id(&order_id).await.unwrap();
+
+    // Status unchanged (still captured)
+    let payment = repo.find_by_order_id(&order_id).await.unwrap().unwrap();
+    assert_eq!(payment.status, "captured");
+}

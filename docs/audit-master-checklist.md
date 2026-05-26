@@ -2,7 +2,7 @@
 
 Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32}.md` into a single reference. Every item is tagged with its source audit, status, and where it was fixed (or why it was deferred). Tasks 27 and 29 were structural audits (checklist accuracy, re-numbering, redundant test annotation) — their impact is reflected in the checklist structure itself (prefixed IDs, reversal chains, corrected counts).
 
-**Last verified**: 2026-05-18 — 260 tests pass on PostgreSQL (10 suites), clippy clean, fmt clean. Latest audit: Task 35 (all actionable findings applied). Total: 158 fixes applied (148 prior + 10 from T35) + 2 doc fixes. D-36 reclassified as K-14 (intentional divergence; migration 007 retained); X-15 deferred (BigNumber/P2); V-13, V-14 deferred (P2); B-34 transaction-wrapping half deferred (P2 refactor).
+**Last verified**: 2026-05-26 — 297 tests pass on PostgreSQL (13 suites), clippy clean, fmt clean. Latest audit: Task 37 (Event Outbox + LISTEN/NOTIFY + outbound HTTP webhooks). Total: 165 fixes applied (158 prior + 7 from T37) + B-34 closed. W-1…W-8 all applied in T37. Webhook retry/dead-letter deferred to P2.
 
 **Task 35** (2026-05-18) — Fresh 6-dimension discovery audit. All actionable findings applied in-task. See `audit-p1-task35.md` for full details. Applied: S-38/S-39 (missing shape fields), B-33 (TOCTOU guards), B-34 (error propagation), B-35 (deleted_at filters), L-18 (is_configured &&), C-5 (--jobs 1), C-6 (cargo fmt), C-7 (product_images cleanup). Doc-1 (`complete`/`cancel` reclassified to section 1), Doc-2 (README 259→260). K-13 (`cart_id` exposed for admin traceability — `#[serde(skip)]` reverted, intentional extension). D-36 reclassified as K-14 (intentional divergence — phone uniqueness retained for sapa-rs).
 
@@ -45,8 +45,9 @@ Consolidates all findings from `docs/audit-p1-task{12,14,18,19,20,21,22,23,24,25
 | B-31 | T22 D1 | `product_variant_option` join rows NOT cascade-deleted on product soft-delete — orphan rows remain | `DELETE FROM product_variant_option WHERE variant_id IN (...)` in `soft_delete` | 22b |
 | B-32 | T23 D1 | `soft_delete_variant` left orphan `product_variant_option` pivot rows | Added `DELETE FROM product_variant_option WHERE variant_id = $1` + transaction | 23h |
 | B-33 | T35 | Order state transitions (`cancel`/`complete`/`fulfill`/`ship`) use read-then-update with no UPDATE guard — TOCTOU race lets concurrent admin calls both succeed | Applied — all 4 UPDATEs include guard predicates (`AND status != 'canceled'` etc.) and `rows_affected()==0` checks (were already on disk at audit time) | 35 BUG-4 |
-| B-34 | T35 | `admin_cancel_order` discards `cancel_by_order_id` result via `let _ = …` — order cancels but payment may silently stay pending on DB error | Applied (error propagation half) — `routes.rs` already uses `?` on `cancel_by_order_id`. Transaction-wrapping deferred to P2 (invasive refactor) | 35 BUG-2 |
+| B-34 | T35/T37 | `admin_cancel_order` discards `cancel_by_order_id` result via `let _ = …` — order cancels but payment may silently stay pending on DB error | **Fully closed in T37**: both order cancel + payment cancel now share a single DB transaction via `cancel_order_tx` + `cancel_by_order_id_tx` | 35 BUG-2, 37c |
 | B-35 | T35 | Payment repository queries (`find_by_order_id`, `cancel_by_order_id`, `capture_by_order_id`, `resolve_payment_status`) don't filter `deleted_at IS NULL` despite D-20 having added the column | Applied — all 4 queries include `AND deleted_at IS NULL` (were already on disk at audit time) | 35 BUG-1, BUG-3 |
+| B-36 | T37 | Webhook subscriptions table not cleaned between tests — cross-test contamination possible | `DELETE FROM webhook_subscriptions` added to `clean_all_tables()` in `tests/common/mod.rs` | 37h |
 
 ---
 
@@ -267,20 +268,36 @@ Entries moved from this section to fix sections: S-24 (was T22 S1), B-30 (was T2
 
 ---
 
+## 8. Task 37 Findings — Event Outbox + LISTEN/NOTIFY + Webhook Delivery (W-1 … W-8)
+
+| ID | Category | Finding | Fix | Section |
+|----|----------|---------|-----|---------|
+| W-1 | Schema | Migration 008: `event_outbox` table (PG + SQLite) needed | Created `migrations/008_event_outbox.sql` (PG) + `migrations/sqlite/008_event_outbox.sql` | 37a |
+| W-2 | Module | `src/event/` module missing | Created `models.rs`, `repository.rs`, `types.rs`, `routes.rs`, `mod.rs` | 37b |
+| W-3 | Repository | `_tx` variants needed for 5 order + 1 payment method to enable atomic event emit | Added `cancel_order_tx`, `complete_order_tx`, `fulfill_order_tx`, `ship_order_tx`, `cancel_by_order_id_tx`, `capture_by_order_id_tx` | 37c |
+| W-4 | Emission | Outbox insert + NOTIFY not wired into 5 mutation handlers | Wired in `store_complete_cart`, `admin_cancel_order`, `admin_fulfill_order`, `admin_ship_order`, `admin_capture_payment` | 37d |
+| W-5 | API | `GET /admin/events` + `POST /admin/events/{id}/mark-processed` missing | Implemented both endpoints; 404 if event not found | 37e |
+| W-6 | Tests | 9 event integration tests; 7 webhook delivery tests (wiremock + HMAC) | `tests/event_test.rs` (9 tests) + `tests/webhook_test.rs` (7 tests) | 37f, 37h |
+| W-7 | Docs | `docs/p1_additions.md §2` + `§4`; README counts stale; master checklist missing T37 | Updated all three documents; webhook subscriptions section added | 37g, 37h |
+| W-8 | Infra | `clean_all_tables` missing `event_outbox` + `webhook_subscriptions` cleanup | Both DELETE statements added; `webhook_subscriptions` deleted before `event_outbox` | 37a, 37h |
+
+---
+
 ## Summary Statistics
 
 | Category | Applied | Deferred/Resolved |
 |----------|---------|-------------------|
-| Bugs fixed (B) | 35 (B-1…B-35) | B-34 transaction-wrapping half → P2 |
+| Bugs fixed (B) | 36 (B-1…B-36) | B-34 fully closed in T37; B-36 test cleanup |
 | Response shape fixes (S) | 39 (S-1…S-39) | — |
 | Input/validation fixes (V) | 12 (V-1…V-12) | V-13, V-14 → Deferred (P2) |
 | Error handling fixes (E) | 12 | — |
 | Database schema fixes (D) | 35 (D-1…D-35) | D-36 → K-14 (intentional divergence; migration 007 retained) |
 | Business logic fixes (L) | 18 (L-1…L-18) | — |
 | Config/infra fixes (C) | 7 (C-1…C-7) | — |
-| **Total** | **158 applied** | 2 deferred (V-13, V-14); D-36 → K-14 (intentional divergence) |
+| Task 37 findings (W) | 8 (W-1…W-8) | — |
+| **Total** | **165 applied** | 2 deferred (V-13, V-14); D-36 → K-14 (intentional divergence) |
 | Doc drift (Doc-1, Doc-2) | 2 applied | — |
-| Deferred to P2 | 14 (now incl. X-15, V-13, V-14, B-34 tx) | — |
+| Deferred to P2 | 13 (X-15, V-13, V-14; B-34 tx fully closed) | — |
 | Known divergences (by design) | 13 (now incl. K-13 intentional extension, K-14 intentional divergence) | — |
 | False positive | 1 | — |
 | Internal (deferred) | 2 | — |

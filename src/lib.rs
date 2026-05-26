@@ -8,12 +8,14 @@ use tower_http::trace::TraceLayer;
 pub mod cart;
 pub mod config;
 pub mod customer;
+pub mod event;
 pub mod invoice;
 pub mod order;
 pub mod payment;
 pub mod product;
 pub mod seed;
 pub mod types;
+pub mod webhook;
 
 pub mod db;
 pub mod error;
@@ -62,6 +64,23 @@ pub fn app_router_with_cors(state: AppState, cors_origins: &str) -> Router {
         .merge(order::routes::router())
         .merge(order::routes::admin_router())
         .merge(order_protected)
+        .route(
+            "/admin/events",
+            axum::routing::get(event::routes::admin_list_events),
+        )
+        .route(
+            "/admin/events/{id}/mark-processed",
+            axum::routing::post(event::routes::admin_mark_event_processed),
+        )
+        .route(
+            "/admin/webhooks",
+            axum::routing::post(webhook::routes::admin_create_webhook)
+                .get(webhook::routes::admin_list_webhooks),
+        )
+        .route(
+            "/admin/webhooks/{id}",
+            axum::routing::delete(webhook::routes::admin_delete_webhook),
+        )
         .route("/health", axum::routing::get(health_check))
         .layer(TraceLayer::new_for_http())
         .layer(build_cors_layer(cors_origins))
