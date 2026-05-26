@@ -319,3 +319,115 @@ async fn test_webhook_hmac_signature_correct() {
 
     assert_eq!(sig_header, expected);
 }
+
+#[tokio::test]
+#[serial_test::serial]
+async fn test_dispatch_event_no_subscriptions() {
+    let (app, _db) = common::setup_test_app().await;
+
+    // Start mock server but register subscription for a DIFFERENT event
+    let mock_server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/hook"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&mock_server)
+        .await;
+
+    // Register webhook for "order.shipped" — NOT "order.placed"
+    let payload = json!({
+        "url": format!("{}/hook", mock_server.uri()),
+        "events": ["order.shipped"],
+        "secret": "test-secret"
+    });
+    let _ = app.clone().oneshot(post_req("/admin/webhooks", &payload)).await.unwrap();
+
+    // Create product + cart + order (emits "order.placed")
+    let product_body = json!({
+        "title": "Test Product",
+        "description": "Test",
+        "status": "published",
+        "options": [{"title": "Size", "values": ["S"]}],
+        "variants": [{"title": "S", "sku": "TEST-S", "price": 1000, "options": {"Size": "S"}}]
+    });
+    let res = app.clone().oneshot(request(Method::POST, "/admin/products", &product_body)).await.unwrap();
+    let product_data = body_json(res).await;
+    let variant_id = product_data["product"]["variants"][0]["id"].as_str().unwrap();
+
+    let cart_res = app.clone().oneshot(post_req("/store/carts", &json!({"currency_code": "idr"}))).await.unwrap();
+    let cart_data = body_json(cart_res).await;
+    let cart_id = cart_data["cart"]["id"].as_str().unwrap();
+
+    let _ = app.clone().oneshot(post_req(
+        &format!("/store/carts/{}/line-items", cart_id),
+        &json!({"variant_id": variant_id, "quantity": 1})
+    )).await.unwrap();
+
+    let _ = app.clone().oneshot(post_req(
+        &format!("/store/carts/{}/complete", cart_id),
+        &json!({})
+    )).await.unwrap();
+
+    // Wait for spawned dispatch task to run
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+    // No requests should have been made (no matching subscription)
+    let reqs = mock_server.received_requests().await.unwrap();
+    assert_eq!(reqs.len(), 0, "dispatcher should have returned early on empty subscriptions");
+}
+
+#[tokio::test]
+#[serial_test::serial]
+async fn test_webhook_delivery_failure() {
+    let (app, _db) = common::setup_test_app().await;
+
+    // Find a port that will immediately refuse connections
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let dead_port = listener.local_addr().unwrap().port();
+    drop(listener); // now nothing listens on this port → ECONNREFUSED
+
+    let dead_url = format!("http://127.0.0.1:{}/hook", dead_port);
+
+    // Register webhook pointing to the dead URL
+    let payload = json!({
+        "url": dead_url,
+        "events": ["order.placed"],
+        "secret": "test-secret"
+    });
+    let _ = app.clone().oneshot(post_req("/admin/webhooks", &payload)).await.unwrap();
+
+    // Create product + cart + order
+    let product_body = json!({
+        "title": "Test Product",
+        "description": "Test",
+        "status": "published",
+        "options": [{"title": "Size", "values": ["S"]}],
+        "variants": [{"title": "S", "sku": "TEST-S", "price": 1000, "options": {"Size": "S"}}]
+    });
+    let res = app.clone().oneshot(request(Method::POST, "/admin/products", &product_body)).await.unwrap();
+    let product_data = body_json(res).await;
+    let variant_id = product_data["product"]["variants"][0]["id"].as_str().unwrap();
+
+    let cart_res = app.clone().oneshot(post_req("/store/carts", &json!({"currency_code": "idr"}))).await.unwrap();
+    let cart_data = body_json(cart_res).await;
+    let cart_id = cart_data["cart"]["id"].as_str().unwrap();
+
+    let _ = app.clone().oneshot(post_req(
+        &format!("/store/carts/{}/line-items", cart_id),
+        &json!({"variant_id": variant_id, "quantity": 1})
+    )).await.unwrap();
+
+    let complete_res = app.clone().oneshot(post_req(
+        &format!("/store/carts/{}/complete", cart_id),
+        &json!({})
+    )).await.unwrap();
+
+    // Order creation still succeeds (dispatch is fire-and-forget)
+    assert_eq!(complete_res.status(), StatusCode::OK);
+    let complete_data = body_json(complete_res).await;
+    assert!(complete_data["order"]["id"].as_str().is_some());
+
+    // Wait for spawned dispatch task to attempt delivery and fail
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    // Test passes if we reach here — the Err branch was hit without panicking
+}
