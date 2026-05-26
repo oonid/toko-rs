@@ -42,6 +42,24 @@ async fn store_complete_cart(
 ) -> Result<(StatusCode, Json<CartCompleteResponse>), AppError> {
     let order_with_items = state.repos.order.create_from_cart(&cart_id).await?;
 
+    // Emit order.placed event in a separate transaction
+    let order_id = order_with_items.order.id.clone();
+    let mut tx = state.db.pool.begin().await?;
+    let payload = serde_json::to_value(&order_with_items.order).unwrap_or_default();
+    let ev = state
+        .repos
+        .event
+        .insert_event(&mut tx, "order.placed", "order", &order_id, payload)
+        .await?;
+    tx.commit().await?;
+    #[cfg(feature = "postgres")]
+    let _ = state.repos.event.notify_event(&ev.id).await;
+    {
+        let pool = state.db.pool.clone();
+        let ev_clone = ev.clone();
+        tokio::spawn(crate::webhook::dispatcher::dispatch_event(pool, ev_clone));
+    }
+
     Ok((
         StatusCode::OK,
         Json(CartCompleteResponse::success(order_with_items)),
@@ -91,8 +109,28 @@ async fn admin_cancel_order(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<OrderResponse>, AppError> {
-    let order = state.repos.order.cancel_order(&id).await?;
-    state.repos.payment.cancel_by_order_id(&id).await?;
+    let mut tx = state.db.pool.begin().await?;
+    let order_data = state.repos.order.cancel_order_tx(&id, &mut tx).await?;
+    state
+        .repos
+        .payment
+        .cancel_by_order_id_tx(&id, &mut tx)
+        .await?;
+    let payload = serde_json::to_value(&order_data).unwrap_or_default();
+    let ev = state
+        .repos
+        .event
+        .insert_event(&mut tx, "order.canceled", "order", &id, payload)
+        .await?;
+    tx.commit().await?;
+    #[cfg(feature = "postgres")]
+    let _ = state.repos.event.notify_event(&ev.id).await;
+    {
+        let pool = state.db.pool.clone();
+        let ev_clone = ev.clone();
+        tokio::spawn(crate::webhook::dispatcher::dispatch_event(pool, ev_clone));
+    }
+    let order = state.repos.order.find_by_id(&id).await?;
     Ok(Json(OrderResponse { order }))
 }
 
@@ -134,7 +172,23 @@ async fn admin_fulfill_order(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<OrderResponse>, AppError> {
-    let order = state.repos.order.fulfill_order(&id).await?;
+    let mut tx = state.db.pool.begin().await?;
+    let order_data = state.repos.order.fulfill_order_tx(&id, &mut tx).await?;
+    let payload = serde_json::to_value(&order_data).unwrap_or_default();
+    let ev = state
+        .repos
+        .event
+        .insert_event(&mut tx, "order.fulfillment_created", "order", &id, payload)
+        .await?;
+    tx.commit().await?;
+    #[cfg(feature = "postgres")]
+    let _ = state.repos.event.notify_event(&ev.id).await;
+    {
+        let pool = state.db.pool.clone();
+        let ev_clone = ev.clone();
+        tokio::spawn(crate::webhook::dispatcher::dispatch_event(pool, ev_clone));
+    }
+    let order = state.repos.order.find_by_id(&id).await?;
     Ok(Json(OrderResponse { order }))
 }
 
@@ -143,7 +197,23 @@ async fn admin_ship_order(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<OrderResponse>, AppError> {
-    let order = state.repos.order.ship_order(&id).await?;
+    let mut tx = state.db.pool.begin().await?;
+    let order_data = state.repos.order.ship_order_tx(&id, &mut tx).await?;
+    let payload = serde_json::to_value(&order_data).unwrap_or_default();
+    let ev = state
+        .repos
+        .event
+        .insert_event(&mut tx, "order.shipment_created", "order", &id, payload)
+        .await?;
+    tx.commit().await?;
+    #[cfg(feature = "postgres")]
+    let _ = state.repos.event.notify_event(&ev.id).await;
+    {
+        let pool = state.db.pool.clone();
+        let ev_clone = ev.clone();
+        tokio::spawn(crate::webhook::dispatcher::dispatch_event(pool, ev_clone));
+    }
+    let order = state.repos.order.find_by_id(&id).await?;
     Ok(Json(OrderResponse { order }))
 }
 
@@ -152,7 +222,26 @@ async fn admin_capture_payment(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<OrderResponse>, AppError> {
-    state.repos.payment.capture_by_order_id(&id).await?;
+    let mut tx = state.db.pool.begin().await?;
+    let _payment = state
+        .repos
+        .payment
+        .capture_by_order_id_tx(&id, &mut tx)
+        .await?;
+    let payload = serde_json::json!({"order_id": &id});
+    let ev = state
+        .repos
+        .event
+        .insert_event(&mut tx, "payment.captured", "order", &id, payload)
+        .await?;
+    tx.commit().await?;
+    #[cfg(feature = "postgres")]
+    let _ = state.repos.event.notify_event(&ev.id).await;
+    {
+        let pool = state.db.pool.clone();
+        let ev_clone = ev.clone();
+        tokio::spawn(crate::webhook::dispatcher::dispatch_event(pool, ev_clone));
+    }
     let order = state.repos.order.find_by_id(&id).await?;
     Ok(Json(OrderResponse { order }))
 }
