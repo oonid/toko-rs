@@ -581,6 +581,114 @@ impl OrderRepository {
 
         Ok(result)
     }
+
+    pub async fn cancel_order_tx(
+        &self,
+        id: &str,
+        tx: &mut sqlx::Transaction<'_, crate::db::DbDatabase>,
+    ) -> Result<Order, AppError> {
+        let result = sqlx::query(
+            "UPDATE orders SET status = 'canceled', fulfillment_status = 'canceled', canceled_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND status != 'canceled' AND status != 'completed'",
+        )
+        .bind(id)
+        .execute(&mut **tx)
+        .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(AppError::InvalidData(
+                "Order cannot be canceled (already canceled or completed)".to_string(),
+            ));
+        }
+
+        let order =
+            sqlx::query_as::<_, Order>("SELECT * FROM orders WHERE id = $1 AND deleted_at IS NULL")
+                .bind(id)
+                .fetch_one(&mut **tx)
+                .await?;
+
+        Ok(order)
+    }
+
+    pub async fn complete_order_tx(
+        &self,
+        id: &str,
+        tx: &mut sqlx::Transaction<'_, crate::db::DbDatabase>,
+    ) -> Result<Order, AppError> {
+        let result = sqlx::query(
+            "UPDATE orders SET status = 'completed', updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND status != 'completed' AND status != 'canceled'",
+        )
+        .bind(id)
+        .execute(&mut **tx)
+        .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(AppError::InvalidData(
+                "Order cannot be completed (already completed or canceled)".to_string(),
+            ));
+        }
+
+        let order =
+            sqlx::query_as::<_, Order>("SELECT * FROM orders WHERE id = $1 AND deleted_at IS NULL")
+                .bind(id)
+                .fetch_one(&mut **tx)
+                .await?;
+
+        Ok(order)
+    }
+
+    pub async fn fulfill_order_tx(
+        &self,
+        id: &str,
+        tx: &mut sqlx::Transaction<'_, crate::db::DbDatabase>,
+    ) -> Result<Order, AppError> {
+        let result = sqlx::query(
+            "UPDATE orders SET fulfillment_status = 'fulfilled', updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND fulfillment_status = 'not_fulfilled' AND status != 'canceled'",
+        )
+        .bind(id)
+        .execute(&mut **tx)
+        .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(AppError::InvalidData(
+                "Order cannot be fulfilled (already fulfilled or canceled)".to_string(),
+            ));
+        }
+
+        let order =
+            sqlx::query_as::<_, Order>("SELECT * FROM orders WHERE id = $1 AND deleted_at IS NULL")
+                .bind(id)
+                .fetch_one(&mut **tx)
+                .await?;
+
+        Ok(order)
+    }
+
+    pub async fn ship_order_tx(
+        &self,
+        id: &str,
+        tx: &mut sqlx::Transaction<'_, crate::db::DbDatabase>,
+    ) -> Result<Order, AppError> {
+        let result = sqlx::query(
+            "UPDATE orders SET fulfillment_status = 'shipped', shipped_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND fulfillment_status = 'fulfilled' AND status != 'canceled'",
+        )
+        .bind(id)
+        .execute(&mut **tx)
+        .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(AppError::InvalidData(
+                "Order cannot be shipped (must be fulfilled and not canceled)".to_string(),
+            ));
+        }
+
+        let order =
+            sqlx::query_as::<_, Order>("SELECT * FROM orders WHERE id = $1 AND deleted_at IS NULL")
+                .bind(id)
+                .fetch_one(&mut **tx)
+                .await?;
+
+        Ok(order)
+    }
 }
 
 #[derive(Debug, sqlx::FromRow)]
